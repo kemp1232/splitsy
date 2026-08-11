@@ -1,0 +1,415 @@
+import appInfo from './appInfo.json';
+
+// Centralized user-facing copy (spec sections 13/14), filled in one screen at a
+// time as each is built. Section numbers below refer to the spec.
+export const copy = {
+  appName: appInfo.name,
+
+  // Section 13.2 — Home
+  home: {
+    pageTitle: 'Bills',
+    primaryAction: 'New bill',
+    emptyHeading: 'No bills yet',
+    emptyBody: 'Scan a receipt or enter items manually to create your first split.',
+    emptyCta: 'Split a bill',
+    draftBadge: 'Draft',
+    completedBadge: 'Completed',
+    unknownMerchantTitle: 'Untitled bill',
+    resumeAction: 'Continue',
+    openAction: 'View split',
+    overflowEdit: 'Edit bill',
+    overflowShare: 'Share summary',
+    overflowDelete: 'Delete bill',
+    overflowAccessibilityLabel: 'More actions',
+    // No exact trigger copy given in spec 13.2's table (the settings entry
+    // point is icon-only) — this is its required screen-reader label (spec
+    // section 17).
+    settingsAccessibilityLabel: 'Settings',
+    // Not spec-mandated exact text (13.2 names the "Delete bill" overflow
+    // action only, not its confirmation copy) — same treatment as
+    // itemEditor's/adjustmentEditor's/savedBillDetail's own delete-confirmation
+    // pairs.
+    deleteConfirmHeading: 'Delete this bill?',
+    deleteConfirmBody:
+      'This permanently removes the bill, its receipt image, and everyone’s shares from this device.',
+    // Shown instead of attempting Share on a draft that isn't far enough
+    // along to compute a split yet (spec doesn't cover this edge case).
+    shareUnavailable: 'Add participants and assign items before sharing this bill.',
+  },
+
+  // Section 13.3 — New bill source
+  newBill: {
+    heading: 'Add a receipt',
+    body: 'Choose the fastest way to start your split.',
+    cameraTitle: 'Take a photo',
+    cameraDescription: 'Best for a receipt in front of you.',
+    galleryTitle: 'Choose from photos',
+    galleryDescription: 'Use a receipt image already on your phone.',
+    manualTitle: 'Enter items manually',
+    manualDescription: 'Start without scanning a receipt.',
+    // Not from the spec — a deliberate post-MVP addition (see PLAN.md), a
+    // fourth entry point alongside the original three.
+    quickSplitTitle: 'Split evenly',
+    quickSplitDescription: 'Skip the receipt — enter a total and split it equally.',
+    backConfirmHeading: 'Leave this bill?',
+    backConfirmBody: 'Your progress has not been saved yet.',
+    stayAction: 'Keep editing',
+    leaveAction: 'Leave',
+  },
+
+  // Not from the spec — the quick-split entry screen (see PLAN.md's
+  // post-MVP "Payments and quick split" entry).
+  quickSplit: {
+    heading: 'Split the bill evenly',
+    body: 'Enter the total — you can add people next.',
+    totalLabel: 'Total amount',
+    titleLabel: "What's this for?",
+    titlePlaceholder: 'Example: Dinner with friends',
+    continueButton: 'Add people',
+    invalidAmountError: 'Enter a valid amount.',
+  },
+
+  // Section 13.4 — Camera permission state
+  cameraPermission: {
+    heading: 'Allow camera access',
+    body: 'Splitsy uses your camera only to photograph the receipt.',
+    primaryButton: 'Allow camera',
+    galleryAlternative: 'Choose from photos instead',
+    manualAlternative: 'Enter items manually',
+    permanentDenialBody:
+      'Camera access is turned off. Enable it in your phone settings, or choose another way to add the receipt.',
+    settingsButton: 'Open settings',
+  },
+
+  // Section 13.5 — Camera capture
+  cameraCapture: {
+    instruction: 'Fit the whole receipt inside the frame.',
+    tip: 'Keep it flat, well lit, and in focus.',
+    captureAccessibilityLabel: 'Take receipt photo',
+    flashAuto: 'Flash: Auto',
+    flashOn: 'Flash: On',
+    flashOff: 'Flash: Off',
+    galleryAction: 'Photos',
+    closeAccessibilityLabel: 'Close camera',
+  },
+
+  // Section 13.6 — Receipt preview
+  preview: {
+    heading: 'Check the photo',
+    body: 'Make sure the item names and prices are easy to read.',
+    primaryButton: 'Use this photo',
+    retakeAction: 'Retake',
+    chooseAnotherAction: 'Choose another',
+    rotateAction: 'Rotate',
+  },
+
+  // Section 13.7 — Processing
+  processing: {
+    heading: 'Reading your receipt…',
+    body: 'This can take a few seconds.',
+    privacyNote: 'Text extraction happens on this device.',
+    stagePreparing: 'Preparing image',
+    stageReading: 'Finding text',
+    stageOrganizing: 'Organizing items and totals',
+    cancelAction: 'Cancel',
+  },
+
+  // Section 13.8 — OCR failure
+  ocrFailure: {
+    heading: "We couldn't read this receipt",
+    body: 'Try a clearer photo, or enter the items manually.',
+    retryButton: 'Try again',
+    anotherPhotoButton: 'Use another photo',
+    manualButton: 'Enter items manually',
+    technicalDetailsAction: 'View extracted text',
+    noTextDetail: 'No readable text was found.',
+  },
+
+  // Section 13.9 — Receipt review
+  receiptReview: {
+    heading: 'Review receipt',
+    body: 'Check the items and prices before continuing.',
+    detectedCountSingular: 'We found 1 item.',
+    detectedCountPlural: 'We found {count} items.',
+    merchantLabel: 'Merchant or bill name',
+    merchantPlaceholder: 'Example: Dinner at Mesa',
+    dateLabel: 'Receipt date',
+    datePlaceholder: 'YYYY-MM-DD',
+    invalidDateError: 'Enter the date as YYYY-MM-DD.',
+    itemsSection: 'Items',
+    itemQuantityLabel: 'Qty {quantity}',
+    addItem: 'Add item',
+    detectedSubtotalLabel: 'Receipt subtotal',
+    itemSubtotalLabel: 'Items subtotal',
+    detectedTotalLabel: 'Receipt total',
+    computedTotalLabel: 'Current total',
+    matchSuccess: 'The current total matches the receipt.',
+    mismatchWarning: 'The current total is {difference} {higherOrLower} than the receipt.',
+    higherWord: 'higher',
+    lowerWord: 'lower',
+    rawTextAction: 'View extracted text',
+    ocrSourceBackend: 'Read online (higher accuracy)',
+    ocrSourceOnDevice: 'Read on-device (offline)',
+    handwritingNote:
+      'Handwritten receipts are read on a best-effort basis and may be less accurate — please double-check items and prices.',
+    continueButton: 'Add people',
+    noItemsHeading: 'No items found',
+    noItemsBody: 'Add the receipt items manually to continue.',
+  },
+
+  // Section 13.10 — Add/edit item sheet
+  itemEditor: {
+    addHeading: 'Add item',
+    editHeading: 'Edit item',
+    nameLabel: 'Item name',
+    namePlaceholder: 'Example: Chicken meal',
+    quantityLabel: 'Quantity',
+    amountLabel: 'Line total',
+    amountPlaceholder: '0.00',
+    saveAction: 'Save item',
+    deleteAction: 'Delete item',
+    cancelAction: 'Cancel',
+    requiredNameError: 'Enter an item name.',
+    invalidQuantityError: 'Quantity must be a whole number from 1 to 99.',
+    invalidAmountError: 'Enter a valid amount.',
+    deleteConfirmHeading: 'Delete this item?',
+    deleteConfirmBody: 'This item and its assignments will be removed.',
+  },
+
+  // Section 13.11 — Participants
+  participants: {
+    heading: "Who's splitting this bill?",
+    body: 'Add everyone who should receive a share.',
+    addAction: 'Add person',
+    quickAddMe: 'Add me',
+    continueButton: 'Assign items',
+    minimumError: 'Add at least 2 people to continue.',
+    emptyHeading: 'No one added yet',
+    emptyBody: 'Start by adding yourself and the other people sharing the bill.',
+    removeConfirmHeading: 'Remove {name}?',
+    removeConfirmBody: 'Their item assignments and custom adjustment amounts will also be removed.',
+    removeAction: 'Remove person',
+  },
+
+  // Section 13.12 — Add/edit participant sheet
+  participantEditor: {
+    addHeading: 'Add person',
+    editHeading: 'Edit person',
+    nameLabel: 'Name',
+    namePlaceholder: 'Example: Alex',
+    saveAction: 'Save person',
+    cancelAction: 'Cancel',
+    requiredNameError: 'Enter a name.',
+    duplicateNameError: 'That name is already in this bill.',
+    tooLongNameError: 'Use 30 characters or fewer.',
+  },
+
+  // Section 13.13 — Item assignment
+  assignments: {
+    heading: 'Who had what?',
+    body: 'Choose one or more people for every item.',
+    sharedNote: 'Items assigned to more than one person are split equally.',
+    // Not from the spec — the post-MVP "split evenly" toggle (see PLAN.md):
+    // lets an itemized bill switch to an equal split, and reflects a
+    // quick-split bill's already-equal split back to the user.
+    splitEquallyToggleLabel: 'Split everything equally',
+    unassignedSection: 'Unassigned',
+    assignedSection: 'Assigned',
+    assignAction: 'Choose people',
+    multiPersonState: 'Shared by {count}',
+    noAssignmentState: 'Not assigned',
+    bulkAssignAction: 'Assign all unassigned',
+    continueButton: 'Review fees and discounts',
+    blockingErrorHeading: 'Assign every item',
+    blockingErrorBody: '{count} {itemWord} still need {assignmentWord}.',
+    itemWordSingular: 'item',
+    itemWordPlural: 'items',
+    assignmentWordSingular: 'an assignment',
+    assignmentWordPlural: 'assignments',
+  },
+
+  // Section 13.14 — Participant picker sheet
+  participantPicker: {
+    heading: 'Who shared this item?',
+    body: 'Select everyone who should pay for it.',
+    selectAll: 'Select all',
+    clear: 'Clear',
+    saveAction: 'Save assignment',
+    requiredError: 'Choose at least one person.',
+  },
+
+  // Section 13.15 — Adjustments
+  adjustments: {
+    heading: 'Fees, tax, and discounts',
+    body: 'Check the extra amounts and choose how to split them.',
+    addAction: 'Add adjustment',
+    emptyHeading: 'No extra amounts',
+    emptyBody: 'Add tax, service charge, tip, discount, or another amount when needed.',
+    allocationProportional: 'Proportional to items',
+    allocationProportionalDetail: 'People with larger item totals pay a larger share.',
+    allocationEqual: 'Split equally',
+    allocationEqualDetail: 'Everyone gets the same share.',
+    allocationCustom: 'Enter custom amounts',
+    allocationCustomDetail: 'Set the exact amount for each person.',
+    itemSubtotalLabel: 'Items subtotal',
+    adjustmentsTotalLabel: 'Adjustments',
+    computedTotalLabel: 'Current total',
+    receiptTotalLabel: 'Receipt total',
+    matchSuccess: 'Everything matches the receipt.',
+    differenceWarning: "There's a {difference} difference.",
+    addDifferenceAction: 'Add difference as an adjustment',
+    reviewItemsAction: 'Review items',
+    continueButton: "See everyone's share",
+    continueWithDifferenceAction: 'Continue with difference',
+    // Not spec-mandated exact copy (the spec leaves this auto-created
+    // adjustment's label to implementation judgment) — shown as the `label`
+    // of the OTHER adjustment created by "Add difference as an adjustment"
+    // (spec 10.8).
+    autoAdjustmentLabel: 'Receipt total difference',
+  },
+
+  // Section 13.16 — Add/edit adjustment sheet
+  adjustmentEditor: {
+    addHeading: 'Add adjustment',
+    editHeading: 'Edit adjustment',
+    typeLabel: 'Type',
+    typeTax: 'Tax',
+    typeService: 'Service charge',
+    typeTip: 'Tip',
+    typeDiscount: 'Discount',
+    typeOther: 'Other',
+    labelField: 'Label',
+    labelPlaceholder: 'Example: Corkage fee',
+    amountField: 'Amount',
+    discountHelper: 'Discounts reduce the bill.',
+    allocationField: 'How should this be divided?',
+    saveAction: 'Save adjustment',
+    deleteAction: 'Delete adjustment',
+    invalidAmount: 'Enter a valid non-zero amount.',
+    customMismatch: 'Custom amounts must add up to {amount}.',
+    // Not spec-mandated exact copy — spec 13.16 only names `customMismatch`
+    // for the sum-out-of-balance case; this covers validateCustomAllocation's
+    // separate `signMismatch` reason (spec 10.6's sign rule), which the
+    // custom-amount UI here can't actually trigger (every entry is signed to
+    // match the adjustment automatically) but is still handled defensively.
+    customSignMismatchError: "Custom amounts must be zero or match the adjustment's direction.",
+    // Not spec-mandated exact copy — spec 13.16 doesn't give delete
+    // confirmation text for adjustments the way itemEditor's
+    // deleteConfirmHeading/Body do; mirrors that same pair's wording.
+    deleteConfirmHeading: 'Delete this adjustment?',
+    deleteConfirmBody: 'This amount will no longer be included in the split.',
+  },
+
+  // Section 13.17 — Continue-with-difference confirmation
+  continueWithDifference: {
+    heading: "The totals don't match",
+    body: 'The current total differs from the receipt by {difference}. Check the items and adjustments before continuing.',
+    reviewAction: 'Review bill',
+    continueAction: 'Continue anyway',
+  },
+
+  // Not from the spec — the payments/contributions screen, inserted between
+  // Adjustments and Summary (see PLAN.md's post-MVP "Payments and quick
+  // split" entry).
+  payments: {
+    heading: 'Who paid?',
+    body: 'Add how much each person actually paid — Splitsy will work out who owes who.',
+    fullAmountAction: 'Paid in full',
+    skipAction: 'Skip for now',
+    continueButton: 'Continue',
+    unaccountedNote: "{amount} of the bill hasn't been marked as paid yet.",
+    overCollectedNote: "{amount} more was marked as paid than the bill's total.",
+    // Not from the spec — a direct entry point to the Payments screen from
+    // Summary, reachable regardless of draft-progression state (see
+    // resolveNextRoute.ts's header comment on why Payments isn't part of that
+    // routing logic), so returning to a bill after skipping Payments once
+    // doesn't permanently lock the user out of it.
+    editAction: 'Edit payments',
+  },
+
+  // Not from the spec — settlement ("who owes whom") display on the Summary
+  // screen, computed from Payments (see PLAN.md's post-MVP entry).
+  settlement: {
+    heading: 'Settle up',
+    owesLabel: '{debtor} owes {creditor}',
+    allSettled: "Everyone's settled up.",
+  },
+
+  // Section 13.18 — Summary
+  summary: {
+    heading: "Everyone's share",
+    totalLabel: 'Bill total',
+    matchSuccess: 'Matches the receipt',
+    mismatchStatus: 'Does not match the receipt',
+    participantOwes: '{name} owes',
+    itemsSubheading: 'Items',
+    adjustmentsSubheading: 'Fees and discounts',
+    sharedSuffix: 'shared',
+    saveAction: 'Finish and save',
+    shareAction: 'Share summary',
+    copyAction: 'Copy breakdown',
+    editAction: 'Edit bill',
+    copiedToast: 'Breakdown copied.',
+    savedToast: 'Bill saved.',
+    shareFailure: "We couldn't open the share menu. Try copying the breakdown instead.",
+  },
+
+  // Section 13.19 — Saved bill detail
+  savedBillDetail: {
+    editAction: 'Edit bill',
+    shareAction: 'Share summary',
+    deleteAction: 'Delete bill',
+    receiptAction: 'View receipt',
+    rawOcrAction: 'View extracted text',
+    noReceiptText: 'This bill was entered manually.',
+    // Not spec-mandated exact text (13.19 names the "Delete bill" button only,
+    // not its confirmation copy) — same treatment as itemEditor's/
+    // adjustmentEditor's own delete-confirmation pairs.
+    deleteConfirmHeading: 'Delete this bill?',
+    deleteConfirmBody:
+      'This permanently removes the bill, its receipt image, and everyone’s shares from this device.',
+  },
+
+  // Section 13.20 — Settings
+  settings: {
+    heading: 'Settings',
+    privacySection: 'Privacy',
+    // Deliberately not spec 13.20's literal text ("...does not upload them to
+    // a Splitsy server") — the 2026-07-31 spec Amendment means that's no
+    // longer accurate: a receipt photo may transit Splitsy's own backend for
+    // OCR extraction. This says what's still true (everything confirmed
+    // stays local, nothing is stored server-side) instead of a now-false
+    // claim. See the Amendment callout at the top of
+    // docs/Splitsy_MVP_Spec.md for the full rationale.
+    privacyBody:
+      'Splitsy stores receipt images, extracted text, and bill history on this device. A photo may briefly be sent to Splitsy’s own text-reading service to read it, then deleted there immediately — nothing is stored on a server, and your confirmed bill always stays on this device.',
+    dataSection: 'Local data',
+    deleteAllAction: 'Delete all local data',
+    deleteAllHeading: 'Delete all Splitsy data?',
+    deleteAllBody:
+      'This permanently removes every saved bill, draft, receipt image, and setting from this device.',
+    deleteAllConfirm: 'Delete everything',
+    deleteAllCancel: 'Cancel',
+    versionLabel: 'Version',
+    aboutSection: 'About Splitsy',
+    aboutBody: 'Scan a receipt, assign the items, and split the total clearly.',
+  },
+
+  // Section 14 — global
+  global: {
+    genericErrorHeading: 'Something went wrong',
+    genericErrorBody: 'Try again. Your saved bills are still on this device.',
+    retryAction: 'Try again',
+    cancelAction: 'Cancel',
+    closeAccessibilityLabel: 'Close',
+    loadingBills: 'Loading bills…',
+    databaseStartupFailure: "Splitsy couldn't open its local data. Restart the app and try again.",
+    imageCopyFailure:
+      "We couldn't save this receipt image. Choose it again or enter the bill manually.",
+    unsupportedImage: "This image couldn't be opened. Choose a different photo.",
+    ocrUnavailable:
+      "Receipt scanning isn't available on this device right now. You can still enter the bill manually.",
+    storageFailure: "We couldn't save your changes. Check your available storage and try again.",
+    deleteFailure: "We couldn't delete this bill. Try again.",
+  },
+};

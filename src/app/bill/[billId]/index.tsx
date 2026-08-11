@@ -1,0 +1,482 @@
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { Image, Modal, ScrollView, Share, StyleSheet, View } from 'react-native';
+
+import { PersonTotalCard } from '@/components/bill/PersonTotalCard';
+import { SettlementCard } from '@/components/bill/SettlementCard';
+import { AppButton } from '@/components/ui/AppButton';
+import { AppText } from '@/components/ui/AppText';
+import { BottomActionBar } from '@/components/ui/BottomActionBar';
+import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
+import { Divider } from '@/components/ui/Divider';
+import { ErrorState } from '@/components/ui/ErrorState';
+import { InlineError } from '@/components/ui/InlineError';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { Screen } from '@/components/ui/Screen';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { copy } from '@/constants/copy';
+import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
+import { adjustmentAllocationsRepository } from '@/db/repositories/adjustmentAllocations.repository';
+import type { Adjustment } from '@/db/repositories/adjustments.repository';
+import { adjustmentsRepository } from '@/db/repositories/adjustments.repository';
+import type { Bill } from '@/db/repositories/bills.repository';
+import { billsRepository } from '@/db/repositories/bills.repository';
+import type { ItemAssignment } from '@/db/repositories/itemAssignments.repository';
+import { itemAssignmentsRepository } from '@/db/repositories/itemAssignments.repository';
+import type { LineItem } from '@/db/repositories/lineItems.repository';
+import { lineItemsRepository } from '@/db/repositories/lineItems.repository';
+import type { Participant } from '@/db/repositories/participants.repository';
+import { participantsRepository } from '@/db/repositories/participants.repository';
+import {
+  buildSplitAdjustments,
+  buildSplitLineItems,
+} from '@/features/adjustments/buildSplitInputs';
+import { groupAssignedParticipantIdsByLineItem } from '@/features/assignments/partitionLineItemsByAssignment';
+import { deleteBill } from '@/features/bills/bill.service';
+import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
+import { reconcileBillTotals } from '@/features/splitting/reconciliation';
+import { computeSettlement } from '@/features/splitting/settlement';
+import { buildShareText } from '@/features/splitting/shareText';
+import { calculateSplit } from '@/features/splitting/splitCalculator';
+import type {
+  ReconciliationResult,
+  SplitCalculationResult,
+} from '@/features/splitting/split.types';
+import {
+  buildParticipantAdjustmentShareDisplay,
+  buildParticipantItemShareDisplay,
+  type SummaryAdjustmentInfo,
+  type SummaryItemInfo,
+} from '@/features/summary/buildParticipantShareDisplay';
+import { nowIso } from '@/lib/date';
+import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
+import { colors, spacing } from '@/theme/tokens';
+
+type LoadState = 'loading' | 'ready' | 'error';
+
+type LoadedData = {
+  billRow: Bill | undefined;
+  itemRows: LineItem[];
+  participantRows: Participant[];
+  adjustmentRows: Adjustment[];
+  assignmentRows: ItemAssignment[];
+  customAllocationsByAdjustmentId: Map<string, AdjustmentAllocation[]>;
+};
+
+// Same shape as adjustments.tsx's/summary.tsx's own fetch functions — kept as
+// its own colocated copy (matching those screens' precedent of not sharing a
+// loader across screens, since each screen's guard/error handling around the
+// same raw data differs).
+async function fetchSavedBillDetailData(billId: string): Promise<LoadedData> {
+  const [billRow, itemRows, participantRows, adjustmentRows, assignmentRows] = await Promise.all([
+    billsRepository.getById(billId),
+    lineItemsRepository.listByBillId(billId),
+    participantsRepository.listByBillId(billId),
+    adjustmentsRepository.listByBillId(billId),
+    itemAssignmentsRepository.listByBillId(billId),
+  ]);
+
+  const customAllocationsByAdjustmentId = new Map<string, AdjustmentAllocation[]>();
+  await Promise.all(
+    adjustmentRows
+      .filter((adjustment) => adjustment.allocationMethod === 'CUSTOM')
+      .map(async (adjustment) => {
+        const rows = await adjustmentAllocationsRepository.listByAdjustmentId(adjustment.id);
+        customAllocationsByAdjustmentId.set(adjustment.id, rows);
+      }),
+  );
+
+  return {
+    billRow,
+    itemRows,
+    participantRows,
+    adjustmentRows,
+    assignmentRows,
+    customAllocationsByAdjustmentId,
+  };
+}
+
+// Spec 13.19/F-016 (reused for a saved bill's read-only history view) +
+// F-019 (delete). Shows the same per-participant breakdown the summary
+// screen shows (spec F-016/F-017) for a bill that's already COMPLETED —
+// unlike adjustments.tsx/summary.tsx, this screen has no draft-progression
+// redirect guard (spec section 15): a COMPLETED bill can only have reached
+// that status by already passing every earlier gate, so calculateSplit below
+// is always safe to call against it as-is.
+export default function SavedBillDetailScreen() {
+  const router = useRouter();
+  const { billId } = useLocalSearchParams<{ billId: string }>();
+
+  const [state, setState] = useState<LoadState>('loading');
+  const [bill, setBill] = useState<Bill | null>(null);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [items, setItems] = useState<LineItem[]>([]);
+  const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
+  const [assignmentRows, setAssignmentRows] = useState<ItemAssignment[]>([]);
+  const [splitResult, setSplitResult] = useState<SplitCalculationResult | null>(null);
+  const [reconciliation, setReconciliation] = useState<ReconciliationResult | null>(null);
+
+  const [showReceiptImage, setShowReceiptImage] = useState(false);
+  const [showRawText, setShowRawText] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await fetchSavedBillDetailData(billId);
+        if (!data.billRow) {
+          setState('error');
+          return;
+        }
+
+        const splitParticipants = data.participantRows.map((participant) => ({
+          participantId: participant.id,
+        }));
+        const splitItems = buildSplitLineItems(data.itemRows, data.assignmentRows);
+        const splitAdjustments = buildSplitAdjustments(
+          data.adjustmentRows,
+          data.customAllocationsByAdjustmentId,
+        );
+        const nextSplitResult = calculateSplit({
+          participants: splitParticipants,
+          items: splitItems,
+          adjustments: splitAdjustments,
+        });
+        const nextReconciliation = reconcileBillTotals({
+          itemSubtotalCentavos: nextSplitResult.itemSubtotalCentavos,
+          adjustmentTotalCentavos: nextSplitResult.adjustmentTotalCentavos,
+          detectedReceiptTotalCentavos: data.billRow.detectedReceiptTotalCentavos,
+        });
+
+        setBill(data.billRow);
+        setParticipants(data.participantRows);
+        setItems(data.itemRows);
+        setAdjustments(data.adjustmentRows);
+        setAssignmentRows(data.assignmentRows);
+        setSplitResult(nextSplitResult);
+        setReconciliation(nextReconciliation);
+        setState('ready');
+      } catch {
+        // Covers both a genuine load failure and calculateSplit's
+        // SplitInvariantError (spec 10.7) — same generic error treatment used
+        // by every other screen's load effect.
+        setState('error');
+      }
+    })();
+  }, [billId]);
+
+  if (state === 'loading') {
+    return (
+      <Screen>
+        <LoadingState />
+      </Screen>
+    );
+  }
+
+  if (state === 'error' || !bill || !splitResult || !reconciliation) {
+    return (
+      <Screen>
+        <ErrorState
+          heading={copy.global.genericErrorHeading}
+          body={copy.global.genericErrorBody}
+          retryLabel={copy.global.retryAction}
+          onRetry={() => setState('loading')}
+        />
+      </Screen>
+    );
+  }
+
+  const title = bill.merchantName ?? bill.title;
+  const hasDetectedTotal = reconciliation.detectedReceiptTotalCentavos !== null;
+  const hasReceiptImage = bill.receiptImageUri != null;
+  const hasRawOcrText = bill.rawOcrText != null;
+
+  const assignedIdsByItem = groupAssignedParticipantIdsByLineItem(assignmentRows);
+  const itemInfoById = new Map<string, SummaryItemInfo>(
+    items.map((item) => [
+      item.id,
+      { name: item.name, assigneeCount: (assignedIdsByItem.get(item.id) ?? []).length },
+    ]),
+  );
+  const adjustmentInfoById = new Map<string, SummaryAdjustmentInfo>(
+    adjustments.map((adjustment) => [adjustment.id, { label: adjustment.label }]),
+  );
+  const nameByParticipantId = new Map(
+    participants.map((participant) => [participant.id, participant.name]),
+  );
+
+  // Post-MVP settlement display (see settlement.ts's header comment) —
+  // built from the same already-loaded participant rows and calculateSplit
+  // output this screen already has, never from route params.
+  const contributionByParticipantId = new Map(
+    participants.map((participant) => [
+      participant.id,
+      { contributedCentavos: participant.contributedCentavos },
+    ]),
+  );
+  const settlementParticipants = buildSettlementParticipants(
+    splitResult.participantShares,
+    contributionByParticipantId,
+  );
+  const settlement = computeSettlement(settlementParticipants);
+  // Same reasoning as summary.tsx's own hasAnyContribution: nobody having
+  // used the (skippable) Payments screen isn't "money unaccounted for," so
+  // SettlementCard stays hidden until at least one participant has a nonzero
+  // contribution.
+  const hasAnyContribution = participants.some(
+    (participant) => participant.contributedCentavos !== 0,
+  );
+
+  async function handleShare() {
+    // TypeScript doesn't retain the outer `!splitResult` narrowing above
+    // across this nested function's closure boundary (same reasoning as
+    // summary.tsx's own buildShareTextForBill) — re-checked here rather than
+    // asserted, even though this handler is never wired up while the earlier
+    // loading/error guard is still showing.
+    if (!splitResult) return;
+
+    setShareError(null);
+    try {
+      const text = buildShareText({
+        billTitle: title,
+        participants: participants.map((participant) => ({
+          participantId: participant.id,
+          name: participant.name,
+        })),
+        items: items.map((item) => ({ lineItemId: item.id, name: item.name })),
+        adjustments: adjustments.map((adjustment) => ({
+          adjustmentId: adjustment.id,
+          label: adjustment.label,
+        })),
+        splitResult,
+      });
+      await Share.share({ message: text });
+    } catch {
+      // No spec-mandated share-failure copy for this screen (13.19 doesn't
+      // define one of its own) — reused verbatim from the summary screen's
+      // share failure text (13.18), which describes exactly the same failure
+      // mode, rather than inventing new copy here.
+      setShareError(copy.summary.shareFailure);
+    }
+  }
+
+  // Spec 15 "Completed bill editing": opening Edit bill turns a COMPLETED
+  // bill back into a DRAFT (or an edit session that behaves like one), and
+  // the user must return to summary and choose "Finish and save" again. The
+  // spec doesn't say exactly which screen to land on first — every field on
+  // a completed bill already has a value, so any of the five draft screens
+  // would technically work. receipt-review is chosen because it's the
+  // earliest step in the normal draft flow (spec 15's own draft-progression
+  // order), giving the user a full path back through
+  // review -> participants -> assignments -> adjustments -> summary to
+  // change anything before re-saving.
+  async function handleEditBill() {
+    await billsRepository.update(billId, {
+      status: 'DRAFT',
+      completedAt: null,
+      updatedAt: nowIso(),
+    });
+    router.replace(`/bill/${billId}/receipt-review`);
+  }
+
+  function handleConfirmDelete() {
+    // Same closure-narrowing note as handleShare above.
+    if (!bill) return;
+    setConfirmingDelete(false);
+    try {
+      deleteBill(bill);
+    } catch {
+      setDeleteError(copy.global.deleteFailure);
+      return;
+    }
+    router.replace('/');
+  }
+
+  return (
+    <Screen
+      scroll
+      padded={false}
+      footer={
+        <BottomActionBar>
+          <AppButton label={copy.savedBillDetail.shareAction} onPress={handleShare} />
+        </BottomActionBar>
+      }
+    >
+      <View style={styles.body}>
+        <View style={styles.headerBlock}>
+          <AppText variant="heading">{title}</AppText>
+
+          <View style={styles.totalRow}>
+            <AppText color="textSecondary">{copy.summary.totalLabel}</AppText>
+            {/* accessibilityLabel is the spoken form (spec section 17's "520
+                pesos and 25 centavos" example), distinct from the visible
+                formatCentavos text. */}
+            <AppText
+              variant="amount"
+              accessibilityLabel={formatCentavosForSpeech(splitResult.computedTotalCentavos)}
+            >
+              {formatCentavos(splitResult.computedTotalCentavos)}
+            </AppText>
+          </View>
+
+          {hasDetectedTotal ? (
+            <StatusBadge
+              label={
+                reconciliation.matches ? copy.summary.matchSuccess : copy.summary.mismatchStatus
+              }
+              tone={reconciliation.matches ? 'success' : 'warning'}
+            />
+          ) : null}
+        </View>
+
+        <View style={styles.actionsRow}>
+          <AppButton
+            variant="secondary"
+            label={copy.savedBillDetail.editAction}
+            onPress={handleEditBill}
+          />
+          <AppButton
+            variant="destructive"
+            label={copy.savedBillDetail.deleteAction}
+            onPress={() => setConfirmingDelete(true)}
+          />
+        </View>
+        {shareError ? <InlineError message={shareError} /> : null}
+        {deleteError ? <InlineError message={deleteError} /> : null}
+
+        {hasReceiptImage ? (
+          <AppButton
+            variant="text"
+            label={copy.savedBillDetail.receiptAction}
+            onPress={() => setShowReceiptImage(true)}
+          />
+        ) : null}
+        {hasRawOcrText ? (
+          <AppButton
+            variant="text"
+            label={copy.savedBillDetail.rawOcrAction}
+            onPress={() => setShowRawText(true)}
+          />
+        ) : null}
+        {!hasReceiptImage && !hasRawOcrText ? (
+          <AppText color="textSecondary">{copy.savedBillDetail.noReceiptText}</AppText>
+        ) : null}
+
+        <Divider />
+
+        <View style={styles.cardsList}>
+          {splitResult.participantShares.map((share) => {
+            const name = nameByParticipantId.get(share.participantId) ?? '';
+            return (
+              <PersonTotalCard
+                key={share.participantId}
+                name={name}
+                finalTotalCentavos={share.finalTotalCentavos}
+                itemShares={buildParticipantItemShareDisplay(share.itemShares, itemInfoById)}
+                adjustmentShares={buildParticipantAdjustmentShareDisplay(
+                  share.adjustmentShares,
+                  adjustmentInfoById,
+                )}
+              />
+            );
+          })}
+        </View>
+
+        {hasAnyContribution ? (
+          <SettlementCard
+            transactions={settlement.transactions}
+            unaccountedCentavos={settlement.unaccountedCentavos}
+            nameByParticipantId={nameByParticipantId}
+          />
+        ) : null}
+      </View>
+
+      <Modal
+        visible={showReceiptImage}
+        animationType="slide"
+        onRequestClose={() => setShowReceiptImage(false)}
+      >
+        <Screen scroll={false}>
+          <AppButton
+            variant="text"
+            label={copy.global.closeAccessibilityLabel}
+            onPress={() => setShowReceiptImage(false)}
+          />
+          {bill.receiptImageUri ? (
+            <Image
+              source={{ uri: bill.receiptImageUri }}
+              style={styles.receiptImage}
+              resizeMode="contain"
+              accessibilityLabel={copy.savedBillDetail.receiptAction}
+            />
+          ) : null}
+        </Screen>
+      </Modal>
+
+      <Modal
+        visible={showRawText}
+        animationType="slide"
+        onRequestClose={() => setShowRawText(false)}
+      >
+        <Screen scroll>
+          <AppButton
+            variant="text"
+            label={copy.global.closeAccessibilityLabel}
+            onPress={() => setShowRawText(false)}
+          />
+          <ScrollView style={styles.rawTextScroll}>
+            <AppText selectable variant="caption" style={styles.rawText}>
+              {bill.rawOcrText}
+            </AppText>
+          </ScrollView>
+        </Screen>
+      </Modal>
+
+      <ConfirmationDialog
+        visible={confirmingDelete}
+        heading={copy.savedBillDetail.deleteConfirmHeading}
+        body={copy.savedBillDetail.deleteConfirmBody}
+        confirmLabel={copy.savedBillDetail.deleteAction}
+        cancelLabel={copy.global.cancelAction}
+        destructive
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirmingDelete(false)}
+      />
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  body: {
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  headerBlock: {
+    gap: spacing.xs,
+  },
+  totalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  cardsList: {
+    gap: spacing.sm,
+  },
+  receiptImage: {
+    flex: 1,
+  },
+  rawTextScroll: {
+    marginTop: spacing.md,
+  },
+  rawText: {
+    fontFamily: 'monospace',
+    color: colors.textPrimary,
+  },
+});
