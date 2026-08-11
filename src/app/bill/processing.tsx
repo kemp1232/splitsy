@@ -12,7 +12,6 @@ import { createOcrDerivative } from '@/features/receipt-capture/receiptImage.ser
 import { BackendReceiptOcrService } from '@/features/receipt-ocr/BackendReceiptOcrService';
 import { FallbackReceiptOcrService } from '@/features/receipt-ocr/FallbackReceiptOcrService';
 import { MlKitReceiptOcrService } from '@/features/receipt-ocr/MlKitReceiptOcrService';
-import { parseReceipt } from '@/features/receipt-parser/parseReceipt';
 import { colors, spacing } from '@/theme/tokens';
 
 type Stage = 'preparing' | 'reading' | 'organizing' | 'error';
@@ -46,19 +45,21 @@ export default function ProcessingScreen() {
         const ocrReadyUri = await createOcrDerivative(bill.receiptImageUri);
 
         setStage('reading');
-        const document = await ocrService.recognize(ocrReadyUri);
-        setRawText(document.text);
+        const { receipt, source, fallbackReason } = await ocrService.recognize(ocrReadyUri);
+        setRawText(receipt.rawText);
 
         setStage('organizing');
-        const parsed = parseReceipt(document);
-        saveParsedReceiptDraft(billId, parsed);
+        saveParsedReceiptDraft(billId, receipt);
 
-        // ocrSource is a one-time UI hint for the review screen ("read
-        // online" vs "read on-device"), not persisted bill data — it simply
-        // won't be present if the user reopens this draft later, which is fine.
+        // ocrSource/fallbackReason are one-time UI hints for the review
+        // screen ("read online" vs "read on-device", and why), not persisted
+        // bill data — they simply won't be present if the user reopens this
+        // draft later, which is fine.
         router.replace({
           pathname: '/bill/[billId]/receipt-review',
-          params: document.source ? { billId, ocrSource: document.source } : { billId },
+          params: fallbackReason
+            ? { billId, ocrSource: source, fallbackReason }
+            : { billId, ocrSource: source },
         });
       } catch (error) {
         // Development-only diagnostic (spec §18: dev logging must be gated

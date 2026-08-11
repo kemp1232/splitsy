@@ -103,10 +103,12 @@ export function mergeIntoRows(lines: NormalizedLine[]): NormalizedLine[] {
 // (name, then a bare quantity marker, then a VAT-inclusive-marked unit price,
 // then the actual line total) — and the same shape recurs for label-only
 // total/subtotal/adjustment lines printed with their amount on the very next
-// line ("Total Due" / "1,655.71"). The VLM transcribes this exactly as
-// printed, in correct top-to-bottom order; the backend never attaches a
-// `frame` to any line (textToOcrDocument), so this reaches classifyReceiptLines
-// completely unmerged and each fragment is judged in total isolation — the
+// line ("Total Due" / "1,655.71"). A frameless transcription source (the
+// pre-2026-08-11 VLM transcription backend; see
+// src/test/fixtures/receipts/buildOcrDocument.ts's textToOcrDocument, still
+// used to build these real-device regression fixtures) never attaches a
+// `frame` to any line, so this reaches classifyReceiptLines completely
+// unmerged and each fragment is judged in total isolation — the
 // name has no amount (not an item candidate), the bare marker has no letters
 // and no amount (OTHER, ignored), the marked unit price has both an amount
 // and a letter (becomes a bogus item named after the marker letter), and the

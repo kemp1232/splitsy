@@ -2,7 +2,7 @@
 
 Splitsy is a Philippine-market bill-splitting app: photograph or upload a receipt, review the detected items, add the people sharing the bill, assign items to one or more people, divide taxes and other adjustments, and get an exact per-person breakdown you can share or copy as text. You can also skip the receipt entirely and split a total evenly by headcount, and record who actually paid so Splitsy can work out who owes whom directly (see `PLAN.md`'s 2026-08-04 entry — this and the previous sentence's quick-split option are both a deliberate, documented post-MVP addition, same treatment as the OCR backend below).
 
-It's local-first — every bill lives in on-device SQLite, and the confirmed split never leaves the device. See **[docs/Splitsy_MVP_Spec.md](docs/Splitsy_MVP_Spec.md)** for the full product spec, and its dated **⚠ Amendment** callout near the top for one deliberate, documented deviation: receipt text is optionally read by a small self-hosted backend (see [Optional: the OCR backend](#optional-the-ocr-backend) below) rather than purely on-device. **[PLAN.md](PLAN.md)** is the running implementation log — every milestone, decision, and bug found along the way is recorded there with dates.
+It's local-first — every bill lives in on-device SQLite, and the confirmed split never leaves the device. See **[docs/Splitsy_MVP_Spec.md](docs/Splitsy_MVP_Spec.md)** for the full product spec, and its dated **⚠ Amendment** callouts near the top for two deliberate, documented deviations: receipt text is optionally read by a small backend that calls a cloud vision-language model (see [Optional: the OCR backend](#optional-the-ocr-backend) below) rather than purely on-device. **[PLAN.md](PLAN.md)** is the running implementation log — every milestone, decision, and bug found along the way is recorded there with dates.
 
 ## Prerequisites
 
@@ -90,26 +90,20 @@ npx vitest run
 
 ## Optional: the OCR backend
 
-On-device OCR (Google ML Kit) struggles with real receipts — misreading printed thermal receipts and unable to read handwriting at all. `server/` is a small, self-hosted Hono backend that sends the receipt photo to a vision-language model (self-hosted via [Ollama](https://ollama.com), not a cloud/paid service) for transcription, then hands the result to the exact same rule-based parser used for on-device OCR — the model only ever transcribes text; it never decides what's an item, a total, or a discount. See the spec's Amendment callout and `PLAN.md`'s "VLM-backed receipt OCR" entry for the full rationale.
+On-device OCR (Google ML Kit) struggles with real receipts — misreading printed thermal receipts and unable to read handwriting at all. `server/` is a small Hono backend that sends the receipt photo to [Groq](https://groq.com)'s hosted `qwen/qwen3.6-27b` vision-language model, which reads the receipt **and** classifies it — items, quantities, prices, tax/service-charge/discount adjustments, and the total — returning already-structured data instead of raw text. The on-device ML Kit fallback still runs the original rule-based parser (it has no reasoning of its own), but for the Groq path that parser is bypassed entirely. See the spec's Amendment callouts and `PLAN.md`'s "VLM-backed receipt OCR," "Switch to Groq," and "Groq performs full receipt extraction" entries for the full rationale — the last of those is a meaningful trade-off, not a free upgrade: reviewing the detected items/total on the next screen before saving matters more now than it did when the model only transcribed text.
 
 This is **entirely optional** — leave `EXPO_PUBLIC_OCR_BACKEND_URL` unset in `.env` and the app works fully offline on-device.
 
-To run it:
+To run it, get a free API key from [console.groq.com/keys](https://console.groq.com/keys), then:
 
 ```sh
 cd server
 npm install
-npm run ollama    # starts Ollama, if it isn't already running
-```
-
-Pull a vision model once (`ollama pull qwen3-vl:4b`), then:
-
-```sh
-cp .env.example .env   # inside server/ — set OLLAMA_BASE_URL/OCR_ENGINE/PORT if needed
+cp .env.example .env   # set GROQ_API_KEY (required), OCR_ENGINE/PORT if needed
 npm run dev
 ```
 
-Point the client's root `.env` at this machine's LAN IP and the port above (e.g. `EXPO_PUBLIC_OCR_BACKEND_URL=http://192.168.1.10:8787`), then restart Metro (`pnpm start`) so the client picks up the new value. The server never writes the uploaded image to disk — it's held in memory only for the duration of one request.
+Point the client's root `.env` at this machine's LAN IP and the port above (e.g. `EXPO_PUBLIC_OCR_BACKEND_URL=http://192.168.1.10:8787`), then restart Metro (`pnpm start`) so the client picks up the new value. The receipt image is sent to Groq's API for the single request only, is never written to disk on this server, and nothing persists here between requests — but note this now sends receipt photos to a third-party cloud service (see the spec's Amendment callout), unlike the previous self-hosted-only version.
 
 ## Known MVP limitations
 

@@ -1,5 +1,4 @@
-import { textToOcrDocument } from '@/features/receipt-ocr/BackendReceiptOcrService';
-import { buildOcrDocument } from '@/test/fixtures/receipts/buildOcrDocument';
+import { buildOcrDocument, textToOcrDocument } from '@/test/fixtures/receipts/buildOcrDocument';
 import { columnSplitReceiptLines } from '@/test/fixtures/receipts/columnSplitReceipt';
 import { dateResemblingAmountLines } from '@/test/fixtures/receipts/dateResemblingAmount';
 import { grabFoodReceiptText } from '@/test/fixtures/receipts/grabFoodReceipt';

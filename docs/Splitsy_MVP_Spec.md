@@ -24,6 +24,32 @@
 
 ---
 
+> ## ⚠ Amendment — 2026-08-11
+>
+> **The OCR backend now calls Groq's cloud API instead of a self-hosted model.** `server/` sends the receipt photo to Groq's hosted `qwen/qwen3.6-27b` vision-language model (via Groq's OpenAI-compatible chat completions API) rather than a locally-hosted Ollama model. This is a further, explicit deviation from the previous amendment's own stated boundary:
+>
+> - The 2026-07-31 amendment justified crossing §5.5's "No LLM" specifically because the model was "neither cloud nor paid (self-hosted, open-weight)." That is no longer true: Groq is a third-party cloud inference provider, and while it currently has a free tier, it is a commercial AI service, not a self-hosted one. This also revisits the MVP principle's "free of per-receipt AI or OCR charges" (line 9 above) and §2.2's "any paid AI service" exclusion — this backend is still optional and free to use today, but it depends on a paid vendor's free tier rather than infrastructure the user fully controls.
+> - The receipt image now leaves the developer's own network and is sent to Groq's servers for each transcription request, in addition to the existing client → local backend hop.
+>
+> **What did not change:** everything the 2026-07-31 amendment already covered — no accounts, no user data on the server, no persistent server-side storage, on-device ML Kit remains the automatic offline fallback, and this remains entirely optional (`EXPO_PUBLIC_OCR_BACKEND_URL` unset skips it). The backend still holds the receipt image only for the duration of one request.
+>
+> Full rationale and implementation details are logged in `PLAN.md`'s "Switch OCR backend to Groq" entry.
+
+---
+
+> ## ⚠ Amendment — 2026-08-11 (second, same day)
+>
+> **Groq now classifies items, totals, and adjustments itself — it no longer only transcribes text.** The amendment directly above this one (and the original 2026-07-31 amendment) both drew a specific line when first allowing an LLM into this pipeline: *"the model only ever transcribes text; it never decides what's an item, a total, or a discount"* — that line is now crossed, explicitly and at the user's direction. `server/` prompts Groq to return structured JSON (items with quantities/prices, adjustments with type/amount, subtotal, total) directly; the deterministic rule-based classifier this spec describes in §11 (`src/features/receipt-parser/`) is bypassed entirely for this path.
+>
+> - §11's item/total/adjustment classification rules are no longer authoritative for backend-scanned receipts — only for the on-device ML Kit fallback path, which still runs them unchanged (ML Kit has no reasoning ability of its own, so there's no way to skip them there).
+> - This is a strictly larger trust surface than transcription-only: a misread word is easy to catch by eye against the receipt; a misclassified total or a dropped/invented item is a real money-correctness risk, and it's no longer checked against the 300+ tests that back the deterministic parser. The one safety net kept: the app still cross-checks Groq's own reported items+adjustments against its own reported total and surfaces a mismatch warning if they disagree (arithmetic reconciliation, not reclassification) — see `PLAN.md`'s entry for exactly what is and isn't covered.
+>
+> **What did not change:** everything the two amendments above already covered (no accounts, no persistent server-side storage, on-device fallback, fully optional). Receipt review before saving — spec §13.8/§13.9's core UX, letting the user see and correct every item/total before it's used — is unchanged and is what this amendment now leans on more heavily than before to catch a wrong classification, not just a wrong transcription.
+>
+> Full rationale and implementation details are logged in `PLAN.md`'s "Groq performs full receipt extraction" entry.
+
+---
+
 ## 1. Product Summary
 
 Splitsy lets a user photograph or upload a receipt, review the detected items, add the people sharing the bill, assign items to one or more people, divide taxes and other adjustments, and generate an exact per-person breakdown.

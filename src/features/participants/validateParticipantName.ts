@@ -3,8 +3,8 @@
 // (ParticipantEditorSheet, participants.tsx, assignments.tsx all import from
 // here) so the validation itself is directly unit-testable, mirroring how
 // MlKitReceiptOcrService's toRect/toLine/toBlock and
-// BackendReceiptOcrService's textToOcrDocument pull pure mapping/validation
-// logic out of their surrounding class.
+// BackendReceiptOcrService's groqExtractionToParsedReceipt pull pure
+// mapping/validation logic out of their surrounding class.
 
 export const MAX_PARTICIPANT_NAME_LENGTH = 30;
 

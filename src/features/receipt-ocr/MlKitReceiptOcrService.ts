@@ -5,7 +5,9 @@ import TextRecognition, {
   type TextLine,
 } from '@react-native-ml-kit/text-recognition';
 
-import type { ReceiptOcrService } from './ReceiptOcrService';
+import { parseReceipt } from '@/features/receipt-parser/parseReceipt';
+
+import type { OcrRecognitionResult, ReceiptOcrService } from './ReceiptOcrService';
 import type { OcrBlock, OcrDocument, OcrLine, Rect } from './ocr.types';
 
 // @react-native-ml-kit/text-recognition (v2.0.0) does not expose per-line/block
@@ -48,8 +50,16 @@ export function toBlock(block: TextBlock): OcrBlock {
 }
 
 export class MlKitReceiptOcrService implements ReceiptOcrService {
-  async recognize(imageUri: string): Promise<OcrDocument> {
+  async recognize(imageUri: string): Promise<OcrRecognitionResult> {
     const result = await TextRecognition.recognize(imageUri);
-    return { text: result.text, blocks: result.blocks.map(toBlock), source: 'on-device' };
+    const document: OcrDocument = {
+      text: result.text,
+      blocks: result.blocks.map(toBlock),
+      source: 'on-device',
+    };
+    // ML Kit only ever produces raw text — it has no reasoning of its own,
+    // so unlike the Groq backend this path still needs the deterministic
+    // classifier to turn OCR lines into items/totals/adjustments.
+    return { receipt: parseReceipt(document), source: 'on-device' };
   }
 }

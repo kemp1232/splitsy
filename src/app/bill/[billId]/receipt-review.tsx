@@ -42,9 +42,10 @@ async function fetchReviewData(billId: string) {
 
 export default function ReceiptReviewScreen() {
   const router = useRouter();
-  const { billId, ocrSource } = useLocalSearchParams<{
+  const { billId, ocrSource, fallbackReason } = useLocalSearchParams<{
     billId: string;
     ocrSource?: 'backend' | 'on-device';
+    fallbackReason?: 'rate_limited';
   }>();
 
   const [state, setState] = useState<LoadState>('loading');
@@ -224,13 +225,25 @@ export default function ReceiptReviewScreen() {
                 ? copy.receiptReview.ocrSourceBackend
                 : copy.receiptReview.ocrSourceOnDevice
             }
-            tone={ocrSource === 'backend' ? 'success' : 'neutral'}
+            tone={
+              ocrSource === 'backend'
+                ? 'success'
+                : fallbackReason === 'rate_limited'
+                  ? 'warning'
+                  : 'neutral'
+            }
           />
         ) : null}
 
         {ocrSource === 'backend' ? (
           <AppText variant="caption" color="textSecondary">
             {copy.receiptReview.handwritingNote}
+          </AppText>
+        ) : null}
+
+        {fallbackReason === 'rate_limited' ? (
+          <AppText variant="caption" color="warning">
+            {copy.receiptReview.rateLimitedNote}
           </AppText>
         ) : null}
 

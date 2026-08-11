@@ -1,5 +1,8 @@
-import type { ReceiptOcrService } from './ReceiptOcrService';
-import type { OcrDocument } from './ocr.types';
+import {
+  OcrRateLimitedError,
+  type OcrRecognitionResult,
+  type ReceiptOcrService,
+} from './ReceiptOcrService';
 
 // VLM inference time scales with how much text is actually in the image, not
 // just its pixel size — the original ~51s measurement was a single synthetic
@@ -36,7 +39,7 @@ export class FallbackReceiptOcrService implements ReceiptOcrService {
     private readonly timeoutMs: number = DEFAULT_TIMEOUT_MS,
   ) {}
 
-  async recognize(imageUri: string): Promise<OcrDocument> {
+  async recognize(imageUri: string): Promise<OcrRecognitionResult> {
     try {
       return await withTimeout(this.primary.recognize(imageUri), this.timeoutMs);
     } catch (error) {
@@ -47,7 +50,15 @@ export class FallbackReceiptOcrService implements ReceiptOcrService {
       if (__DEV__) {
         console.warn('[FallbackReceiptOcrService] primary OCR failed, falling back:', error);
       }
-      return this.fallback.recognize(imageUri);
+      const result = await this.fallback.recognize(imageUri);
+      // Rate limiting is the one fallback reason the UI currently explains
+      // to the user (see receipt-review.tsx) — every other reason (network
+      // down, misconfigured, timeout, bad response) stays silent, same as
+      // before this existed.
+      if (error instanceof OcrRateLimitedError) {
+        return { ...result, fallbackReason: 'rate_limited' };
+      }
+      return result;
     }
   }
 }

@@ -152,6 +152,8 @@ export const copy = {
     ocrSourceOnDevice: 'Read on-device (offline)',
     handwritingNote:
       'Handwritten receipts are read on a best-effort basis and may be less accurate — please double-check items and prices.',
+    rateLimitedNote:
+      'Online scanning was too busy just now, so this receipt was read on-device instead — please double-check items and prices, or try again in a minute for higher accuracy.',
     continueButton: 'Add people',
     noItemsHeading: 'No items found',
     noItemsBody: 'Add the receipt items manually to continue.',
