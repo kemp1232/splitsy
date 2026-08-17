@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, StyleSheet, View } from 'react-native';
 
 import { AmountInput } from '@/components/ui/AmountInput';
@@ -7,7 +7,9 @@ import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
 import { NumberStepper } from '@/components/ui/NumberStepper';
 import { copy } from '@/constants/copy';
-import { colors, radius, spacing } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { radius, spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 export type LineItemDraft = {
   name: string;
@@ -26,6 +28,8 @@ type Props = {
 const MAX_NAME_LENGTH = 80;
 
 export function LineItemEditorSheet({ visible, initial, onSave, onDelete, onCancel }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [name, setName] = useState(initial?.name ?? '');
   const [quantity, setQuantity] = useState(initial?.quantity ?? 1);
   const [lineTotalCentavos, setLineTotalCentavos] = useState(initial?.lineTotalCentavos ?? 0);
@@ -135,33 +139,35 @@ export function LineItemEditorSheet({ visible, initial, onSave, onDelete, onCanc
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  // See ParticipantEditorSheet's identical style for why flex: 1 +
-  // justifyContent: 'flex-end' belongs here and not on `backdrop`: it's what
-  // makes Android's "height" behavior shrink this view from the bottom (where
-  // the keyboard appears) rather than leave it bottom-anchored behind the
-  // keyboard.
-  avoidingView: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  actions: {
-    gap: spacing.sm,
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.4)',
+    },
+    // See ParticipantEditorSheet's identical style for why flex: 1 +
+    // justifyContent: 'flex-end' belongs here and not on `backdrop`: it's what
+    // makes Android's "height" behavior shrink this view from the bottom
+    // (where the keyboard appears) rather than leave it bottom-anchored
+    // behind the keyboard.
+    avoidingView: {
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
+    sheet: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: radius.lg,
+      borderTopRightRadius: radius.lg,
+      padding: spacing.lg,
+      gap: spacing.md,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    actions: {
+      gap: spacing.sm,
+    },
+  });
+}

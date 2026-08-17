@@ -1,14 +1,20 @@
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { colors } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 export function Divider() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return <View style={styles.line} />;
 }
 
-const styles = StyleSheet.create({
-  line: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    line: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+    },
+  });
+}

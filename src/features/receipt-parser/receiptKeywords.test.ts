@@ -1,4 +1,5 @@
 import {
+  isGrossRecapLine,
   isVatAmountLine,
   isVatBreakdownSaleLine,
   isVatTaxBreakdownLine,
@@ -167,5 +168,41 @@ describe('isVatAmountLine', () => {
 
   it('does not match an ordinary item line at all', () => {
     expect(isVatAmountLine('CHICKEN CHAMI 145.00')).toBe(false);
+  });
+
+  it('tolerates a colon separating the label from its amount (real Balinsasayaw-receipt finding)', () => {
+    // "VAT AMOUNT: 138.75" — removing just the amount leaves "VAT AMOUNT:",
+    // which the end-anchored pattern used to reject outright because of the
+    // trailing colon.
+    expect(isVatAmountLine('VAT AMOUNT: 138.75')).toBe(true);
+  });
+});
+
+describe('isVatTaxBreakdownLine colon tolerance', () => {
+  it('tolerates a colon separating the label from its amount, same as isVatAmountLine', () => {
+    expect(isVatTaxBreakdownLine('VAT TAX: 53.14')).toBe(true);
+    expect(isVatTaxBreakdownLine('Total Tax: 53.14')).toBe(true);
+  });
+});
+
+describe('isGrossRecapLine', () => {
+  it('recognizes "Gross Sales" restating the item total (real OOMA-receipt finding)', () => {
+    expect(isGrossRecapLine('Gross Sales 710.00')).toBe(true);
+  });
+
+  it('recognizes "GROSS AMOUNT:" with a colon separator (real Balinsasayaw-receipt finding)', () => {
+    expect(isGrossRecapLine('GROSS AMOUNT: 1,295.00')).toBe(true);
+  });
+
+  it('is case-insensitive', () => {
+    expect(isGrossRecapLine('gross sales 710.00')).toBe(true);
+  });
+
+  it('requires an amount on the line, not just the text pattern', () => {
+    expect(isGrossRecapLine('Gross Sales')).toBe(false);
+  });
+
+  it('does not match an ordinary item line at all', () => {
+    expect(isGrossRecapLine('CHICKEN CHAMI 145.00')).toBe(false);
   });
 });

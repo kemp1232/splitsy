@@ -4,11 +4,11 @@ import { Alert, FlatList, RefreshControl, Share, StyleSheet, View } from 'react-
 
 import { BillListItem } from '@/components/bill/BillListItem';
 import { BillOverflowSheet } from '@/components/bill/BillOverflowSheet';
-import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
 import { IconButton } from '@/components/ui/IconButton';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
@@ -297,11 +297,6 @@ export default function HomeScreen() {
             onPress={() => router.push('/settings')}
             icon={<AppText variant="subheading">⚙</AppText>}
           />
-          <AppButton
-            label={copy.home.primaryAction}
-            onPress={() => router.push('/bill/new')}
-            variant="secondary"
-          />
         </View>
       </View>
 
@@ -328,6 +323,13 @@ export default function HomeScreen() {
           ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
       )}
+
+      {/* The one floating primary action this flow calls for (see the theme
+          direction notes) — starting a new bill. */}
+      <FloatingActionButton
+        accessibilityLabel={copy.home.primaryAction}
+        onPress={() => router.push('/bill/new')}
+      />
 
       <BillOverflowSheet
         visible={overflowBill !== null}

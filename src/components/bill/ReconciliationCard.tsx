@@ -44,7 +44,7 @@ export function ReconciliationCard({
   const hasDetectedTotal = detectedReceiptTotalCentavos !== null;
 
   return (
-    <SectionCard>
+    <SectionCard torn>
       <View style={styles.row}>
         <AppText color="textSecondary">{copy.adjustments.itemSubtotalLabel}</AppText>
         <AppText>{formatCentavos(itemSubtotalCentavos)}</AppText>

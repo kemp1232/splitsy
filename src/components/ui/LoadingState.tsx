@@ -1,6 +1,7 @@
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { colors, spacing } from '@/theme/tokens';
+import { spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 import { AppText } from './AppText';
 
@@ -9,6 +10,7 @@ type Props = {
 };
 
 export function LoadingState({ message }: Props) {
+  const { colors } = useTheme();
   return (
     <View style={styles.container} accessibilityLiveRegion="polite">
       <ActivityIndicator color={colors.primary} />

@@ -178,13 +178,25 @@ export function isVatBreakdownSaleLine(text: string): boolean {
 //     entirely (no boundary between "Vat" and "ican").
 const VAT_AMOUNT_LINE_PATTERN = /^Vat\s+[A-Za-z][A-Za-z-]{1,20}$/i;
 
+// Real-receipt finding (Balinsasayaw receipt): this BIR block sometimes
+// separates the label from its amount with a colon — "VAT AMOUNT: 138.75"
+// instead of "Vat Amount 46.61" with no punctuation at all. Removing just the
+// matched amount substring leaves the colon behind ("VAT AMOUNT:"), which the
+// end-anchored `$` in VAT_AMOUNT_LINE_PATTERN (and VAT_TAX_BREAKDOWN_LINE_PATTERN
+// below) then fails to match, since neither pattern accounts for a trailing
+// punctuation mark. Both isVatAmountLine and isVatTaxBreakdownLine share this
+// same end-anchored-pattern-vs-colon-separator gap, so both strip it the same way.
+function stripTrailingLabelPunctuation(text: string): string {
+  return text.trim().replace(/[:.,\-–—]+\s*$/, '').trim();
+}
+
 export function isVatAmountLine(text: string): boolean {
   const trimmed = text.trim();
   const amount = detectAmounts(trimmed).at(-1);
   if (!amount) return false;
-  const withoutAmount = (
-    trimmed.slice(0, amount.index) + trimmed.slice(amount.index + amount.raw.length)
-  ).trim();
+  const withoutAmount = stripTrailingLabelPunctuation(
+    trimmed.slice(0, amount.index) + trimmed.slice(amount.index + amount.raw.length),
+  );
   return VAT_AMOUNT_LINE_PATTERN.test(withoutAmount);
 }
 
@@ -211,8 +223,27 @@ export function isVatTaxBreakdownLine(text: string): boolean {
   const trimmed = text.trim();
   const amount = detectAmounts(trimmed).at(-1);
   if (!amount) return false;
-  const withoutAmount = (
-    trimmed.slice(0, amount.index) + trimmed.slice(amount.index + amount.raw.length)
-  ).trim();
+  const withoutAmount = stripTrailingLabelPunctuation(
+    trimmed.slice(0, amount.index) + trimmed.slice(amount.index + amount.raw.length),
+  );
   return VAT_TAX_BREAKDOWN_LINE_PATTERN.test(withoutAmount);
+}
+
+// Real-receipt finding (Balinsasayaw receipt): a "Gross Sales"/"Gross Amount"
+// line printed right after the item table, restating the sum of the
+// already-listed item lines (VAT-inclusive) before the VAT/service-charge
+// breakdown that follows it — e.g. an OOMA receipt printed "Gross Sales
+// 710.00" (exactly its two items' combined 355.00 + 355.00), and the
+// Balinsasayaw receipt printed "GROSS AMOUNT: 1,295.00" (its five items'
+// combined total). Neither is an item or an adjustment — it's the same class
+// of non-additive recap line as the VATABLE/VAT-Exempt/Zero-Rated breakdown
+// above, just restating the item total itself rather than its VAT split.
+// Without this, the line falls through classifyByKeyword to OTHER and, since
+// it sits before the real total line in reading order, gets promoted to a
+// phantom ITEM_CANDIDATE that doubles the item subtotal.
+const GROSS_RECAP_LINE_PATTERN = /^Gross\s+(?:Sales?|Amount)\b/i;
+
+export function isGrossRecapLine(text: string): boolean {
+  const trimmed = text.trim();
+  return GROSS_RECAP_LINE_PATTERN.test(trimmed) && detectAmounts(trimmed).length > 0;
 }

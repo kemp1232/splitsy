@@ -1,7 +1,10 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
-import { colors, radius, spacing, touchTarget } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { radius, spacing, touchTarget } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 type Props = {
   name: string;
@@ -13,6 +16,8 @@ type Props = {
 };
 
 export function ParticipantChip({ name, selected, onPress }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const isInteractive = typeof onPress === 'function';
 
   return (
@@ -37,22 +42,24 @@ export function ParticipantChip({ name, selected, onPress }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  chip: {
-    minHeight: touchTarget.min,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceMuted,
-  },
-  chipSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  chipPressed: {
-    opacity: 0.85,
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    chip: {
+      minHeight: touchTarget.min,
+      justifyContent: 'center',
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceMuted,
+    },
+    chipSelected: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    chipPressed: {
+      opacity: 0.85,
+    },
+  });
+}

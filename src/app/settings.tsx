@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
@@ -12,7 +12,9 @@ import { Screen } from '@/components/ui/Screen';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { copy } from '@/constants/copy';
 import { resetAllLocalData } from '@/features/bills/bill.service';
-import { spacing } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { radius, spacing, touchTarget } from '@/theme/tokens';
+import { useTheme, type ThemePreference } from '@/theme/ThemeProvider';
 
 // Constants.expoConfig?.version is populated from app.config.ts's `version`
 // field (currently '1.0.0') at build time. The type is optional (it's
@@ -21,8 +23,16 @@ import { spacing } from '@/theme/tokens';
 // though that shouldn't happen in practice for this project.
 const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 
+const APPEARANCE_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: 'system', label: copy.settings.appearanceSystem },
+  { value: 'light', label: copy.settings.appearanceLight },
+  { value: 'dark', label: copy.settings.appearanceDark },
+];
+
 export default function SettingsScreen() {
   const router = useRouter();
+  const { colors, preference, setPreference } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
   const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
 
@@ -51,6 +61,33 @@ export default function SettingsScreen() {
     <Screen scroll>
       <View style={styles.body}>
         <AppText variant="heading">{copy.settings.heading}</AppText>
+
+        <SectionCard title={copy.settings.appearanceSection}>
+          <View style={styles.appearanceRow} accessibilityRole="radiogroup">
+            {APPEARANCE_OPTIONS.map((option) => {
+              const selected = preference === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => setPreference(option.value)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  style={({ pressed }) => [
+                    styles.appearanceOption,
+                    selected && styles.appearanceOptionSelected,
+                    pressed && styles.appearanceOptionPressed,
+                  ]}
+                >
+                  {/* Selection is conveyed by the check mark text, not only
+                      the option's background color (spec section 17). */}
+                  <AppText variant="body" color={selected ? 'onPrimary' : 'textPrimary'}>
+                    {selected ? `✓ ${option.label}` : option.label}
+                  </AppText>
+                </Pressable>
+              );
+            })}
+          </View>
+        </SectionCard>
 
         <SectionCard title={copy.settings.privacySection}>
           <AppText color="textSecondary">{copy.settings.privacyBody}</AppText>
@@ -89,12 +126,36 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  body: {
-    gap: spacing.md,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    body: {
+      gap: spacing.md,
+    },
+    row: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+    appearanceRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+    },
+    appearanceOption: {
+      minHeight: touchTarget.min,
+      justifyContent: 'center',
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceMuted,
+    },
+    appearanceOptionSelected: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    appearanceOptionPressed: {
+      opacity: 0.85,
+    },
+  });
+}

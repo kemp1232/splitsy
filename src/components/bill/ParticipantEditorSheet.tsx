@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
@@ -9,7 +9,9 @@ import {
   MAX_PARTICIPANT_NAME_LENGTH,
   validateParticipantName,
 } from '@/features/participants/validateParticipantName';
-import { colors, radius, spacing } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { radius, spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 export type ParticipantDraft = {
   name: string;
@@ -34,6 +36,8 @@ export function ParticipantEditorSheet({
   onSave,
   onCancel,
 }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [name, setName] = useState(initial?.name ?? '');
   const [nameError, setNameError] = useState<string | null>(null);
 
@@ -117,34 +121,36 @@ export function ParticipantEditorSheet({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  // flex: 1 (rather than sizing to content) plus justifyContent: 'flex-end'
-  // here — not on `backdrop` — is what makes the "height" behavior above
-  // actually push the sheet above the keyboard on Android: this view spans
-  // the full backdrop from the top, so shrinking its own height (what
-  // "height" behavior does) eats space from the bottom, exactly where the
-  // keyboard appears, while its flex-end-anchored child (the sheet) stays
-  // pinned to whatever is now its bottom edge. If `backdrop` itself carried
-  // justifyContent: 'flex-end' instead, this view would keep shrinking while
-  // staying bottom-anchored within an unchanged-height backdrop, which would
-  // leave its bottom (and the sheet inside it) sitting exactly behind the
-  // keyboard instead of above it.
-  avoidingView: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  actions: {
-    gap: spacing.sm,
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.4)',
+    },
+    // flex: 1 (rather than sizing to content) plus justifyContent: 'flex-end'
+    // here — not on `backdrop` — is what makes the "height" behavior above
+    // actually push the sheet above the keyboard on Android: this view spans
+    // the full backdrop from the top, so shrinking its own height (what
+    // "height" behavior does) eats space from the bottom, exactly where the
+    // keyboard appears, while its flex-end-anchored child (the sheet) stays
+    // pinned to whatever is now its bottom edge. If `backdrop` itself carried
+    // justifyContent: 'flex-end' instead, this view would keep shrinking
+    // while staying bottom-anchored within an unchanged-height backdrop,
+    // which would leave its bottom (and the sheet inside it) sitting exactly
+    // behind the keyboard instead of above it.
+    avoidingView: {
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
+    sheet: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: radius.lg,
+      borderTopRightRadius: radius.lg,
+      padding: spacing.lg,
+      gap: spacing.md,
+    },
+    actions: {
+      gap: spacing.sm,
+    },
+  });
+}

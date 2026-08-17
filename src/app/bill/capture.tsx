@@ -10,7 +10,7 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
 import { copy } from '@/constants/copy';
 import { useBillSourceActions } from '@/features/bills/useBillSourceActions';
-import { colors, radius, spacing, touchTarget } from '@/theme/tokens';
+import { radius, spacing, touchTarget } from '@/theme/tokens';
 
 const FLASH_CYCLE: FlashMode[] = ['auto', 'on', 'off'];
 const FLASH_LABEL: Record<FlashMode, string> = {
@@ -18,6 +18,19 @@ const FLASH_LABEL: Record<FlashMode, string> = {
   on: copy.cameraCapture.flashOn,
   off: copy.cameraCapture.flashOff,
   screen: copy.cameraCapture.flashAuto,
+};
+
+// The camera viewfinder's own chrome (close/flash controls, guide frame,
+// instructions, shutter) always sits on top of a live camera feed behind a
+// fixed dark scrim — that backdrop has nothing to do with the app's light/dark
+// theme (there's no "light camera overlay"), so this chrome intentionally
+// uses fixed white-on-dark colors instead of theme tokens, which would
+// otherwise resolve to dark ink in dark mode and disappear against the same
+// dark scrim.
+const overlay = {
+  text: '#FFFFFF',
+  scrim: 'rgba(0,0,0,0.4)',
+  frame: '#FFFFFF',
 };
 
 export default function CaptureScreen() {
@@ -89,7 +102,7 @@ export default function CaptureScreen() {
           <IconButton
             accessibilityLabel={copy.cameraCapture.closeAccessibilityLabel}
             onPress={() => router.back()}
-            icon={<AppText color="onPrimary">✕</AppText>}
+            icon={<AppText style={styles.overlayText}>✕</AppText>}
           />
           <Pressable
             onPress={() =>
@@ -99,17 +112,17 @@ export default function CaptureScreen() {
             hitSlop={8}
             style={styles.flashButton}
           >
-            <AppText color="onPrimary">{FLASH_LABEL[flash]}</AppText>
+            <AppText style={styles.overlayText}>{FLASH_LABEL[flash]}</AppText>
           </Pressable>
         </View>
 
         <View style={styles.guideFrame} pointerEvents="none" />
 
         <View style={styles.bottomBar}>
-          <AppText color="onPrimary" style={styles.centerText}>
+          <AppText style={[styles.overlayText, styles.centerText]}>
             {copy.cameraCapture.instruction}
           </AppText>
-          <AppText color="onPrimary" variant="caption" style={styles.centerText}>
+          <AppText variant="caption" style={[styles.overlayText, styles.centerText]}>
             {copy.cameraCapture.tip}
           </AppText>
           <View style={styles.controls}>
@@ -135,6 +148,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   spacedBelow: { marginTop: spacing.sm, marginBottom: spacing.lg, gap: spacing.sm },
   fallbacks: { marginTop: spacing.xl, gap: spacing.xs },
+  overlayText: { color: overlay.text },
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -147,21 +161,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: overlay.scrim,
   },
   guideFrame: {
     flex: 1,
     marginHorizontal: spacing.xxl,
     marginBottom: spacing.lg,
     borderWidth: 2,
-    borderColor: colors.surface,
+    borderColor: overlay.frame,
     borderRadius: radius.md,
     borderStyle: 'dashed',
   },
   bottomBar: {
     padding: spacing.lg,
     gap: spacing.sm,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: overlay.scrim,
   },
   centerText: { textAlign: 'center' },
   controls: {
@@ -174,8 +188,8 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: colors.surface,
+    backgroundColor: overlay.text,
     borderWidth: 4,
-    borderColor: colors.onPrimary,
+    borderColor: overlay.frame,
   },
 });
