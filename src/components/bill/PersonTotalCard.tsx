@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { ProgressBar } from '@/components/ui/ProgressBar';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { copy } from '@/constants/copy';
 import type {
@@ -19,6 +20,12 @@ type Props = {
   // only ever renders what it's given, never re-derives it from raw ids.
   itemShares: ParticipantItemShareDisplay[];
   adjustmentShares: ParticipantAdjustmentShareDisplay[];
+  // Undefined when the bill has no contribution data worth showing yet (the
+  // Payments screen is skippable — see summary.tsx's own hasAnyContribution
+  // gate); the caller only ever passes this once at least one participant has
+  // recorded a nonzero contribution, so a bill that never touched Payments
+  // renders exactly as it did before this bar existed.
+  paidCentavos?: number;
 };
 
 // Spec section 16's suggested PersonTotalCard, one per participant on the
@@ -29,8 +36,17 @@ type Props = {
 // letting more than one stay open at once (rather than an accordion that
 // force-closes the others) is both simpler to implement and more useful for
 // comparing two people's breakdowns side by side.
-export function PersonTotalCard({ name, finalTotalCentavos, itemShares, adjustmentShares }: Props) {
+export function PersonTotalCard({
+  name,
+  finalTotalCentavos,
+  itemShares,
+  adjustmentShares,
+  paidCentavos,
+}: Props) {
   const [expanded, setExpanded] = useState(false);
+  const hasPaymentInfo = paidCentavos !== undefined;
+  const fraction = hasPaymentInfo && finalTotalCentavos > 0 ? paidCentavos / finalTotalCentavos : 0;
+  const isPaidInFull = hasPaymentInfo && paidCentavos >= finalTotalCentavos;
 
   return (
     <SectionCard>
@@ -69,6 +85,20 @@ export function PersonTotalCard({ name, finalTotalCentavos, itemShares, adjustme
           {expanded ? '▾' : '▸'}
         </AppText>
       </Pressable>
+
+      {hasPaymentInfo ? (
+        <ProgressBar
+          fraction={fraction}
+          tone={isPaidInFull ? 'success' : 'primary'}
+          label={
+            isPaidInFull
+              ? copy.payments.progressPaidInFull
+              : copy.payments.progressPartial
+                  .replace('{paid}', formatCentavos(paidCentavos))
+                  .replace('{total}', formatCentavos(finalTotalCentavos))
+          }
+        />
+      ) : null}
 
       {expanded ? (
         <View style={styles.details}>

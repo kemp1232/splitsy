@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -25,7 +25,9 @@ import {
 import { isValidAdjustmentAmount } from '@/features/adjustments/validateAdjustmentAmount';
 import { validateCustomAllocation } from '@/features/splitting/allocation';
 import { formatCentavos } from '@/lib/money';
-import { colors, radius, spacing, touchTarget } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { radius, spacing, touchTarget } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 export type AdjustmentDraft = {
   type: AdjustmentType;
@@ -106,6 +108,8 @@ export function AdjustmentEditorSheet({
   onDelete,
   onCancel,
 }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [type, setType] = useState<AdjustmentType>(initial?.type ?? 'TAX');
   const [label, setLabel] = useState(initial?.label ?? '');
   // The field always holds a non-negative magnitude — DISCOUNT's negative
@@ -358,6 +362,8 @@ type TypeChipProps = {
 // accessibilityRole instead of borrowing "checkbox" semantics that wouldn't
 // describe it correctly.
 function TypeChip({ label, selected, onPress }: TypeChipProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <Pressable
       onPress={onPress}
@@ -387,6 +393,8 @@ type AllocationOptionRowProps = {
 };
 
 function AllocationOptionRow({ label, detail, selected, onPress }: AllocationOptionRowProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <Pressable
       onPress={onPress}
@@ -406,83 +414,86 @@ function AllocationOptionRow({ label, detail, selected, onPress }: AllocationOpt
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  // See ParticipantEditorSheet's identical style for why flex: 1 +
-  // justifyContent: 'flex-end' belongs here and not on `backdrop`: it's what
-  // makes Android's "height" behavior shrink this view from the bottom (where
-  // the keyboard appears) rather than leave it bottom-anchored behind the
-  // keyboard. It also keeps `sheet`'s maxHeight: '85%' below resolving against
-  // this view's full (screen-height) size, the same as it always resolved
-  // against `backdrop`'s size before this view existed.
-  avoidingView: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.md,
-    maxHeight: '85%',
-  },
-  scroll: {
-    flexGrow: 0,
-  },
-  scrollContent: {
-    gap: spacing.md,
-    paddingBottom: spacing.sm,
-  },
-  field: {
-    gap: spacing.xs,
-  },
-  chipWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  typeChip: {
-    minHeight: touchTarget.min,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceMuted,
-  },
-  typeChipSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  typeChipPressed: {
-    opacity: 0.85,
-  },
-  allocationList: {
-    gap: spacing.sm,
-  },
-  allocationRow: {
-    minHeight: touchTarget.min,
-    justifyContent: 'center',
-    gap: 2,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceMuted,
-  },
-  allocationRowSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.surface,
-  },
-  allocationRowPressed: {
-    opacity: 0.85,
-  },
-  actions: {
-    gap: spacing.sm,
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.4)',
+    },
+    // See ParticipantEditorSheet's identical style for why flex: 1 +
+    // justifyContent: 'flex-end' belongs here and not on `backdrop`: it's
+    // what makes Android's "height" behavior shrink this view from the
+    // bottom (where the keyboard appears) rather than leave it
+    // bottom-anchored behind the keyboard. It also keeps `sheet`'s
+    // maxHeight: '85%' below resolving against this view's full
+    // (screen-height) size, the same as it always resolved against
+    // `backdrop`'s size before this view existed.
+    avoidingView: {
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
+    sheet: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: radius.lg,
+      borderTopRightRadius: radius.lg,
+      padding: spacing.lg,
+      gap: spacing.md,
+      maxHeight: '85%',
+    },
+    scroll: {
+      flexGrow: 0,
+    },
+    scrollContent: {
+      gap: spacing.md,
+      paddingBottom: spacing.sm,
+    },
+    field: {
+      gap: spacing.xs,
+    },
+    chipWrap: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+    },
+    typeChip: {
+      minHeight: touchTarget.min,
+      justifyContent: 'center',
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceMuted,
+    },
+    typeChipSelected: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    typeChipPressed: {
+      opacity: 0.85,
+    },
+    allocationList: {
+      gap: spacing.sm,
+    },
+    allocationRow: {
+      minHeight: touchTarget.min,
+      justifyContent: 'center',
+      gap: 2,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceMuted,
+    },
+    allocationRowSelected: {
+      borderColor: colors.primary,
+      backgroundColor: colors.surface,
+    },
+    allocationRowPressed: {
+      opacity: 0.85,
+    },
+    actions: {
+      gap: spacing.sm,
+    },
+  });
+}

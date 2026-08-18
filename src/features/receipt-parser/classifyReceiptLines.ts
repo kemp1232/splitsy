@@ -1,5 +1,6 @@
 import { detectAmounts } from './detectAmounts';
 import {
+  isGrossRecapLine,
   isVatAmountLine,
   isVatBreakdownSaleLine,
   isVatTaxBreakdownLine,
@@ -27,7 +28,8 @@ function classifyByKeyword(text: string): LineKind {
     lineMatchesAnyKeyword(text, NON_ITEM_INFO_KEYWORDS) ||
     isVatBreakdownSaleLine(text) ||
     isVatAmountLine(text) ||
-    isVatTaxBreakdownLine(text)
+    isVatTaxBreakdownLine(text) ||
+    isGrossRecapLine(text)
   ) {
     return 'INFO';
   }

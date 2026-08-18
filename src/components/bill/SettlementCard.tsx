@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { ProgressBar } from '@/components/ui/ProgressBar';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { copy } from '@/constants/copy';
 import type { SettlementTransaction } from '@/features/splitting/settlement.types';
@@ -14,18 +15,40 @@ type Props = {
   // than the bill required, zero when every centavo is accounted for.
   unaccountedCentavos: number;
   nameByParticipantId: Map<string, string>;
+  // The bill's own computed total (already available at every call site via
+  // splitResult.computedTotalCentavos) — only used to draw the
+  // collected-vs-total progress bar; omit it and the bar is skipped entirely
+  // rather than rendered against a guessed total.
+  totalCentavos?: number;
 };
 
 // Post-MVP scope expansion (see settlement.ts's header comment) — the
 // summary and saved-bill-detail screens' "who owes whom" display, built from
 // computeSettlement's output. Rendered once per screen, alongside (not in
 // place of) the existing per-participant PersonTotalCard breakdown.
-export function SettlementCard({ transactions, unaccountedCentavos, nameByParticipantId }: Props) {
+export function SettlementCard({
+  transactions,
+  unaccountedCentavos,
+  nameByParticipantId,
+  totalCentavos,
+}: Props) {
   const allSettled = transactions.length === 0 && unaccountedCentavos === 0;
+  const collectedCentavos =
+    totalCentavos !== undefined ? totalCentavos - unaccountedCentavos : null;
 
   return (
-    <SectionCard>
+    <SectionCard torn>
       <AppText variant="subheading">{copy.settlement.heading}</AppText>
+
+      {collectedCentavos !== null && totalCentavos && totalCentavos > 0 ? (
+        <ProgressBar
+          fraction={collectedCentavos / totalCentavos}
+          tone={collectedCentavos >= totalCentavos ? 'success' : 'primary'}
+          label={copy.settlement.collectedLabel
+            .replace('{collected}', formatCentavos(collectedCentavos))
+            .replace('{total}', formatCentavos(totalCentavos))}
+        />
+      ) : null}
 
       {transactions.length > 0 ? (
         <View style={styles.list}>

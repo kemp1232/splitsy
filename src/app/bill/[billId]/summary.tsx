@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Share, StyleSheet, View } from 'react-native';
 
 import { PersonTotalCard } from '@/components/bill/PersonTotalCard';
@@ -53,7 +53,9 @@ import type {
 } from '@/features/splitting/split.types';
 import { formatBillListDate, nowIso } from '@/lib/date';
 import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
-import { colors, radius, spacing } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { radius, spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -141,6 +143,8 @@ function computeSplitAndReconciliation(data: LoadedData): {
 
 export default function SummaryScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { billId } = useLocalSearchParams<{ billId: string }>();
 
   const [state, setState] = useState<LoadState>('loading');
@@ -444,6 +448,11 @@ export default function SummaryScreen() {
                   share.adjustmentShares,
                   adjustmentInfoById,
                 )}
+                paidCentavos={
+                  hasAnyContribution
+                    ? contributionByParticipantId.get(share.participantId)?.contributedCentavos
+                    : undefined
+                }
               />
             );
           })}
@@ -454,6 +463,7 @@ export default function SummaryScreen() {
             transactions={settlement.transactions}
             unaccountedCentavos={settlement.unaccountedCentavos}
             nameByParticipantId={nameByParticipantId}
+            totalCentavos={splitResult.computedTotalCentavos}
           />
         ) : null}
 
@@ -471,37 +481,45 @@ export default function SummaryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  body: {
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  headerBlock: {
-    gap: spacing.xs,
-  },
-  totalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.sm,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  actionColumn: {
-    flex: 1,
-    gap: spacing.xs / 2,
-  },
-  cardsList: {
-    gap: spacing.sm,
-  },
-  toast: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.textPrimary,
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    body: {
+      padding: spacing.lg,
+      gap: spacing.md,
+    },
+    headerBlock: {
+      gap: spacing.xs,
+    },
+    totalRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: spacing.sm,
+    },
+    actionsRow: {
+      flexDirection: 'row',
+      gap: spacing.md,
+    },
+    actionColumn: {
+      flex: 1,
+      gap: spacing.xs / 2,
+    },
+    cardsList: {
+      gap: spacing.sm,
+    },
+    // Deliberately an inverted chip (textPrimary as the fill, onPrimary as
+    // the label) rather than a fixed literal — both tokens flip together
+    // between light and dark (see tokens.ts's header comment on why
+    // `onPrimary` flips dark-mode direction), so this keeps reading as a
+    // solid, high-contrast toast in either theme without its own
+    // theme-conditional branch.
+    toast: {
+      marginHorizontal: spacing.lg,
+      marginBottom: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.md,
+      backgroundColor: colors.textPrimary,
+    },
+  });
+}

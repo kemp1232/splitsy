@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
 
 import { AssignmentStatus } from '@/components/bill/AssignmentStatus';
@@ -32,7 +32,9 @@ import {
 } from '@/features/participants/validateParticipantName';
 import { nowIso } from '@/lib/date';
 import { formatCentavos } from '@/lib/money';
-import { colors, radius, spacing, touchTarget } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { radius, spacing, touchTarget } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -102,6 +104,8 @@ type ItemRowProps = {
 };
 
 function AssignmentItemRow({ item, assignedNames, onAssign }: ItemRowProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.itemRow}>
       <View style={styles.itemMain}>
@@ -120,6 +124,8 @@ function AssignmentItemRow({ item, assignedNames, onAssign }: ItemRowProps) {
 
 export default function AssignmentsScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { billId } = useLocalSearchParams<{ billId: string }>();
 
   const [state, setState] = useState<LoadState>('loading');
@@ -387,50 +393,52 @@ export default function AssignmentsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  body: {
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: touchTarget.preferred,
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  toggleLabel: {
-    flex: 1,
-  },
-  section: {
-    gap: spacing.sm,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  itemMain: {
-    flex: 1,
-    gap: 2,
-  },
-  blockingError: {
-    gap: spacing.xs / 2,
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    body: {
+      padding: spacing.lg,
+      gap: spacing.md,
+    },
+    toggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      minHeight: touchTarget.preferred,
+      gap: spacing.md,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    toggleLabel: {
+      flex: 1,
+    },
+    section: {
+      gap: spacing.sm,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    itemRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.md,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    itemMain: {
+      flex: 1,
+      gap: 2,
+    },
+    blockingError: {
+      gap: spacing.xs / 2,
+    },
+  });
+}

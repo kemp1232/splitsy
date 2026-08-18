@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Image, Modal, ScrollView, Share, StyleSheet, View } from 'react-native';
 
 import { PersonTotalCard } from '@/components/bill/PersonTotalCard';
@@ -50,7 +50,9 @@ import {
 } from '@/features/summary/buildParticipantShareDisplay';
 import { nowIso } from '@/lib/date';
 import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
-import { colors, spacing } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -105,6 +107,8 @@ async function fetchSavedBillDetailData(billId: string): Promise<LoadedData> {
 // is always safe to call against it as-is.
 export default function SavedBillDetailScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { billId } = useLocalSearchParams<{ billId: string }>();
 
   const [state, setState] = useState<LoadState>('loading');
@@ -379,6 +383,11 @@ export default function SavedBillDetailScreen() {
                   share.adjustmentShares,
                   adjustmentInfoById,
                 )}
+                paidCentavos={
+                  hasAnyContribution
+                    ? contributionByParticipantId.get(share.participantId)?.contributedCentavos
+                    : undefined
+                }
               />
             );
           })}
@@ -389,6 +398,7 @@ export default function SavedBillDetailScreen() {
             transactions={settlement.transactions}
             unaccountedCentavos={settlement.unaccountedCentavos}
             nameByParticipantId={nameByParticipantId}
+            totalCentavos={splitResult.computedTotalCentavos}
           />
         ) : null}
       </View>
@@ -448,35 +458,37 @@ export default function SavedBillDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  body: {
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  headerBlock: {
-    gap: spacing.xs,
-  },
-  totalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.sm,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  cardsList: {
-    gap: spacing.sm,
-  },
-  receiptImage: {
-    flex: 1,
-  },
-  rawTextScroll: {
-    marginTop: spacing.md,
-  },
-  rawText: {
-    fontFamily: 'monospace',
-    color: colors.textPrimary,
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    body: {
+      padding: spacing.lg,
+      gap: spacing.md,
+    },
+    headerBlock: {
+      gap: spacing.xs,
+    },
+    totalRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: spacing.sm,
+    },
+    actionsRow: {
+      flexDirection: 'row',
+      gap: spacing.md,
+    },
+    cardsList: {
+      gap: spacing.sm,
+    },
+    receiptImage: {
+      flex: 1,
+    },
+    rawTextScroll: {
+      marginTop: spacing.md,
+    },
+    rawText: {
+      fontFamily: 'monospace',
+      color: colors.textPrimary,
+    },
+  });
+}

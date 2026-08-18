@@ -1,18 +1,21 @@
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Image, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
+import { ReceiptTornEdge } from '@/components/ui/ReceiptTornEdge';
 import { Screen } from '@/components/ui/Screen';
 import { copy } from '@/constants/copy';
-import { createDraftBill } from '@/features/bills/bill.service';
 import type { NewBill } from '@/db/repositories/bills.repository';
+import { createDraftBill } from '@/features/bills/bill.service';
 import { copyImageToAppStorage } from '@/features/receipt-capture/receiptImage.service';
-import { spacing } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { radius, spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 type PreviewParams = {
   imageUri: string;
@@ -28,6 +31,8 @@ async function rotate90(uri: string): Promise<string> {
 
 export default function PreviewScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const params = useLocalSearchParams<PreviewParams>();
   const [uri, setUri] = useState(params.imageUri);
   const [busy, setBusy] = useState(false);
@@ -101,25 +106,38 @@ export default function PreviewScreen() {
         <AppText variant="body" color="textSecondary">
           {copy.preview.body}
         </AppText>
-        <Image source={{ uri }} style={styles.image} resizeMode="contain" />
+        {/* Signature torn-receipt-edge treatment (theme direction: used
+            sparingly, on receipt-related surfaces) — this is the photo of the
+            actual receipt, the most literal place for it in the app. */}
+        <View style={styles.imageCard}>
+          <Image source={{ uri }} style={styles.image} resizeMode="contain" />
+        </View>
+        <ReceiptTornEdge color={colors.surfaceMuted} borderColor={colors.border} />
       </View>
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  body: {
-    padding: spacing.lg,
-    gap: spacing.sm,
-  },
-  image: {
-    width: '100%',
-    aspectRatio: 3 / 4,
-    backgroundColor: '#00000010',
-    marginTop: spacing.sm,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    body: {
+      padding: spacing.lg,
+      gap: spacing.sm,
+    },
+    imageCard: {
+      marginTop: spacing.sm,
+      borderTopLeftRadius: radius.lg,
+      borderTopRightRadius: radius.lg,
+      overflow: 'hidden',
+      backgroundColor: colors.surfaceMuted,
+    },
+    image: {
+      width: '100%',
+      aspectRatio: 3 / 4,
+    },
+    row: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+  });
+}

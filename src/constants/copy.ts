@@ -327,6 +327,11 @@ export const copy = {
     // routing logic), so returning to a bill after skipping Payments once
     // doesn't permanently lock the user out of it.
     editAction: 'Edit payments',
+    // Not from the spec — the visual revamp's per-person paid-vs-owed
+    // progress bar on PersonTotalCard (see the theme direction notes: status
+    // is conveyed by this label text, never by the bar's color alone).
+    progressPaidInFull: 'Paid in full',
+    progressPartial: '{paid} of {total} paid',
   },
 
   // Not from the spec — settlement ("who owes whom") display on the Summary
@@ -335,6 +340,10 @@ export const copy = {
     heading: 'Settle up',
     owesLabel: '{debtor} owes {creditor}',
     allSettled: "Everyone's settled up.",
+    // Not from the spec — the visual revamp's overall collected-vs-total
+    // progress bar on SettlementCard (status is conveyed by this label text,
+    // never by the bar's color alone).
+    collectedLabel: '{collected} of {total} collected',
   },
 
   // Section 13.18 — Summary
@@ -375,6 +384,12 @@ export const copy = {
   // Section 13.20 — Settings
   settings: {
     heading: 'Settings',
+    // Not from the spec — the visual revamp's manual light/dark override
+    // (defaults to following the system setting; see ThemeProvider.tsx).
+    appearanceSection: 'Appearance',
+    appearanceSystem: 'Match system',
+    appearanceLight: 'Light',
+    appearanceDark: 'Dark',
     privacySection: 'Privacy',
     // Deliberately not spec 13.20's literal text ("...does not upload them to
     // a Splitsy server") — the 2026-07-31 spec Amendment means that's no

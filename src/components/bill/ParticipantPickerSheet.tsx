@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ParticipantChip } from '@/components/bill/ParticipantChip';
@@ -7,7 +7,9 @@ import { AppText } from '@/components/ui/AppText';
 import { InlineError } from '@/components/ui/InlineError';
 import { copy } from '@/constants/copy';
 import type { Participant } from '@/db/repositories/participants.repository';
-import { colors, radius, spacing } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { radius, spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 // Distinguishes a single line item's assignment from a bulk "assign all
 // unassigned" pass — both flows share this one sheet component rather than
@@ -32,6 +34,8 @@ export function ParticipantPickerSheet({
   onSave,
   onCancel,
 }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [selectedIds, setSelectedIds] = useState<string[]>(initialSelectedIds);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,33 +122,35 @@ export function ParticipantPickerSheet({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.md,
-    maxHeight: '80%',
-  },
-  quickActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  list: {
-    flexGrow: 0,
-  },
-  chipWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  actions: {
-    gap: spacing.sm,
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.4)',
+      justifyContent: 'flex-end',
+    },
+    sheet: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: radius.lg,
+      borderTopRightRadius: radius.lg,
+      padding: spacing.lg,
+      gap: spacing.md,
+      maxHeight: '80%',
+    },
+    quickActions: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    list: {
+      flexGrow: 0,
+    },
+    chipWrap: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+    },
+    actions: {
+      gap: spacing.sm,
+    },
+  });
+}

@@ -1,6 +1,9 @@
+import { useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
 
-import { colors, radius, spacing, touchTarget } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { radius, spacing, touchTarget } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 import { AppText } from './AppText';
 
@@ -15,6 +18,8 @@ type Props = {
 };
 
 export function AppButton({ label, onPress, variant = 'primary', disabled, loading }: Props) {
+  const { colors, scheme } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const isDisabled = disabled || loading;
 
   return (
@@ -25,8 +30,8 @@ export function AppButton({ label, onPress, variant = 'primary', disabled, loadi
       disabled={isDisabled}
       style={({ pressed }) => [
         styles.base,
-        variantStyles[variant],
-        pressed && !isDisabled && pressedStyles[variant],
+        styles[variant],
+        pressed && !isDisabled && pressedStyles(colors, scheme)[variant],
         isDisabled && styles.disabled,
       ]}
     >
@@ -48,29 +53,43 @@ export function AppButton({ label, onPress, variant = 'primary', disabled, loadi
   );
 }
 
-const styles = StyleSheet.create({
-  base: {
-    minHeight: touchTarget.preferred,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-  },
-  disabled: {
-    opacity: 0.5,
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    base: {
+      minHeight: touchTarget.preferred,
+      borderRadius: radius.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: spacing.lg,
+    },
+    disabled: {
+      opacity: 0.5,
+    },
+    primary: { backgroundColor: colors.primary },
+    secondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primary },
+    text: { backgroundColor: 'transparent' },
+    destructive: { backgroundColor: colors.danger },
+  });
+}
 
-const variantStyles = StyleSheet.create({
-  primary: { backgroundColor: colors.primary },
-  secondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primary },
-  text: { backgroundColor: 'transparent' },
-  destructive: { backgroundColor: colors.danger },
-});
-
-const pressedStyles = StyleSheet.create({
-  primary: { backgroundColor: colors.primaryPressed },
-  secondary: { backgroundColor: colors.surfaceMuted },
-  text: { backgroundColor: colors.surfaceMuted },
-  destructive: { backgroundColor: '#8C1D17' },
-});
+// A pressed-state palette rather than a static StyleSheet — computed fresh
+// per render alongside `styles` above (both are cheap object literals), kept
+// as its own small function only to mirror the variant-keyed shape of
+// createStyles rather than inlining a lookup at each call site.
+//
+// `destructive`'s pressed color isn't a token — `danger` itself flips between
+// a dark red (light theme) and a light coral (dark theme, see tokens.ts's
+// header comment), so "pressed" needs its own theme-aware darker/dimmer shade
+// in each direction rather than one fixed hex that would only work for one
+// theme.
+function pressedStyles(
+  colors: ColorTokens,
+  scheme: 'light' | 'dark',
+): Record<Variant, { backgroundColor: string }> {
+  return {
+    primary: { backgroundColor: colors.primaryPressed },
+    secondary: { backgroundColor: colors.surfaceMuted },
+    text: { backgroundColor: colors.surfaceMuted },
+    destructive: { backgroundColor: scheme === 'dark' ? '#E56F63' : '#8C1D17' },
+  };
+}

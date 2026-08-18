@@ -1,11 +1,14 @@
 import { useRouter } from 'expo-router';
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { Screen } from '@/components/ui/Screen';
 import { copy } from '@/constants/copy';
 import { useBillSourceActions } from '@/features/bills/useBillSourceActions';
-import { colors, radius, spacing } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { radius, spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 type SourceOptionProps = {
   title: string;
@@ -14,6 +17,8 @@ type SourceOptionProps = {
 };
 
 function SourceOption({ title, description, onPress }: SourceOptionProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <Pressable
       onPress={onPress}
@@ -73,15 +78,20 @@ const styles = StyleSheet.create({
   options: {
     gap: spacing.sm,
   },
-  option: {
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    gap: 2,
-  },
-  optionPressed: {
-    backgroundColor: colors.surfaceMuted,
-  },
 });
+
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    option: {
+      padding: spacing.lg,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      gap: 2,
+    },
+    optionPressed: {
+      backgroundColor: colors.surfaceMuted,
+    },
+  });
+}

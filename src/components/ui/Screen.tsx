@@ -1,8 +1,11 @@
 import type { PropsWithChildren, ReactNode } from 'react';
+import { useMemo } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, spacing } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 type Props = PropsWithChildren<{
   scroll?: boolean;
@@ -14,6 +17,9 @@ type Props = PropsWithChildren<{
 }>;
 
 export function Screen({ scroll = false, padded = true, footer, children }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
@@ -44,9 +50,11 @@ export function Screen({ scroll = false, padded = true, footer, children }: Prop
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.background },
-  flex: { flex: 1 },
-  grow: { flexGrow: 1 },
-  padded: { padding: spacing.lg },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    safeArea: { flex: 1, backgroundColor: colors.background },
+    flex: { flex: 1 },
+    grow: { flexGrow: 1 },
+    padded: { padding: spacing.lg },
+  });
+}

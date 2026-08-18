@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import {
@@ -28,12 +28,16 @@ import {
 } from '@/features/participants/validateParticipantName';
 import { nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
-import { colors, radius, spacing, touchTarget } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { radius, spacing, touchTarget } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
 export default function ParticipantsScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { billId } = useLocalSearchParams<{ billId: string }>();
 
   const [state, setState] = useState<LoadState>('loading');
@@ -267,31 +271,33 @@ export default function ParticipantsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  body: {
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  rowMain: {
-    flex: 1,
-    minHeight: touchTarget.min,
-    justifyContent: 'center',
-  },
-  rowMainPressed: {
-    opacity: 0.7,
-  },
-  itemGap: {
-    height: spacing.sm,
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    body: {
+      padding: spacing.lg,
+      gap: spacing.md,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.md,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    rowMain: {
+      flex: 1,
+      minHeight: touchTarget.min,
+      justifyContent: 'center',
+    },
+    rowMainPressed: {
+      opacity: 0.7,
+    },
+    itemGap: {
+      height: spacing.sm,
+    },
+  });
+}

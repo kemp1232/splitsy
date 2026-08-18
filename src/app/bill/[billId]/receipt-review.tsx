@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Modal, ScrollView, StyleSheet, View } from 'react-native';
 
 import { LineItemEditorSheet, type LineItemDraft } from '@/components/bill/LineItemEditorSheet';
@@ -24,7 +24,9 @@ import { lineItemsRepository } from '@/db/repositories/lineItems.repository';
 import { nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
 import { formatCentavos } from '@/lib/money';
-import { colors, spacing } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -42,6 +44,8 @@ async function fetchReviewData(billId: string) {
 
 export default function ReceiptReviewScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { billId, ocrSource, fallbackReason } = useLocalSearchParams<{
     billId: string;
     ocrSource?: 'backend' | 'on-device';
@@ -392,29 +396,31 @@ export default function ReceiptReviewScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  body: {
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  sectionHeader: {
-    gap: 2,
-  },
-  itemGap: {
-    height: spacing.sm,
-  },
-  totalsBlock: {
-    gap: spacing.xs,
-  },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  rawTextScroll: {
-    marginTop: spacing.md,
-  },
-  rawText: {
-    fontFamily: 'monospace',
-    color: colors.textPrimary,
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    body: {
+      padding: spacing.lg,
+      gap: spacing.md,
+    },
+    sectionHeader: {
+      gap: 2,
+    },
+    itemGap: {
+      height: spacing.sm,
+    },
+    totalsBlock: {
+      gap: spacing.xs,
+    },
+    totalRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+    rawTextScroll: {
+      marginTop: spacing.md,
+    },
+    rawText: {
+      fontFamily: 'monospace',
+      color: colors.textPrimary,
+    },
+  });
+}

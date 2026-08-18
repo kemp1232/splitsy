@@ -1,10 +1,13 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { copy } from '@/constants/copy';
 import type { Adjustment } from '@/db/repositories/adjustments.repository';
 import { formatCentavos } from '@/lib/money';
-import { colors, radius, spacing } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { radius, spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 // Short allocation-method label shown under an adjustment's name, matching
 // the same three strings the allocation picker in AdjustmentEditorSheet uses
@@ -26,6 +29,8 @@ type Props = {
 // is needed to convey that (spec section 17: status conveyed by text, not
 // color alone).
 export function AdjustmentRow({ adjustment, onPress }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <Pressable
       onPress={onPress}
@@ -45,23 +50,25 @@ export function AdjustmentRow({ adjustment, onPress }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  pressed: {
-    backgroundColor: colors.surfaceMuted,
-  },
-  main: {
-    flex: 1,
-    gap: 2,
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.md,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    pressed: {
+      backgroundColor: colors.surfaceMuted,
+    },
+    main: {
+      flex: 1,
+      gap: 2,
+    },
+  });
+}

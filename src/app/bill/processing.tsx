@@ -12,7 +12,8 @@ import { createOcrDerivative } from '@/features/receipt-capture/receiptImage.ser
 import { BackendReceiptOcrService } from '@/features/receipt-ocr/BackendReceiptOcrService';
 import { FallbackReceiptOcrService } from '@/features/receipt-ocr/FallbackReceiptOcrService';
 import { MlKitReceiptOcrService } from '@/features/receipt-ocr/MlKitReceiptOcrService';
-import { colors, spacing } from '@/theme/tokens';
+import { spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 type Stage = 'preparing' | 'reading' | 'organizing' | 'error';
 
@@ -28,6 +29,7 @@ const ocrService = new FallbackReceiptOcrService(
 
 export default function ProcessingScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const { billId } = useLocalSearchParams<{ billId: string }>();
   const [stage, setStage] = useState<Stage>('preparing');
   const [rawText, setRawText] = useState<string | null>(null);

@@ -161,6 +161,30 @@ describe('classifyReceiptLines', () => {
     expect(result[3]!.kind).toBe('INFO');
   });
 
+  it('classifies "GROSS AMOUNT:" and colon-punctuated "VAT AMOUNT:" as INFO, not an item or adjustment (real Balinsasayaw-receipt finding)', () => {
+    // Real receipt: item lines sum to the printed GROSS AMOUNT/TOTAL AMOUNT DUE
+    // (1,295.00). Before this fix, "GROSS AMOUNT: 1,295.00" fell through to
+    // OTHER and, sitting before "TOTAL AMOUNT DUE", was promoted to a second
+    // phantom ITEM_CANDIDATE; separately, "VAT AMOUNT: 138.75"'s trailing
+    // colon defeated isVatAmountLine's end-anchored pattern, so it fell through
+    // to the generic "VAT" POSITIVE_ADJUSTMENT keyword and double-counted VAT
+    // already included in the (VAT-inclusive) item prices.
+    const result = classifyReceiptLines(
+      lines([
+        '1 Half Bulalo 530.00',
+        'GROSS AMOUNT: 1,295.00',
+        'TOTAL AMOUNT DUE: 1,295.00',
+        'VATABLE SALES: 1,156.25',
+        'VAT AMOUNT: 138.75',
+      ]),
+    );
+    expect(result[0]!.kind).toBe('ITEM_CANDIDATE');
+    expect(result[1]!.kind).toBe('INFO');
+    expect(result[2]!.kind).toBe('TOTAL');
+    expect(result[3]!.kind).toBe('INFO');
+    expect(result[4]!.kind).toBe('INFO');
+  });
+
   it('classifies "VAT Tax"/"Total Tax" as INFO, never as TOTAL or POSITIVE_ADJUSTMENT (real North Park Noodles-receipt finding)', () => {
     // "Total Tax" contains the bare word "Total" — without the INFO check
     // running first, it would be swept into the generic STRONG_TOTAL_KEYWORDS
