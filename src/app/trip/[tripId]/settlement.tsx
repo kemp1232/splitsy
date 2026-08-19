@@ -240,7 +240,7 @@ export default function TripSettlementScreen() {
   // shared `load` callback directly inside an effect trips the
   // react-hooks/set-state-in-effect lint rule. This inline IIFE with its own
   // independent try/catch is this codebase's existing convention for a
-  // screen's first load (see e.g. src/app/index.tsx's own copy of this same
+  // screen's first load (see e.g. src/app/(tabs)/index.tsx's own copy of this same
   // shape).
   useEffect(() => {
     (async () => {

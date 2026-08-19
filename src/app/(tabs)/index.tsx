@@ -6,11 +6,10 @@ import { BillListItem } from '@/components/bill/BillListItem';
 import { BillOverflowSheet } from '@/components/bill/BillOverflowSheet';
 import { TripListItem } from '@/components/trip/TripListItem';
 import { AppText } from '@/components/ui/AppText';
+import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
-import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
-import { IconButton } from '@/components/ui/IconButton';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
 import { copy } from '@/constants/copy';
@@ -108,8 +107,15 @@ async function buildHomeEntries(): Promise<HomeEntry[]> {
     tripsRepository.listAllWithBillCounts(),
   ]);
 
+  // A bill that belongs to a trip is already reachable through that trip's
+  // own row (tapping it opens the hub, which lists every bill inside it) —
+  // showing it again here as its own standalone row would double-list the
+  // same underlying bill and clutter this list with entries that don't
+  // stand on their own. Only bills with no `tripId` get a row of their own.
+  const standaloneBillRows = billRows.filter((row) => row.bill.tripId === null);
+
   const billEntries: HomeEntry[] = await Promise.all(
-    billRows.map(async (row) => ({
+    standaloneBillRows.map(async (row) => ({
       kind: 'bill' as const,
       data: row,
       participantNames: (await participantsRepository.listByBillId(row.bill.id)).map(
@@ -404,14 +410,6 @@ export default function HomeScreen() {
     <Screen padded={false}>
       <View style={styles.header}>
         <AppText variant="heading">{copy.home.pageTitle}</AppText>
-        <View style={styles.headerActions}>
-          {/* Icon-only control — accessibilityLabel is required (spec section 17). */}
-          <IconButton
-            accessibilityLabel={copy.home.settingsAccessibilityLabel}
-            onPress={() => router.push('/settings')}
-            icon={<AppText variant="subheading">⚙</AppText>}
-          />
-        </View>
       </View>
 
       {entries.length === 0 ? (
@@ -459,13 +457,6 @@ export default function HomeScreen() {
         </>
       )}
 
-      {/* The one floating primary action this flow calls for (see the theme
-          direction notes) — starting a new bill. */}
-      <FloatingActionButton
-        accessibilityLabel={copy.home.primaryAction}
-        onPress={() => router.push('/bill/new')}
-      />
-
       <BillOverflowSheet
         visible={overflowBill !== null}
         onEdit={handleOverflowEdit}
@@ -495,17 +486,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: spacing.lg,
   },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
   sectionTitle: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xs,
   },
   list: {
     padding: spacing.lg,
+    // Extra bottom padding so the last row isn't hidden underneath the
+    // persistent tab bar that now floats over this screen.
+    paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
     gap: spacing.sm,
   },
   separator: {

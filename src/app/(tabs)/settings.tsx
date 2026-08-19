@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
+import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { Divider } from '@/components/ui/Divider';
 import { InlineError } from '@/components/ui/InlineError';
@@ -130,6 +131,9 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     body: {
       gap: spacing.md,
+      // So the last card isn't hidden underneath the persistent tab bar
+      // that now floats over this screen.
+      paddingBottom: TAB_BAR_CONTENT_CLEARANCE,
     },
     row: {
       flexDirection: 'row',

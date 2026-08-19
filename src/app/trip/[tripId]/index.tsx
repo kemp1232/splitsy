@@ -67,7 +67,7 @@ type LoadedTripHubData = {
 };
 
 // Same lighter-weight sum used by the home screen's own trip-total
-// computation (see src/app/index.tsx) — the hub only needs one running
+// computation (see src/app/(tabs)/index.tsx) — the hub only needs one running
 // number, not a full per-person calculateSplit breakdown, so this reads
 // straight from each COMPLETED bill's own line items and adjustments rather
 // than assembling calculateSplit's full input shape.
@@ -253,7 +253,7 @@ export default function TripHubScreen() {
   // shared `load` callback (also used after every mutation below) directly
   // inside an effect trips the react-hooks/set-state-in-effect lint rule.
   // This inline IIFE with its own independent try/catch is this codebase's
-  // existing convention for a screen's first load (see e.g. src/app/index.tsx's
+  // existing convention for a screen's first load (see e.g. src/app/(tabs)/index.tsx's
   // own copy of this same shape).
   useEffect(() => {
     (async () => {

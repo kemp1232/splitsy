@@ -26,10 +26,6 @@ export const copy = {
     // notes). This list already shows every bill/trip, so unlike the
     // reference UI there's no accompanying "See all" action.
     recentSectionTitle: 'Recent',
-    // No exact trigger copy given in spec 13.2's table (the settings entry
-    // point is icon-only) — this is its required screen-reader label (spec
-    // section 17).
-    settingsAccessibilityLabel: 'Settings',
     // Not spec-mandated exact text (13.2 names the "Delete bill" overflow
     // action only, not its confirmation copy) — same treatment as
     // itemEditor's/adjustmentEditor's/savedBillDetail's own delete-confirmation
@@ -60,8 +56,8 @@ export const copy = {
     // 2026-08-18 spec Amendment and PLAN.md's "Post-MVP feature: Trips"
     // entry): a fork into /trip/new rather than a single bill, deliberately
     // placed on this same chooser screen instead of a second floating action
-    // (FloatingActionButton.tsx's own header comment is explicit that this
-    // app has exactly one floating action).
+    // (BottomTabBar.tsx's own header comment is explicit that this app has
+    // exactly one floating action, now the tab bar's own center button).
     tripTitle: 'Start a trip',
     tripDescription: 'Split several bills for the same trip with one shared list of people.',
     backConfirmHeading: 'Leave this bill?',
@@ -504,6 +500,19 @@ export const copy = {
     versionLabel: 'Version',
     aboutSection: 'About Splitsy',
     aboutBody: 'Scan a receipt, assign the items, and split the total clearly.',
+  },
+
+  // Not from the spec — the persistent bottom tab bar (Home/Settings plus a
+  // floating "+" for starting a new bill/trip) added on top of the spec's own
+  // per-screen header navigation. Scope deliberately reduced from the
+  // reference UI this was modeled on (which shows four tabs) to just these
+  // two real destinations, confirmed directly by the user.
+  nav: {
+    homeTab: 'Home',
+    settingsTab: 'Settings',
+    // The center "+" button's accessibility label deliberately reuses
+    // copy.home.primaryAction ('New bill') below rather than duplicating a
+    // near-identical string here — see BottomTabBar.tsx's own usage.
   },
 
   // Section 14 — global
