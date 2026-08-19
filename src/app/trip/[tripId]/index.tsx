@@ -15,6 +15,7 @@ import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { GradientHeroCard } from '@/components/ui/GradientHeroCard';
 import { IconButton } from '@/components/ui/IconButton';
 import { InlineError } from '@/components/ui/InlineError';
 import { LoadingState } from '@/components/ui/LoadingState';
@@ -48,7 +49,6 @@ import { calculateSplit } from '@/features/splitting/splitCalculator';
 import { deleteTrip } from '@/features/trips/trip.service';
 import { nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
-import { formatCentavos } from '@/lib/money';
 import type { ColorTokens } from '@/theme/tokens';
 import { spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -60,6 +60,10 @@ type LoadedTripHubData = {
   roster: TripParticipant[];
   bills: BillWithParticipantCount[];
   completedTotalCentavos: number;
+  // Participant display names per bill, keyed by bill id — feeds each
+  // BillListItem row's own initials-avatar-stack (never derived from a route
+  // param; spec section 7).
+  participantNamesByBillId: Map<string, string[]>;
 };
 
 // Same lighter-weight sum used by the home screen's own trip-total
@@ -99,7 +103,18 @@ async function fetchTripHubData(tripId: string): Promise<LoadedTripHubData | nul
   const completedBills = bills.filter((entry) => entry.bill.status === 'COMPLETED');
   const completedTotalCentavos = await computeCompletedTotalCentavos(completedBills);
 
-  return { trip, roster, bills, completedTotalCentavos };
+  const participantNamesByBillId = new Map<string, string[]>();
+  await Promise.all(
+    bills.map(async ({ bill }) => {
+      const rows = await participantsRepository.listByBillId(bill.id);
+      participantNamesByBillId.set(
+        bill.id,
+        rows.map((participant) => participant.name),
+      );
+    }),
+  );
+
+  return { trip, roster, bills, completedTotalCentavos, participantNamesByBillId };
 }
 
 // Same draft-progression resolution the home screen uses for its own bill
@@ -256,6 +271,45 @@ export default function TripHubScreen() {
     })();
   }, [tripId]);
 
+  // Same explicit per-screen switch the home screen's own handleOpenBill
+  // uses (rather than templating `next.screen` into the path) — typed routes
+  // (app.config.ts's `experiments.typedRoutes`) need each route literal to
+  // match a real file under src/app, not an arbitrary interpolated segment.
+  //
+  // Wrapped in useCallback (RN perf rule), declared above every early return
+  // below since hooks can't be called conditionally — stays a stable
+  // reference for the memoized BillListItem rows this feeds.
+  const handleOpenBill = useCallback(
+    async (bill: Bill) => {
+      if (bill.status === 'COMPLETED') {
+        router.push(`/bill/${bill.id}`);
+        return;
+      }
+
+      const next = await resolveDraftNextRoute(bill.id);
+      switch (next.screen) {
+        case 'receipt-review':
+          router.push(`/bill/${bill.id}/receipt-review`);
+          return;
+        case 'participants':
+          router.push(`/bill/${bill.id}/participants`);
+          return;
+        case 'assignments':
+          router.push(`/bill/${bill.id}/assignments`);
+          return;
+        case 'adjustments':
+          router.push(`/bill/${bill.id}/adjustments`);
+          return;
+        case 'summary':
+          router.push(`/bill/${bill.id}/summary`);
+          return;
+      }
+    },
+    [router],
+  );
+
+  const handleOverflowPress = useCallback((bill: Bill) => setOverflowBill(bill), []);
+
   if (state === 'loading') {
     return (
       <Screen>
@@ -279,36 +333,6 @@ export default function TripHubScreen() {
 
   const title = data.trip.name ?? copy.trip.unknownTripTitle;
   const hasCompletedBill = data.bills.some((entry) => entry.bill.status === 'COMPLETED');
-
-  // Same explicit per-screen switch the home screen's own handleOpenBill
-  // uses (rather than templating `next.screen` into the path) — typed routes
-  // (app.config.ts's `experiments.typedRoutes`) need each route literal to
-  // match a real file under src/app, not an arbitrary interpolated segment.
-  async function handleOpenBill(bill: Bill) {
-    if (bill.status === 'COMPLETED') {
-      router.push(`/bill/${bill.id}`);
-      return;
-    }
-
-    const next = await resolveDraftNextRoute(bill.id);
-    switch (next.screen) {
-      case 'receipt-review':
-        router.push(`/bill/${bill.id}/receipt-review`);
-        return;
-      case 'participants':
-        router.push(`/bill/${bill.id}/participants`);
-        return;
-      case 'assignments':
-        router.push(`/bill/${bill.id}/assignments`);
-        return;
-      case 'adjustments':
-        router.push(`/bill/${bill.id}/adjustments`);
-        return;
-      case 'summary':
-        router.push(`/bill/${bill.id}/summary`);
-        return;
-    }
-  }
 
   async function handleScanNextBill() {
     if (!data) return;
@@ -447,28 +471,40 @@ export default function TripHubScreen() {
         </BottomActionBar>
       }
     >
-      <View style={styles.body}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerText}>
-            <AppText variant="heading">{title}</AppText>
-            <StatusBadge
-              label={
-                data.trip.status === 'SETTLED' ? copy.trip.settledBadge : copy.trip.activeBadge
-              }
-              tone={data.trip.status === 'SETTLED' ? 'success' : 'neutral'}
-            />
-          </View>
-          <IconButton
-            accessibilityLabel={copy.home.overflowAccessibilityLabel}
-            onPress={() => setTripOverflowVisible(true)}
-            icon={
-              <AppText variant="subheading" color="textSecondary">
-                ⋮
-              </AppText>
-            }
+      <View style={styles.headerRow}>
+        <View style={styles.headerText}>
+          <AppText variant="heading">{title}</AppText>
+          <StatusBadge
+            label={data.trip.status === 'SETTLED' ? copy.trip.settledBadge : copy.trip.activeBadge}
+            tone={data.trip.status === 'SETTLED' ? 'success' : 'neutral'}
           />
         </View>
+        <IconButton
+          accessibilityLabel={copy.home.overflowAccessibilityLabel}
+          onPress={() => setTripOverflowVisible(true)}
+          icon={
+            <AppText variant="subheading" color="textSecondary">
+              ⋮
+            </AppText>
+          }
+        />
+      </View>
 
+      {/* Gradient hero card (reference UI's "hero panel" — see the visual
+          revamp task notes) — the trip hub's one genuinely single running
+          total, unlike the home screen's own list-of-independent-bills view
+          (which deliberately doesn't get one of these). */}
+      <GradientHeroCard
+        label={copy.trip.tripTotalLabel}
+        amountCentavos={data.completedTotalCentavos}
+        meta={
+          data.bills.length > 0
+            ? copy.trip.billCountLabel.replace('{count}', String(data.bills.length))
+            : undefined
+        }
+      />
+
+      <View style={styles.body}>
         {actionError ? <InlineError message={actionError} /> : null}
 
         <SectionCard title={copy.trip.rosterSectionTitle}>
@@ -500,14 +536,12 @@ export default function TripHubScreen() {
           />
         </SectionCard>
 
-        <View style={styles.totalRow}>
-          <AppText color="textSecondary">{copy.trip.tripTotalLabel}</AppText>
-          <AppText variant="amount">{formatCentavos(data.completedTotalCentavos)}</AppText>
-        </View>
-
         {hasCompletedBill ? (
+          // The reference UI's prominent bottom-of-screen pill primary
+          // action (mapped here to "Settle up", not a literal swipe-to-pay
+          // gesture — see the visual revamp task notes).
           <AppButton
-            variant="secondary"
+            pill
             label={copy.trip.settleUpAction}
             onPress={() => router.push(`/trip/${tripId}/settlement`)}
           />
@@ -526,8 +560,9 @@ export default function TripHubScreen() {
             renderItem={({ item }) => (
               <BillListItem
                 entry={item}
-                onPress={() => handleOpenBill(item.bill)}
-                onOverflowPress={() => setOverflowBill(item.bill)}
+                participantNames={data.participantNamesByBillId.get(item.bill.id) ?? []}
+                onPress={handleOpenBill}
+                onOverflowPress={handleOverflowPress}
               />
             )}
           />
@@ -603,6 +638,9 @@ function createStyles(colors: ColorTokens) {
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: spacing.md,
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.sm,
     },
     headerText: {
       flex: 1,
@@ -622,11 +660,6 @@ function createStyles(colors: ColorTokens) {
     },
     rosterRowLabel: {
       flex: 1,
-    },
-    totalRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
     },
     itemGap: {
       height: spacing.sm,

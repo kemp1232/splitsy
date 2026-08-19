@@ -1,7 +1,8 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { AvatarStack } from '@/components/ui/InitialsAvatar';
 import { IconButton } from '@/components/ui/IconButton';
 import { ReceiptTornEdge } from '@/components/ui/ReceiptTornEdge';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -12,19 +13,32 @@ import type { ColorTokens } from '@/theme/tokens';
 import { radius, spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
-import type { BillWithParticipantCount } from '../../db/repositories/bills.repository';
+import type { Bill, BillWithParticipantCount } from '../../db/repositories/bills.repository';
 
 type Props = {
   entry: BillWithParticipantCount;
-  onPress: () => void;
+  // Participant display names for this bill's avatar stack — fetched by the
+  // caller (home screen / trip hub) from participantsRepository, never
+  // derived here (spec section 7: components render what they're given).
+  // Empty when the bill has no participants yet (a fresh draft).
+  participantNames: string[];
+  onPress: (bill: Bill) => void;
   // Spec 13.2's per-row overflow actions (Edit bill/Share summary/Delete
   // bill) — kept as a single trigger prop rather than three separate
   // onEdit/onShare/onDelete props, since this component only ever opens the
   // overflow sheet; the caller (home screen) owns what the sheet actually does.
-  onOverflowPress: () => void;
+  onOverflowPress: (bill: Bill) => void;
 };
 
-export function BillListItem({ entry, onPress, onOverflowPress }: Props) {
+// Memoized (RN perf rule): this row renders inside a FlatList and its own
+// props (entry, participantNames, the two stable callbacks below) rarely
+// change between renders of the list itself.
+export const BillListItem = memo(function BillListItem({
+  entry,
+  participantNames,
+  onPress,
+  onOverflowPress,
+}: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { bill, participantCount } = entry;
@@ -45,18 +59,33 @@ export function BillListItem({ entry, onPress, onOverflowPress }: Props) {
             established sibling-Pressables row shape already used by
             participants.tsx's own row + trailing IconButton. */}
         <Pressable
-          onPress={onPress}
+          onPress={() => onPress(bill)}
           accessibilityRole="button"
           style={({ pressed }) => [styles.main, pressed && styles.pressed]}
         >
+          {/* Decorative thumbnail-in-a-circle (reference row shape) — the
+              row's own title text already names the bill, so this glyph is
+              hidden from screen readers rather than announced on its own. */}
+          <View
+            style={styles.thumbnail}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            <AppText variant="subheading">🧾</AppText>
+          </View>
+
           <View style={styles.mainText}>
             <AppText variant="subheading" numberOfLines={1}>
               {title}
             </AppText>
-            <AppText variant="caption" color="textSecondary">
-              {formatBillListDate(bill.updatedAt)}
-              {participantCount > 0 ? ` · ${participantCount} people` : ''}
-            </AppText>
+            <View style={styles.metaRow}>
+              <AppText variant="caption" color="textSecondary">
+                {formatBillListDate(bill.updatedAt)}
+              </AppText>
+              {participantCount > 0 ? (
+                <AvatarStack names={participantNames} size={18} max={3} />
+              ) : null}
+            </View>
           </View>
           <View style={styles.trailing}>
             {total ? (
@@ -84,7 +113,7 @@ export function BillListItem({ entry, onPress, onOverflowPress }: Props) {
         {/* Icon-only control — accessibilityLabel is required (spec section 17). */}
         <IconButton
           accessibilityLabel={copy.home.overflowAccessibilityLabel}
-          onPress={onOverflowPress}
+          onPress={() => onOverflowPress(bill)}
           icon={
             <AppText variant="subheading" color="textSecondary">
               ⋮
@@ -98,7 +127,7 @@ export function BillListItem({ entry, onPress, onOverflowPress }: Props) {
       <ReceiptTornEdge color={colors.surface} borderColor={colors.border} height={8} teeth={20} />
     </View>
   );
-}
+});
 
 function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
@@ -119,16 +148,30 @@ function createStyles(colors: ColorTokens) {
       flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
       gap: spacing.md,
       padding: spacing.md,
     },
     pressed: {
       backgroundColor: colors.surfaceMuted,
     },
+    thumbnail: {
+      width: 40,
+      height: 40,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surfaceMuted,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
     mainText: {
       flex: 1,
       gap: 2,
+    },
+    metaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
     },
     trailing: {
       alignItems: 'flex-end',

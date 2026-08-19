@@ -27,6 +27,15 @@ export type ColorTokens = {
   warning: string;
   danger: string;
   focus: string;
+  // Two-stop gradient for the reference-inspired "hero" cards (bill/trip
+  // totals) — same hue family as `primary` (~232-236° on the hue wheel, a
+  // deliberate blue/indigo, never drifting into purple's ~270-300° range),
+  // not a copy of the reference screenshots' own exact hue. `onPrimary` is
+  // the label color meant to sit on top of this gradient in both themes,
+  // same as it already is for a flat `primary` fill — see this file's own
+  // header comment on why that flips direction between light and dark.
+  gradientStart: string;
+  gradientEnd: string;
 };
 
 // Paper-white background, pure-white cards, ink-navy text, and one deliberate
@@ -45,6 +54,12 @@ export const lightColors: ColorTokens = {
   warning: '#8A5300',
   danger: '#C13327',
   focus: '#2F3EA6',
+  // White (`onPrimary`) on gradientStart: 7.82:1. White on gradientEnd:
+  // 16.23:1. Both comfortably clear 4.5:1 (normal text) everywhere along the
+  // gradient, not just at the 3:1 "large text" minimum the hero's own big
+  // amount figure alone would need.
+  gradientStart: '#3546B4',
+  gradientEnd: '#141B4D',
 } as const;
 
 // Near-black (not pure #000) surfaces, off-white text, the same accent hue
@@ -64,6 +79,11 @@ export const darkColors: ColorTokens = {
   warning: '#F3B94D',
   danger: '#FF8A80',
   focus: '#8B93FF',
+  // Dark ink (`onPrimary`) on gradientStart: 4.98:1. Dark ink on gradientEnd:
+  // 9.22:1. Both clear 4.5:1 — the same flipped light-ink-on-bright-fill
+  // pattern this file's header comment already documents for `primary`.
+  gradientStart: '#6E77E0',
+  gradientEnd: '#A6ACFF',
 } as const;
 
 export const spacing = {
@@ -79,6 +99,10 @@ export const radius = {
   sm: 6,
   md: 10,
   lg: 16,
+  // The reference UI's "hero panel" corner radius (gradient total cards) —
+  // deliberately larger than `lg`'s general card radius so that shape reads
+  // as its own distinct, more prominent surface.
+  xl: 28,
   pill: 999,
 } as const;
 

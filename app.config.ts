@@ -25,6 +25,7 @@ const config: ExpoConfig = {
     'expo-dev-client',
     'expo-sqlite',
     'expo-file-system',
+    'expo-image',
     [
       'expo-camera',
       {

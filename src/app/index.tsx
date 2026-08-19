@@ -22,8 +22,9 @@ import { billsRepository } from '@/db/repositories/bills.repository';
 import { itemAssignmentsRepository } from '@/db/repositories/itemAssignments.repository';
 import { lineItemsRepository } from '@/db/repositories/lineItems.repository';
 import { participantsRepository } from '@/db/repositories/participants.repository';
-import type { TripWithBillCount } from '@/db/repositories/trips.repository';
+import type { Trip, TripWithBillCount } from '@/db/repositories/trips.repository';
 import { tripsRepository } from '@/db/repositories/trips.repository';
+import { tripParticipantsRepository } from '@/db/repositories/tripParticipants.repository';
 import {
   buildSplitAdjustments,
   buildSplitLineItems,
@@ -46,9 +47,20 @@ type LoadState = 'loading' | 'ready' | 'error';
 // lowest-disruption way to surface trips alongside bills in this same list
 // (see the recently-finished dark-mode revamp's IA, which this deliberately
 // doesn't reshape with a new tab/segment).
+//
+// `participantNames`/`rosterNames` are fetched here (never derived from a
+// route param — spec section 7) purely to feed each row's own
+// initials-avatar-stack (the reference UI's overlapping-photo-avatar motif;
+// see InitialsAvatar.tsx's own header note on why initials substitute for
+// photos in an app with no accounts).
 type HomeEntry =
-  | { kind: 'bill'; data: BillWithParticipantCount }
-  | { kind: 'trip'; data: TripWithBillCount; totalCentavos: number };
+  | { kind: 'bill'; data: BillWithParticipantCount; participantNames: string[] }
+  | {
+      kind: 'trip';
+      data: TripWithBillCount;
+      totalCentavos: number;
+      rosterNames: string[];
+    };
 
 function getEntryUpdatedAt(entry: HomeEntry): string {
   return entry.kind === 'bill' ? entry.data.bill.updatedAt : entry.data.trip.updatedAt;
@@ -83,6 +95,44 @@ async function computeTripTotalCentavos(tripId: string): Promise<number> {
     }),
   );
   return totals.reduce((sum, total) => sum + total, 0);
+}
+
+// Shared by both of this screen's own load call sites below (the first-load
+// effect and the pull-to-refresh `load` callback) — pure data assembly, no
+// setState of its own, so each caller keeps its own try/catch and state
+// transition (this file's existing convention; see the comment on the
+// first-load effect for why it isn't just `useEffect(() => { load(); }, [load])`).
+async function buildHomeEntries(): Promise<HomeEntry[]> {
+  const [billRows, tripRows] = await Promise.all([
+    billsRepository.listAllWithParticipantCounts(),
+    tripsRepository.listAllWithBillCounts(),
+  ]);
+
+  const billEntries: HomeEntry[] = await Promise.all(
+    billRows.map(async (row) => ({
+      kind: 'bill' as const,
+      data: row,
+      participantNames: (await participantsRepository.listByBillId(row.bill.id)).map(
+        (participant) => participant.name,
+      ),
+    })),
+  );
+  const tripEntries: HomeEntry[] = await Promise.all(
+    tripRows.map(async (row) => {
+      const [totalCentavos, roster] = await Promise.all([
+        row.billCount > 0 ? computeTripTotalCentavos(row.trip.id) : Promise.resolve(0),
+        tripParticipantsRepository.listByTripId(row.trip.id),
+      ]);
+      return {
+        kind: 'trip' as const,
+        data: row,
+        totalCentavos,
+        rosterNames: roster.map((member) => member.name),
+      };
+    }),
+  );
+
+  return sortHomeEntriesNewestFirst([...billEntries, ...tripEntries]);
 }
 
 // Spec section 15's draft-progression rule (resolveNextRoute.ts), fed with
@@ -188,24 +238,7 @@ export default function HomeScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [billRows, tripRows] = await Promise.all([
-        billsRepository.listAllWithParticipantCounts(),
-        tripsRepository.listAllWithBillCounts(),
-      ]);
-
-      const billEntries: HomeEntry[] = billRows.map((row) => ({
-        kind: 'bill' as const,
-        data: row,
-      }));
-      const tripEntries: HomeEntry[] = await Promise.all(
-        tripRows.map(async (row) => ({
-          kind: 'trip' as const,
-          data: row,
-          totalCentavos: row.billCount > 0 ? await computeTripTotalCentavos(row.trip.id) : 0,
-        })),
-      );
-
-      setEntries(sortHomeEntriesNewestFirst([...billEntries, ...tripEntries]));
+      setEntries(await buildHomeEntries());
       setState('ready');
     } catch {
       setState('error');
@@ -221,24 +254,7 @@ export default function HomeScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const [billRows, tripRows] = await Promise.all([
-          billsRepository.listAllWithParticipantCounts(),
-          tripsRepository.listAllWithBillCounts(),
-        ]);
-
-        const billEntries: HomeEntry[] = billRows.map((row) => ({
-          kind: 'bill' as const,
-          data: row,
-        }));
-        const tripEntries: HomeEntry[] = await Promise.all(
-          tripRows.map(async (row) => ({
-            kind: 'trip' as const,
-            data: row,
-            totalCentavos: row.billCount > 0 ? await computeTripTotalCentavos(row.trip.id) : 0,
-          })),
-        );
-
-        setEntries(sortHomeEntriesNewestFirst([...billEntries, ...tripEntries]));
+        setEntries(await buildHomeEntries());
         setState('ready');
       } catch {
         setState('error');
@@ -256,31 +272,42 @@ export default function HomeScreen() {
   // screen; a draft returns the user to the earliest incomplete step
   // (resolveDraftNextRoute/resolveNextRoute above) instead of always the
   // same route regardless of how far along the draft is.
-  async function handleOpenBill(bill: Bill) {
-    if (bill.status === 'COMPLETED') {
-      router.push(`/bill/${bill.id}`);
-      return;
-    }
+  //
+  // Wrapped in useCallback (RN perf rule) so this reference stays stable
+  // across re-renders of this screen's own state (e.g. the overflow sheet
+  // opening/closing) — passed straight into FlatList's memoized BillListItem
+  // rows below rather than a fresh closure per render.
+  const handleOpenBill = useCallback(
+    async (bill: Bill) => {
+      if (bill.status === 'COMPLETED') {
+        router.push(`/bill/${bill.id}`);
+        return;
+      }
 
-    const next = await resolveDraftNextRoute(bill.id);
-    switch (next.screen) {
-      case 'receipt-review':
-        router.push(`/bill/${bill.id}/receipt-review`);
-        return;
-      case 'participants':
-        router.push(`/bill/${bill.id}/participants`);
-        return;
-      case 'assignments':
-        router.push(`/bill/${bill.id}/assignments`);
-        return;
-      case 'adjustments':
-        router.push(`/bill/${bill.id}/adjustments`);
-        return;
-      case 'summary':
-        router.push(`/bill/${bill.id}/summary`);
-        return;
-    }
-  }
+      const next = await resolveDraftNextRoute(bill.id);
+      switch (next.screen) {
+        case 'receipt-review':
+          router.push(`/bill/${bill.id}/receipt-review`);
+          return;
+        case 'participants':
+          router.push(`/bill/${bill.id}/participants`);
+          return;
+        case 'assignments':
+          router.push(`/bill/${bill.id}/assignments`);
+          return;
+        case 'adjustments':
+          router.push(`/bill/${bill.id}/adjustments`);
+          return;
+        case 'summary':
+          router.push(`/bill/${bill.id}/summary`);
+          return;
+      }
+    },
+    [router],
+  );
+
+  const handleOverflowPress = useCallback((bill: Bill) => setOverflowBill(bill), []);
+  const handleTripPress = useCallback((trip: Trip) => router.push(`/trip/${trip.id}`), [router]);
 
   function closeOverflow() {
     setOverflowBill(null);
@@ -395,30 +422,41 @@ export default function HomeScreen() {
           onAction={() => router.push('/bill/new')}
         />
       ) : (
-        <FlatList
-          data={entries}
-          keyExtractor={(entry) =>
-            entry.kind === 'bill' ? `bill-${entry.data.bill.id}` : `trip-${entry.data.trip.id}`
-          }
-          contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-          renderItem={({ item }) =>
-            item.kind === 'bill' ? (
-              <BillListItem
-                entry={item.data}
-                onPress={() => handleOpenBill(item.data.bill)}
-                onOverflowPress={() => setOverflowBill(item.data.bill)}
-              />
-            ) : (
-              <TripListItem
-                entry={item.data}
-                totalCentavos={item.totalCentavos}
-                onPress={() => router.push(`/trip/${item.data.trip.id}`)}
-              />
-            )
-          }
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-        />
+        <>
+          {/* Reference UI's "Recent" section framing — this list already
+              shows every bill/trip (there's no separate "all bills" screen
+              to link out to), so unlike the reference there's no "See all"
+              action here. */}
+          <AppText variant="subheading" style={styles.sectionTitle}>
+            {copy.home.recentSectionTitle}
+          </AppText>
+          <FlatList
+            data={entries}
+            keyExtractor={(entry) =>
+              entry.kind === 'bill' ? `bill-${entry.data.bill.id}` : `trip-${entry.data.trip.id}`
+            }
+            contentContainerStyle={styles.list}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+            renderItem={({ item }) =>
+              item.kind === 'bill' ? (
+                <BillListItem
+                  entry={item.data}
+                  participantNames={item.participantNames}
+                  onPress={handleOpenBill}
+                  onOverflowPress={handleOverflowPress}
+                />
+              ) : (
+                <TripListItem
+                  entry={item.data}
+                  totalCentavos={item.totalCentavos}
+                  rosterNames={item.rosterNames}
+                  onPress={handleTripPress}
+                />
+              )
+            }
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+          />
+        </>
       )}
 
       {/* The one floating primary action this flow calls for (see the theme
@@ -461,6 +499,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  sectionTitle: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xs,
   },
   list: {
     padding: spacing.lg,

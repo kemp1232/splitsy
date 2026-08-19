@@ -21,6 +21,11 @@ export const copy = {
     overflowShare: 'Share summary',
     overflowDelete: 'Delete bill',
     overflowAccessibilityLabel: 'More actions',
+    // Not from the spec — the visual revamp's reference-inspired "Recent"
+    // section label above the bill/trip list (see the visual-revamp task
+    // notes). This list already shows every bill/trip, so unlike the
+    // reference UI there's no accompanying "See all" action.
+    recentSectionTitle: 'Recent',
     // No exact trigger copy given in spec 13.2's table (the settings entry
     // point is icon-only) — this is its required screen-reader label (spec
     // section 17).
@@ -411,6 +416,15 @@ export const copy = {
     emptyBody: 'Complete at least one bill in this trip to see a combined settlement.',
     markSettledAction: 'Mark trip settled',
     settledToast: 'Trip marked as settled.',
+    // Not from the spec — Trip feature addition: each person's card can
+    // expand to show every item they're assigned to across the trip's bills.
+    viewItemsAction: 'View items',
+    hideItemsAction: 'Hide items',
+    // Appended to a shared item's name, e.g. "Nachos (split with Sam, Jo)" —
+    // named co-assignees, not just a generic "(shared)" suffix, since this
+    // view spans multiple bills where "shared" alone doesn't say with whom.
+    itemSharedWithSuffix: 'split with {names}',
+    paidLabel: 'Paid',
   },
 
   // Section 13.18 — Summary
@@ -430,6 +444,12 @@ export const copy = {
     copiedToast: 'Breakdown copied.',
     savedToast: 'Bill saved.',
     shareFailure: "We couldn't open the share menu. Try copying the breakdown instead.",
+    // Not from the spec — Trip feature addition (see the 2026-08-18 spec
+    // Amendment). Deliberately a prominent secondary button, matching
+    // savedBillDetail.tripLinkLabel's same treatment on the screen "Finish
+    // and save" lands on — obvious both before and after saving, not just
+    // on Summary.
+    backToTripAction: 'Back to {name}',
   },
 
   // Section 13.19 — Saved bill detail
@@ -448,8 +468,11 @@ export const copy = {
       'This permanently removes the bill, its receipt image, and everyone’s shares from this device.',
     // Not from the spec — the Trip feature addition (see the 2026-08-18 spec
     // Amendment): shown only when this bill's `tripId` is set, linking back
-    // to the trip hub.
-    tripLinkLabel: 'Part of trip: {name}',
+    // to the trip hub. This is the screen "Finish and save" lands on, so the
+    // wording/prominence deliberately matches summary.backToTripAction below
+    // rather than reading as a passive info label — the user wants this
+    // obvious both before and after saving, not just on Summary.
+    tripLinkLabel: 'Back to {name}',
   },
 
   // Section 13.20 — Settings

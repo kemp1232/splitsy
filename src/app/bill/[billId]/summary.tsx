@@ -10,6 +10,7 @@ import { AppText } from '@/components/ui/AppText';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { Divider } from '@/components/ui/Divider';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { GradientHeroCard } from '@/components/ui/GradientHeroCard';
 import { InlineError } from '@/components/ui/InlineError';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
@@ -21,6 +22,7 @@ import type { Adjustment } from '@/db/repositories/adjustments.repository';
 import { adjustmentsRepository } from '@/db/repositories/adjustments.repository';
 import type { Bill } from '@/db/repositories/bills.repository';
 import { billsRepository } from '@/db/repositories/bills.repository';
+import { tripsRepository } from '@/db/repositories/trips.repository';
 import type { ItemAssignment } from '@/db/repositories/itemAssignments.repository';
 import { itemAssignmentsRepository } from '@/db/repositories/itemAssignments.repository';
 import type { LineItem } from '@/db/repositories/lineItems.repository';
@@ -52,7 +54,6 @@ import type {
   SplitCalculationResult,
 } from '@/features/splitting/split.types';
 import { formatBillListDate, nowIso } from '@/lib/date';
-import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
 import type { ColorTokens } from '@/theme/tokens';
 import { radius, spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -162,6 +163,12 @@ export default function SummaryScreen() {
   const [copyError, setCopyError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Trip feature addition (not from the numbered MVP spec, see the
+  // 2026-08-18 spec Amendment): set only when this bill's `tripId` is not
+  // null. Read from the trip row itself, never the bill's own `tripId` route
+  // param (spec section 7's "never make navigation route params the source
+  // of truth") — same pattern as bill/[billId]/index.tsx's own tripLink.
+  const [tripLink, setTripLink] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     return () => {
@@ -182,6 +189,13 @@ export default function SummaryScreen() {
         if (!data.billRow) {
           setState('error');
           return;
+        }
+
+        if (data.billRow.tripId) {
+          const trip = await tripsRepository.getById(data.billRow.tripId);
+          if (trip) {
+            setTripLink({ id: trip.id, name: trip.name ?? copy.trip.unknownTripTitle });
+          }
         }
 
         // Draft-progression guard (spec section 15), the same one
@@ -378,7 +392,10 @@ export default function SummaryScreen() {
           ) : null}
           <BottomActionBar>
             {saveError ? <InlineError message={saveError} /> : null}
+            {/* The reference UI's prominent bottom-of-screen pill primary
+                action (screenshot 2's "Bill Splitting" breakdown screen). */}
             <AppButton
+              pill
               label={copy.summary.saveAction}
               onPress={handleSave}
               loading={saving}
@@ -388,38 +405,39 @@ export default function SummaryScreen() {
         </>
       }
     >
+      <View style={styles.headerRow}>
+        <AppText variant="heading">{copy.summary.heading}</AppText>
+      </View>
+
+      {/* Gradient hero card (reference UI's rounded-bottom-corner "hero
+          panel", screenshot 2) — this screen's one genuinely single running
+          total. */}
+      <GradientHeroCard
+        label={copy.summary.totalLabel}
+        amountCentavos={splitResult.computedTotalCentavos}
+        subtitle={title}
+        meta={bill.receiptDate ? formatBillListDate(bill.receiptDate) : undefined}
+      />
+
       <View style={styles.body}>
-        <View style={styles.headerBlock}>
-          <AppText variant="heading">{copy.summary.heading}</AppText>
-          <AppText variant="subheading">{title}</AppText>
-          {bill.receiptDate ? (
-            <AppText variant="caption" color="textSecondary">
-              {formatBillListDate(bill.receiptDate)}
-            </AppText>
-          ) : null}
+        {hasDetectedTotal ? (
+          <StatusBadge
+            label={reconciliation.matches ? copy.summary.matchSuccess : copy.summary.mismatchStatus}
+            tone={reconciliation.matches ? 'success' : 'warning'}
+          />
+        ) : null}
 
-          <View style={styles.totalRow}>
-            <AppText color="textSecondary">{copy.summary.totalLabel}</AppText>
-            {/* accessibilityLabel is the spoken form (spec section 17's "520
-                pesos and 25 centavos" example), distinct from the visible
-                formatCentavos text. */}
-            <AppText
-              variant="amount"
-              accessibilityLabel={formatCentavosForSpeech(splitResult.computedTotalCentavos)}
-            >
-              {formatCentavos(splitResult.computedTotalCentavos)}
-            </AppText>
-          </View>
-
-          {hasDetectedTotal ? (
-            <StatusBadge
-              label={
-                reconciliation.matches ? copy.summary.matchSuccess : copy.summary.mismatchStatus
-              }
-              tone={reconciliation.matches ? 'success' : 'warning'}
-            />
-          ) : null}
-        </View>
+        {/* Deliberately obvious (secondary, full-width), not the quieter
+            text-styled link used on the saved-bill-detail screen — finishing
+            a bill is exactly the moment someone wants to jump back and scan
+            the trip's next one. */}
+        {tripLink ? (
+          <AppButton
+            variant="secondary"
+            label={copy.summary.backToTripAction.replace('{name}', tripLink.name)}
+            onPress={() => router.push(`/trip/${tripLink.id}`)}
+          />
+        ) : null}
 
         <View style={styles.actionsRow}>
           <View style={styles.actionColumn}>
@@ -487,14 +505,10 @@ function createStyles(colors: ColorTokens) {
       padding: spacing.lg,
       gap: spacing.md,
     },
-    headerBlock: {
-      gap: spacing.xs,
-    },
-    totalRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginTop: spacing.sm,
+    headerRow: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.sm,
     },
     actionsRow: {
       flexDirection: 'row',

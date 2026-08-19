@@ -1,6 +1,7 @@
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Image, Modal, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Modal, ScrollView, Share, StyleSheet, View } from 'react-native';
 
 import { PersonTotalCard } from '@/components/bill/PersonTotalCard';
 import { SettlementCard } from '@/components/bill/SettlementCard';
@@ -350,8 +351,12 @@ export default function SavedBillDetailScreen() {
           ) : null}
 
           {tripLink ? (
+            // Deliberately obvious (secondary, full-width) — matches
+            // Summary's own backToTripAction button, since this is the
+            // screen "Finish and save" lands on and the user wants this
+            // just as visible after saving as before.
             <AppButton
-              variant="text"
+              variant="secondary"
               label={copy.savedBillDetail.tripLinkLabel.replace('{name}', tripLink.name)}
               onPress={() => router.push(`/trip/${tripLink.id}`)}
             />
@@ -441,7 +446,7 @@ export default function SavedBillDetailScreen() {
             <Image
               source={{ uri: bill.receiptImageUri }}
               style={styles.receiptImage}
-              resizeMode="contain"
+              contentFit="contain"
               accessibilityLabel={copy.savedBillDetail.receiptAction}
             />
           ) : null}

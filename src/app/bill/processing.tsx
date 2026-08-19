@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
@@ -12,7 +13,7 @@ import { createOcrDerivative } from '@/features/receipt-capture/receiptImage.ser
 import { BackendReceiptOcrService } from '@/features/receipt-ocr/BackendReceiptOcrService';
 import { FallbackReceiptOcrService } from '@/features/receipt-ocr/FallbackReceiptOcrService';
 import { MlKitReceiptOcrService } from '@/features/receipt-ocr/MlKitReceiptOcrService';
-import { spacing } from '@/theme/tokens';
+import { radius, spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 type Stage = 'preparing' | 'reading' | 'organizing' | 'error';
@@ -35,6 +36,10 @@ export default function ProcessingScreen() {
   const [rawText, setRawText] = useState<string | null>(null);
   const [showRawText, setShowRawText] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // Shown as a dimmed backdrop behind the spinner (see the render below) —
+  // purely a visual anchor for "this is the receipt being read," never fed
+  // back into OCR/parsing logic (that uses `ocrReadyUri` below, not this).
+  const [receiptImageUri, setReceiptImageUri] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -43,6 +48,7 @@ export default function ProcessingScreen() {
       try {
         const bill = await billsRepository.getById(billId);
         if (!bill?.receiptImageUri) throw new Error('Missing receipt image for this bill.');
+        setReceiptImageUri(bill.receiptImageUri);
 
         const ocrReadyUri = await createOcrDerivative(bill.receiptImageUri);
 
@@ -137,6 +143,15 @@ export default function ProcessingScreen() {
   return (
     <Screen>
       <View style={styles.centered}>
+        {/* Dimmed backdrop of the receipt actually being read — a visual
+            anchor for "this is what's being processed," not a functional
+            part of the OCR pipeline itself. */}
+        {receiptImageUri ? (
+          <View style={styles.imageCard}>
+            <Image source={{ uri: receiptImageUri }} style={styles.image} contentFit="cover" />
+            <View style={[StyleSheet.absoluteFill, styles.imageScrim]} pointerEvents="none" />
+          </View>
+        ) : null}
         <ActivityIndicator size="large" color={colors.primary} />
         <AppText variant="heading" style={styles.centerText}>
           {copy.processing.heading}
@@ -165,4 +180,18 @@ const styles = StyleSheet.create({
   centerText: { textAlign: 'center' },
   spaced: { marginTop: spacing.xs, marginBottom: spacing.lg },
   actions: { gap: spacing.sm },
+  imageCard: {
+    width: '70%',
+    aspectRatio: 3 / 4,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    marginBottom: spacing.md,
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+  },
+  imageScrim: {
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
 });

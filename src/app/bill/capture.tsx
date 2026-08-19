@@ -20,17 +20,18 @@ const FLASH_LABEL: Record<FlashMode, string> = {
   screen: copy.cameraCapture.flashAuto,
 };
 
-// The camera viewfinder's own chrome (close/flash controls, guide frame,
-// instructions, shutter) always sits on top of a live camera feed behind a
-// fixed dark scrim — that backdrop has nothing to do with the app's light/dark
-// theme (there's no "light camera overlay"), so this chrome intentionally
-// uses fixed white-on-dark colors instead of theme tokens, which would
-// otherwise resolve to dark ink in dark mode and disappear against the same
-// dark scrim.
+// The camera viewfinder's own chrome (close/flash controls, instruction text,
+// the camera card's corner brackets, shutter) always sits on top of or around
+// a live camera feed — that backdrop has nothing to do with the app's
+// light/dark theme (there's no "light camera overlay"), so this chrome
+// intentionally uses fixed white-on-dark colors instead of theme tokens,
+// which would otherwise resolve to dark ink in dark mode and disappear
+// against this same fixed dark chrome.
 const overlay = {
   text: '#FFFFFF',
   scrim: 'rgba(0,0,0,0.4)',
   frame: '#FFFFFF',
+  background: '#0B0D12',
 };
 
 export default function CaptureScreen() {
@@ -96,56 +97,76 @@ export default function CaptureScreen() {
   }
 
   return (
-    <View style={styles.flex}>
-      <CameraView ref={cameraRef} style={styles.flex} facing="back" flash={flash}>
-        <View style={styles.topBar}>
-          <IconButton
-            accessibilityLabel={copy.cameraCapture.closeAccessibilityLabel}
-            onPress={() => router.back()}
-            icon={<AppText style={styles.overlayText}>✕</AppText>}
+    <View style={styles.screen}>
+      <View style={styles.topBar}>
+        <IconButton
+          accessibilityLabel={copy.cameraCapture.closeAccessibilityLabel}
+          onPress={() => router.back()}
+          icon={<AppText style={styles.overlayText}>✕</AppText>}
+        />
+        <Pressable
+          onPress={() =>
+            setFlash(FLASH_CYCLE[(FLASH_CYCLE.indexOf(flash) + 1) % FLASH_CYCLE.length]!)
+          }
+          accessibilityRole="button"
+          hitSlop={8}
+          style={styles.flashButton}
+        >
+          <AppText style={styles.overlayText}>{FLASH_LABEL[flash]}</AppText>
+        </Pressable>
+      </View>
+
+      {/* Reference UI's short instructional heading + one-sentence
+          description, above the camera view rather than overlaid on top of
+          it (spec section 17: camera guidance must have text, not only a
+          visual frame — this is that text, just repositioned). */}
+      <View style={styles.instructionBlock}>
+        <AppText variant="heading" style={styles.overlayText}>
+          {copy.cameraCapture.instruction}
+        </AppText>
+        <AppText variant="body" style={[styles.overlayText, styles.instructionBody]}>
+          {copy.cameraCapture.tip}
+        </AppText>
+      </View>
+
+      {/* The reference's large rounded camera card with viewfinder-style
+          corner brackets (an aiming-reticle look) and a subtle scan-line
+          accent — deliberately simple decoration, not a document-edge
+          detector (spec F-007 explicitly rules that out for the MVP). */}
+      <View style={styles.cameraCard}>
+        <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" flash={flash} />
+        <View style={styles.scanLine} pointerEvents="none" />
+        <View style={[styles.bracket, styles.bracketTopLeft]} pointerEvents="none" />
+        <View style={[styles.bracket, styles.bracketTopRight]} pointerEvents="none" />
+        <View style={[styles.bracket, styles.bracketBottomLeft]} pointerEvents="none" />
+        <View style={[styles.bracket, styles.bracketBottomRight]} pointerEvents="none" />
+      </View>
+
+      <View style={styles.bottomBar}>
+        <View style={styles.bottomBarSide}>
+          <AppButton
+            variant="secondary"
+            label={copy.cameraCapture.galleryAction}
+            onPress={pickFromGallery}
           />
-          <Pressable
-            onPress={() =>
-              setFlash(FLASH_CYCLE[(FLASH_CYCLE.indexOf(flash) + 1) % FLASH_CYCLE.length]!)
-            }
-            accessibilityRole="button"
-            hitSlop={8}
-            style={styles.flashButton}
-          >
-            <AppText style={styles.overlayText}>{FLASH_LABEL[flash]}</AppText>
-          </Pressable>
         </View>
-
-        <View style={styles.guideFrame} pointerEvents="none" />
-
-        <View style={styles.bottomBar}>
-          <AppText style={[styles.overlayText, styles.centerText]}>
-            {copy.cameraCapture.instruction}
-          </AppText>
-          <AppText variant="caption" style={[styles.overlayText, styles.centerText]}>
-            {copy.cameraCapture.tip}
-          </AppText>
-          <View style={styles.controls}>
-            <AppButton
-              variant="secondary"
-              label={copy.cameraCapture.galleryAction}
-              onPress={pickFromGallery}
-            />
-            <Pressable
-              onPress={handleCapture}
-              accessibilityRole="button"
-              accessibilityLabel={copy.cameraCapture.captureAccessibilityLabel}
-              style={styles.shutter}
-            />
-          </View>
-        </View>
-      </CameraView>
+        {/* The reference's large circular shutter button. */}
+        <Pressable
+          onPress={handleCapture}
+          accessibilityRole="button"
+          accessibilityLabel={copy.cameraCapture.captureAccessibilityLabel}
+          style={styles.shutterOuter}
+        >
+          <View style={styles.shutterInner} />
+        </Pressable>
+        <View style={styles.bottomBarSide} />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
+  screen: { flex: 1, backgroundColor: overlay.background },
   spacedBelow: { marginTop: spacing.sm, marginBottom: spacing.lg, gap: spacing.sm },
   fallbacks: { marginTop: spacing.xl, gap: spacing.xs },
   overlayText: { color: overlay.text },
@@ -163,33 +184,88 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: overlay.scrim,
   },
-  guideFrame: {
+  instructionBlock: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+    gap: spacing.xs,
+  },
+  instructionBody: {
+    opacity: 0.85,
+  },
+  cameraCard: {
     flex: 1,
-    marginHorizontal: spacing.xxl,
+    marginHorizontal: spacing.lg,
     marginBottom: spacing.lg,
-    borderWidth: 2,
+    borderRadius: radius.xl,
+    overflow: 'hidden',
+    backgroundColor: '#000000',
+  },
+  scanLine: {
+    position: 'absolute',
+    left: spacing.xl,
+    right: spacing.xl,
+    top: '45%',
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    borderRadius: radius.pill,
+  },
+  bracket: {
+    position: 'absolute',
+    width: 32,
+    height: 32,
     borderColor: overlay.frame,
-    borderRadius: radius.md,
-    borderStyle: 'dashed',
+  },
+  bracketTopLeft: {
+    top: spacing.lg,
+    left: spacing.lg,
+    borderTopWidth: 3,
+    borderLeftWidth: 3,
+    borderTopLeftRadius: radius.sm,
+  },
+  bracketTopRight: {
+    top: spacing.lg,
+    right: spacing.lg,
+    borderTopWidth: 3,
+    borderRightWidth: 3,
+    borderTopRightRadius: radius.sm,
+  },
+  bracketBottomLeft: {
+    bottom: spacing.lg,
+    left: spacing.lg,
+    borderBottomWidth: 3,
+    borderLeftWidth: 3,
+    borderBottomLeftRadius: radius.sm,
+  },
+  bracketBottomRight: {
+    bottom: spacing.lg,
+    right: spacing.lg,
+    borderBottomWidth: 3,
+    borderRightWidth: 3,
+    borderBottomRightRadius: radius.sm,
   },
   bottomBar: {
-    padding: spacing.lg,
-    gap: spacing.sm,
-    backgroundColor: overlay.scrim,
-  },
-  centerText: { textAlign: 'center' },
-  controls: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
   },
-  shutter: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: overlay.text,
+  bottomBarSide: {
+    flex: 1,
+  },
+  shutterOuter: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     borderWidth: 4,
     borderColor: overlay.frame,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shutterInner: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: overlay.text,
   },
 });

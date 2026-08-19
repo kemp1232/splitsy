@@ -1,8 +1,9 @@
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, Image, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
@@ -120,7 +121,7 @@ export default function PreviewScreen() {
             sparingly, on receipt-related surfaces) — this is the photo of the
             actual receipt, the most literal place for it in the app. */}
         <View style={styles.imageCard}>
-          <Image source={{ uri }} style={styles.image} resizeMode="contain" />
+          <Image source={{ uri }} style={styles.image} contentFit="contain" />
         </View>
         <ReceiptTornEdge color={colors.surfaceMuted} borderColor={colors.border} />
       </View>
