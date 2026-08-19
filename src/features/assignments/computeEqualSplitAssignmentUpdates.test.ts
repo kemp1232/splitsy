@@ -28,6 +28,7 @@ function makeParticipant(id: string): Participant {
     sortOrder: 0,
     name: `Participant ${id}`,
     contributedCentavos: 0,
+    tripParticipantId: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   };

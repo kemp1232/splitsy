@@ -51,10 +51,59 @@ export const copy = {
     // fourth entry point alongside the original three.
     quickSplitTitle: 'Split evenly',
     quickSplitDescription: 'Skip the receipt — enter a total and split it equally.',
+    // Not from the spec — the Trip feature's fifth entry point (see the
+    // 2026-08-18 spec Amendment and PLAN.md's "Post-MVP feature: Trips"
+    // entry): a fork into /trip/new rather than a single bill, deliberately
+    // placed on this same chooser screen instead of a second floating action
+    // (FloatingActionButton.tsx's own header comment is explicit that this
+    // app has exactly one floating action).
+    tripTitle: 'Start a trip',
+    tripDescription: 'Split several bills for the same trip with one shared list of people.',
     backConfirmHeading: 'Leave this bill?',
     backConfirmBody: 'Your progress has not been saved yet.',
     stayAction: 'Keep editing',
     leaveAction: 'Leave',
+  },
+
+  // Not from the spec — the Trip feature's own screens: trip creation
+  // (/trip/new) and the trip hub (/trip/[tripId]) (see the 2026-08-18 spec
+  // Amendment above docs/Splitsy_MVP_Spec.md's line 53, and PLAN.md's
+  // "Post-MVP feature: Trips" entry). Mirrors this file's existing
+  // participants/participantEditor naming pattern, since a trip's roster
+  // editor reuses the exact same add/remove/duplicate-name UX.
+  trip: {
+    newHeading: 'Start a trip',
+    newBody:
+      'Add everyone sharing this trip. Every bill you scan into it will start with this same list of people.',
+    nameLabel: 'Trip name (optional)',
+    namePlaceholder: 'Example: Baguio weekend',
+    rosterHeading: "Who's on this trip?",
+    addAction: 'Add person',
+    quickAddMe: 'Add me',
+    minimumError: 'Add at least 2 people to continue.',
+    emptyHeading: 'No one added yet',
+    emptyBody: 'Add everyone sharing this trip to get started.',
+    removeConfirmHeading: 'Remove {name} from this trip?',
+    removeConfirmBody:
+      'They will no longer be added automatically to bills you scan into this trip.',
+    removeAction: 'Remove person',
+    startTripAction: 'Start trip',
+    unknownTripTitle: 'Untitled trip',
+    activeBadge: 'Active',
+    settledBadge: 'Settled',
+    billCountLabel: '{count} bills',
+    rosterSectionTitle: 'Trip roster',
+    billsSectionTitle: 'Bills in this trip',
+    tripTotalLabel: 'Completed so far',
+    scanNextBillAction: 'Scan next bill',
+    chooseFromGalleryAction: 'Choose from photos',
+    settleUpAction: 'Settle up',
+    emptyBillsHeading: 'No bills yet',
+    emptyBillsBody: 'Scan your first receipt to start this trip.',
+    deleteTripAction: 'Delete trip',
+    deleteConfirmHeading: 'Delete this trip?',
+    deleteConfirmBody:
+      'This permanently removes the trip and all {count} bills in it, including their receipt images.',
   },
 
   // Not from the spec — the quick-split entry screen (see PLAN.md's
@@ -346,6 +395,24 @@ export const copy = {
     collectedLabel: '{collected} of {total} collected',
   },
 
+  // Not from the spec — the Trip feature's combined multi-bill settlement
+  // screen (/trip/[tripId]/settlement), aggregating every COMPLETED bill in a
+  // trip into one "who owes who" via computeTripSettlement.ts (see the
+  // 2026-08-18 spec Amendment and PLAN.md's "Post-MVP feature: Trips" entry).
+  // Reuses `settlement.owesLabel`/`allSettled`/`collectedLabel` and
+  // `summary.participantOwes`/`payments.progressPaidInFull`/
+  // `progressPartial` as-is (SettlementCard/the per-person balance card below
+  // are generic over whose id they're showing), rather than duplicating that
+  // same generic copy under a second name.
+  tripSettlement: {
+    heading: 'Trip settlement',
+    tripTotalLabel: 'Trip total',
+    emptyHeading: 'Nothing to settle yet',
+    emptyBody: 'Complete at least one bill in this trip to see a combined settlement.',
+    markSettledAction: 'Mark trip settled',
+    settledToast: 'Trip marked as settled.',
+  },
+
   // Section 13.18 — Summary
   summary: {
     heading: "Everyone's share",
@@ -379,6 +446,10 @@ export const copy = {
     deleteConfirmHeading: 'Delete this bill?',
     deleteConfirmBody:
       'This permanently removes the bill, its receipt image, and everyone’s shares from this device.',
+    // Not from the spec — the Trip feature addition (see the 2026-08-18 spec
+    // Amendment): shown only when this bill's `tripId` is set, linking back
+    // to the trip hub.
+    tripLinkLabel: 'Part of trip: {name}',
   },
 
   // Section 13.20 — Settings

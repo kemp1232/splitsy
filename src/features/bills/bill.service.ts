@@ -22,7 +22,10 @@ import type { ParsedReceipt } from '@/features/receipt-parser/receiptParser.type
 import { nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
 
-type CreateDraftBillInput = {
+// Exported so trip.service.ts's createBillInTrip (a new sibling of
+// createDraftBill below, not a modification of it) can accept the exact same
+// input shape.
+export type CreateDraftBillInput = {
   entryMethod: NewBill['entryMethod'];
   receiptImageUri?: string;
   originalReceiptImageUri?: string;

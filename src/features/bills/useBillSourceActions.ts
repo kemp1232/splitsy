@@ -1,16 +1,28 @@
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Alert } from 'react-native';
 
 import { copy } from '@/constants/copy';
+import { createBillInTrip } from '@/features/trips/trip.service';
 
 import { createDraftBill } from './bill.service';
+
+type BillSourceActionsParams = {
+  // Trip feature addition (not from the numbered MVP spec): when this hook
+  // is reached from a trip's "add bill" entry point, /bill/new and
+  // /bill/capture (this hook's two callers) both forward their own
+  // `tripId` route param down to here unchanged, the same way
+  // /bill/preview already threads `imageUri`/`entryMethod` through
+  // router.push/useLocalSearchParams.
+  tripId?: string;
+};
 
 // Shared by /bill/new (primary entry points) and /bill/capture (fallbacks off
 // the camera-permission screen) so the gallery-pick and manual-start logic
 // only exists once.
 export function useBillSourceActions() {
   const router = useRouter();
+  const { tripId } = useLocalSearchParams<BillSourceActionsParams>();
 
   async function pickFromGallery() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -29,13 +41,17 @@ export function useBillSourceActions() {
 
     router.push({
       pathname: '/bill/preview',
-      params: { imageUri: asset.uri, entryMethod: 'GALLERY' },
+      // Forwards tripId (if any) on to /bill/preview so its own
+      // "Use this photo" action can create the bill inside the same trip.
+      params: { imageUri: asset.uri, entryMethod: 'GALLERY', ...(tripId ? { tripId } : {}) },
     });
   }
 
   async function startManual() {
     try {
-      const bill = await createDraftBill({ entryMethod: 'MANUAL' });
+      const bill = tripId
+        ? await createBillInTrip(tripId, { entryMethod: 'MANUAL' })
+        : await createDraftBill({ entryMethod: 'MANUAL' });
       router.replace(`/bill/${bill.id}/receipt-review`);
     } catch {
       // Matches this hook's own two other failure paths above (permission

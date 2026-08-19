@@ -4,6 +4,7 @@ import { Alert, FlatList, RefreshControl, Share, StyleSheet, View } from 'react-
 
 import { BillListItem } from '@/components/bill/BillListItem';
 import { BillOverflowSheet } from '@/components/bill/BillOverflowSheet';
+import { TripListItem } from '@/components/trip/TripListItem';
 import { AppText } from '@/components/ui/AppText';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -21,6 +22,8 @@ import { billsRepository } from '@/db/repositories/bills.repository';
 import { itemAssignmentsRepository } from '@/db/repositories/itemAssignments.repository';
 import { lineItemsRepository } from '@/db/repositories/lineItems.repository';
 import { participantsRepository } from '@/db/repositories/participants.repository';
+import type { TripWithBillCount } from '@/db/repositories/trips.repository';
+import { tripsRepository } from '@/db/repositories/trips.repository';
 import {
   buildSplitAdjustments,
   buildSplitLineItems,
@@ -35,6 +38,52 @@ import { nowIso } from '@/lib/date';
 import { spacing } from '@/theme/tokens';
 
 type LoadState = 'loading' | 'ready' | 'error';
+
+// Trip feature addition (not from the numbered MVP spec, see the 2026-08-18
+// spec Amendment): a home-list row is either a bill or a trip, interleaved by
+// `updatedAt` (spec F-002's own "newest first" rule extended to cover both
+// kinds of row) rather than shown in two separate sections/tabs — the
+// lowest-disruption way to surface trips alongside bills in this same list
+// (see the recently-finished dark-mode revamp's IA, which this deliberately
+// doesn't reshape with a new tab/segment).
+type HomeEntry =
+  | { kind: 'bill'; data: BillWithParticipantCount }
+  | { kind: 'trip'; data: TripWithBillCount; totalCentavos: number };
+
+function getEntryUpdatedAt(entry: HomeEntry): string {
+  return entry.kind === 'bill' ? entry.data.bill.updatedAt : entry.data.trip.updatedAt;
+}
+
+// ISO 8601 timestamps (nowIso()'s own format) sort correctly as plain
+// strings, so this never needs to parse a Date to compare two entries.
+function sortHomeEntriesNewestFirst(entries: HomeEntry[]): HomeEntry[] {
+  return [...entries].sort((a, b) => (getEntryUpdatedAt(a) < getEntryUpdatedAt(b) ? 1 : -1));
+}
+
+// Same lighter-weight sum the trip hub screen uses for its own running total
+// (see src/app/trip/[tripId]/index.tsx's own copy of this function) — kept as
+// its own colocated copy rather than shared, matching this codebase's
+// existing precedent of not sharing fetch/calculation functions across
+// screens.
+async function computeTripTotalCentavos(tripId: string): Promise<number> {
+  const bills = await billsRepository.listByTripId(tripId);
+  const completedBills = bills.filter((entry) => entry.bill.status === 'COMPLETED');
+  const totals = await Promise.all(
+    completedBills.map(async ({ bill }) => {
+      const [items, adjustments] = await Promise.all([
+        lineItemsRepository.listByBillId(bill.id),
+        adjustmentsRepository.listByBillId(bill.id),
+      ]);
+      const itemSubtotal = items.reduce((sum, item) => sum + item.lineTotalCentavos, 0);
+      const adjustmentTotal = adjustments.reduce(
+        (sum, adjustment) => sum + adjustment.amountCentavos,
+        0,
+      );
+      return itemSubtotal + adjustmentTotal;
+    }),
+  );
+  return totals.reduce((sum, total) => sum + total, 0);
+}
 
 // Spec section 15's draft-progression rule (resolveNextRoute.ts), fed with
 // exactly the DRAFT-bill content it needs — the same repositories the
@@ -131,7 +180,7 @@ async function buildShareTextForBill(bill: Bill): Promise<string> {
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [entries, setEntries] = useState<BillWithParticipantCount[]>([]);
+  const [entries, setEntries] = useState<HomeEntry[]>([]);
   const [state, setState] = useState<LoadState>('loading');
   const [refreshing, setRefreshing] = useState(false);
   const [overflowBill, setOverflowBill] = useState<Bill | null>(null);
@@ -139,19 +188,57 @@ export default function HomeScreen() {
 
   const load = useCallback(async () => {
     try {
-      const rows = await billsRepository.listAllWithParticipantCounts();
-      setEntries(rows);
+      const [billRows, tripRows] = await Promise.all([
+        billsRepository.listAllWithParticipantCounts(),
+        tripsRepository.listAllWithBillCounts(),
+      ]);
+
+      const billEntries: HomeEntry[] = billRows.map((row) => ({
+        kind: 'bill' as const,
+        data: row,
+      }));
+      const tripEntries: HomeEntry[] = await Promise.all(
+        tripRows.map(async (row) => ({
+          kind: 'trip' as const,
+          data: row,
+          totalCentavos: row.billCount > 0 ? await computeTripTotalCentavos(row.trip.id) : 0,
+        })),
+      );
+
+      setEntries(sortHomeEntriesNewestFirst([...billEntries, ...tripEntries]));
       setState('ready');
     } catch {
       setState('error');
     }
   }, []);
 
+  // Deliberately not `useEffect(() => { load(); }, [load])` — calling the
+  // shared `load` callback (also used by handleRefresh below) directly inside
+  // an effect trips the react-hooks/set-state-in-effect lint rule. This
+  // inline IIFE with its own independent try/catch is this codebase's
+  // existing convention for a screen's first load (see e.g. the trip hub/
+  // settlement screens' own copies of this same shape).
   useEffect(() => {
     (async () => {
       try {
-        const rows = await billsRepository.listAllWithParticipantCounts();
-        setEntries(rows);
+        const [billRows, tripRows] = await Promise.all([
+          billsRepository.listAllWithParticipantCounts(),
+          tripsRepository.listAllWithBillCounts(),
+        ]);
+
+        const billEntries: HomeEntry[] = billRows.map((row) => ({
+          kind: 'bill' as const,
+          data: row,
+        }));
+        const tripEntries: HomeEntry[] = await Promise.all(
+          tripRows.map(async (row) => ({
+            kind: 'trip' as const,
+            data: row,
+            totalCentavos: row.billCount > 0 ? await computeTripTotalCentavos(row.trip.id) : 0,
+          })),
+        );
+
+        setEntries(sortHomeEntriesNewestFirst([...billEntries, ...tripEntries]));
         setState('ready');
       } catch {
         setState('error');
@@ -310,16 +397,26 @@ export default function HomeScreen() {
       ) : (
         <FlatList
           data={entries}
-          keyExtractor={(entry) => entry.bill.id}
+          keyExtractor={(entry) =>
+            entry.kind === 'bill' ? `bill-${entry.data.bill.id}` : `trip-${entry.data.trip.id}`
+          }
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-          renderItem={({ item }) => (
-            <BillListItem
-              entry={item}
-              onPress={() => handleOpenBill(item.bill)}
-              onOverflowPress={() => setOverflowBill(item.bill)}
-            />
-          )}
+          renderItem={({ item }) =>
+            item.kind === 'bill' ? (
+              <BillListItem
+                entry={item.data}
+                onPress={() => handleOpenBill(item.data.bill)}
+                onOverflowPress={() => setOverflowBill(item.data.bill)}
+              />
+            ) : (
+              <TripListItem
+                entry={item.data}
+                totalCentavos={item.totalCentavos}
+                onPress={() => router.push(`/trip/${item.data.trip.id}`)}
+              />
+            )
+          }
           ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
       )}
