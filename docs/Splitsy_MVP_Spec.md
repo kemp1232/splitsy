@@ -50,6 +50,20 @@
 
 ---
 
+> ## ⚠ Amendment — 2026-08-18
+>
+> **Splitsy now supports "Trips" — a group of multiple bills sharing one default participant roster and a single combined settlement.** This is a deliberate, user-directed scope expansion beyond §25's "Recurring groups," which explicitly listed multi-bill grouping as "Not for MVP Implementation." Same treatment as every amendment above: flagged here, not silently added.
+>
+> - A trip has its own roster (`tripParticipants`) that auto-fills every bill scanned into it — skipping the Participants step per bill — while still allowing a specific bill to add or remove someone just for itself (§9.3's participant model gains an optional link back to a trip roster row; no existing participant behavior changes for a standalone bill).
+> - Settlement is no longer necessarily one-bill-at-a-time: a trip's "Settle up" screen aggregates every COMPLETED bill's fair shares and contributions per person into one combined "who owes who," reusing the existing settlement math (`computeSettlement`) unchanged — only the aggregation step feeding it is new.
+> - §10 (Money and Splitting Rules) is otherwise untouched: each bill is still computed and reconciled independently (§10.7's invariant, §10.8's discrepancy handling) exactly as before; a trip only sums already-correct per-bill results afterward, it never recomputes or blends items/adjustments across bills.
+>
+> **What did not change:** no accounts, no cloud sync, no participant-side interaction — a trip's roster is still just names typed into this one device, same as a bill's participants always were. Every existing bill (standalone, not in a trip) behaves exactly as this spec already describes; a trip is additive, not a replacement for the single-bill flow.
+>
+> Full rationale and implementation details are logged in `PLAN.md`'s "Post-MVP feature: Trips" entry.
+
+---
+
 ## 1. Product Summary
 
 Splitsy lets a user photograph or upload a receipt, review the detected items, add the people sharing the bill, assign items to one or more people, divide taxes and other adjustments, and generate an exact per-person breakdown.

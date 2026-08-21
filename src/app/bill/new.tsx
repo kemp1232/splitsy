@@ -65,6 +65,11 @@ export default function NewBillScreen() {
           description={copy.newBill.quickSplitDescription}
           onPress={() => router.push('/bill/quick-split')}
         />
+        <SourceOption
+          title={copy.newBill.tripTitle}
+          description={copy.newBill.tripDescription}
+          onPress={() => router.push('/trip/new')}
+        />
       </View>
     </Screen>
   );

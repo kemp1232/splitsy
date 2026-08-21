@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { InitialsAvatar } from '@/components/ui/InitialsAvatar';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { copy } from '@/constants/copy';
@@ -36,7 +37,11 @@ type Props = {
 // letting more than one stay open at once (rather than an accordion that
 // force-closes the others) is both simpler to implement and more useful for
 // comparing two people's breakdowns side by side.
-export function PersonTotalCard({
+// Memoized (RN perf rule): one of these renders per participant on the
+// Summary/saved-bill-detail screens, and this card's own expand/collapse
+// state is entirely local — it shouldn't re-render just because an unrelated
+// sibling card toggled or a parent-level toast/error state changed.
+export const PersonTotalCard = memo(function PersonTotalCard({
   name,
   finalTotalCentavos,
   itemShares,
@@ -56,6 +61,11 @@ export function PersonTotalCard({
         accessibilityState={{ expanded }}
         style={styles.header}
       >
+        {/* Reference row shape: avatar + name + trailing amount, with the
+            progress bar directly underneath (rendered just below this
+            Pressable) — InitialsAvatar substitutes for the reference's photo
+            avatar (see that component's own header note). */}
+        <InitialsAvatar name={name} size={36} />
         <View style={styles.headerText}>
           <AppText variant="subheading">
             {copy.summary.participantOwes.replace('{name}', name)}
@@ -137,7 +147,7 @@ export function PersonTotalCard({
       ) : null}
     </SectionCard>
   );
-}
+});
 
 const styles = StyleSheet.create({
   header: {

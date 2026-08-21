@@ -1,6 +1,7 @@
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Image, Modal, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Modal, ScrollView, Share, StyleSheet, View } from 'react-native';
 
 import { PersonTotalCard } from '@/components/bill/PersonTotalCard';
 import { SettlementCard } from '@/components/bill/SettlementCard';
@@ -27,6 +28,7 @@ import type { LineItem } from '@/db/repositories/lineItems.repository';
 import { lineItemsRepository } from '@/db/repositories/lineItems.repository';
 import type { Participant } from '@/db/repositories/participants.repository';
 import { participantsRepository } from '@/db/repositories/participants.repository';
+import { tripsRepository } from '@/db/repositories/trips.repository';
 import {
   buildSplitAdjustments,
   buildSplitLineItems,
@@ -125,6 +127,13 @@ export default function SavedBillDetailScreen() {
   const [shareError, setShareError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Trip feature addition (not from the numbered MVP spec, see the
+  // 2026-08-18 spec Amendment): set only when this bill's `tripId` is not
+  // null, so the "Part of trip: {name}" link below only ever appears for a
+  // bill scanned into a trip. Read from the trip row itself (never the
+  // bill's own tripId route param — spec section 7's "never make navigation
+  // route params the source of truth").
+  const [tripLink, setTripLink] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -133,6 +142,13 @@ export default function SavedBillDetailScreen() {
         if (!data.billRow) {
           setState('error');
           return;
+        }
+
+        if (data.billRow.tripId) {
+          const trip = await tripsRepository.getById(data.billRow.tripId);
+          if (trip) {
+            setTripLink({ id: trip.id, name: trip.name ?? copy.trip.unknownTripTitle });
+          }
         }
 
         const splitParticipants = data.participantRows.map((participant) => ({
@@ -333,6 +349,18 @@ export default function SavedBillDetailScreen() {
               tone={reconciliation.matches ? 'success' : 'warning'}
             />
           ) : null}
+
+          {tripLink ? (
+            // Deliberately obvious (secondary, full-width) — matches
+            // Summary's own backToTripAction button, since this is the
+            // screen "Finish and save" lands on and the user wants this
+            // just as visible after saving as before.
+            <AppButton
+              variant="secondary"
+              label={copy.savedBillDetail.tripLinkLabel.replace('{name}', tripLink.name)}
+              onPress={() => router.push(`/trip/${tripLink.id}`)}
+            />
+          ) : null}
         </View>
 
         <View style={styles.actionsRow}>
@@ -418,7 +446,7 @@ export default function SavedBillDetailScreen() {
             <Image
               source={{ uri: bill.receiptImageUri }}
               style={styles.receiptImage}
-              resizeMode="contain"
+              contentFit="contain"
               accessibilityLabel={copy.savedBillDetail.receiptAction}
             />
           ) : null}

@@ -21,10 +21,11 @@ export const copy = {
     overflowShare: 'Share summary',
     overflowDelete: 'Delete bill',
     overflowAccessibilityLabel: 'More actions',
-    // No exact trigger copy given in spec 13.2's table (the settings entry
-    // point is icon-only) — this is its required screen-reader label (spec
-    // section 17).
-    settingsAccessibilityLabel: 'Settings',
+    // Not from the spec — the visual revamp's reference-inspired "Recent"
+    // section label above the bill/trip list (see the visual-revamp task
+    // notes). This list already shows every bill/trip, so unlike the
+    // reference UI there's no accompanying "See all" action.
+    recentSectionTitle: 'Recent',
     // Not spec-mandated exact text (13.2 names the "Delete bill" overflow
     // action only, not its confirmation copy) — same treatment as
     // itemEditor's/adjustmentEditor's/savedBillDetail's own delete-confirmation
@@ -51,10 +52,59 @@ export const copy = {
     // fourth entry point alongside the original three.
     quickSplitTitle: 'Split evenly',
     quickSplitDescription: 'Skip the receipt — enter a total and split it equally.',
+    // Not from the spec — the Trip feature's fifth entry point (see the
+    // 2026-08-18 spec Amendment and PLAN.md's "Post-MVP feature: Trips"
+    // entry): a fork into /trip/new rather than a single bill, deliberately
+    // placed on this same chooser screen instead of a second floating action
+    // (BottomTabBar.tsx's own header comment is explicit that this app has
+    // exactly one floating action, now the tab bar's own center button).
+    tripTitle: 'Start a trip',
+    tripDescription: 'Split several bills for the same trip with one shared list of people.',
     backConfirmHeading: 'Leave this bill?',
     backConfirmBody: 'Your progress has not been saved yet.',
     stayAction: 'Keep editing',
     leaveAction: 'Leave',
+  },
+
+  // Not from the spec — the Trip feature's own screens: trip creation
+  // (/trip/new) and the trip hub (/trip/[tripId]) (see the 2026-08-18 spec
+  // Amendment above docs/Splitsy_MVP_Spec.md's line 53, and PLAN.md's
+  // "Post-MVP feature: Trips" entry). Mirrors this file's existing
+  // participants/participantEditor naming pattern, since a trip's roster
+  // editor reuses the exact same add/remove/duplicate-name UX.
+  trip: {
+    newHeading: 'Start a trip',
+    newBody:
+      'Add everyone sharing this trip. Every bill you scan into it will start with this same list of people.',
+    nameLabel: 'Trip name (optional)',
+    namePlaceholder: 'Example: Baguio weekend',
+    rosterHeading: "Who's on this trip?",
+    addAction: 'Add person',
+    quickAddMe: 'Add me',
+    minimumError: 'Add at least 2 people to continue.',
+    emptyHeading: 'No one added yet',
+    emptyBody: 'Add everyone sharing this trip to get started.',
+    removeConfirmHeading: 'Remove {name} from this trip?',
+    removeConfirmBody:
+      'They will no longer be added automatically to bills you scan into this trip.',
+    removeAction: 'Remove person',
+    startTripAction: 'Start trip',
+    unknownTripTitle: 'Untitled trip',
+    activeBadge: 'Active',
+    settledBadge: 'Settled',
+    billCountLabel: '{count} bills',
+    rosterSectionTitle: 'Trip roster',
+    billsSectionTitle: 'Bills in this trip',
+    tripTotalLabel: 'Completed so far',
+    scanNextBillAction: 'Scan next bill',
+    chooseFromGalleryAction: 'Choose from photos',
+    settleUpAction: 'Settle up',
+    emptyBillsHeading: 'No bills yet',
+    emptyBillsBody: 'Scan your first receipt to start this trip.',
+    deleteTripAction: 'Delete trip',
+    deleteConfirmHeading: 'Delete this trip?',
+    deleteConfirmBody:
+      'This permanently removes the trip and all {count} bills in it, including their receipt images.',
   },
 
   // Not from the spec — the quick-split entry screen (see PLAN.md's
@@ -346,6 +396,33 @@ export const copy = {
     collectedLabel: '{collected} of {total} collected',
   },
 
+  // Not from the spec — the Trip feature's combined multi-bill settlement
+  // screen (/trip/[tripId]/settlement), aggregating every COMPLETED bill in a
+  // trip into one "who owes who" via computeTripSettlement.ts (see the
+  // 2026-08-18 spec Amendment and PLAN.md's "Post-MVP feature: Trips" entry).
+  // Reuses `settlement.owesLabel`/`allSettled`/`collectedLabel` and
+  // `summary.participantOwes`/`payments.progressPaidInFull`/
+  // `progressPartial` as-is (SettlementCard/the per-person balance card below
+  // are generic over whose id they're showing), rather than duplicating that
+  // same generic copy under a second name.
+  tripSettlement: {
+    heading: 'Trip settlement',
+    tripTotalLabel: 'Trip total',
+    emptyHeading: 'Nothing to settle yet',
+    emptyBody: 'Complete at least one bill in this trip to see a combined settlement.',
+    markSettledAction: 'Mark trip settled',
+    settledToast: 'Trip marked as settled.',
+    // Not from the spec — Trip feature addition: each person's card can
+    // expand to show every item they're assigned to across the trip's bills.
+    viewItemsAction: 'View items',
+    hideItemsAction: 'Hide items',
+    // Appended to a shared item's name, e.g. "Nachos (split with Sam, Jo)" —
+    // named co-assignees, not just a generic "(shared)" suffix, since this
+    // view spans multiple bills where "shared" alone doesn't say with whom.
+    itemSharedWithSuffix: 'split with {names}',
+    paidLabel: 'Paid',
+  },
+
   // Section 13.18 — Summary
   summary: {
     heading: "Everyone's share",
@@ -363,6 +440,12 @@ export const copy = {
     copiedToast: 'Breakdown copied.',
     savedToast: 'Bill saved.',
     shareFailure: "We couldn't open the share menu. Try copying the breakdown instead.",
+    // Not from the spec — Trip feature addition (see the 2026-08-18 spec
+    // Amendment). Deliberately a prominent secondary button, matching
+    // savedBillDetail.tripLinkLabel's same treatment on the screen "Finish
+    // and save" lands on — obvious both before and after saving, not just
+    // on Summary.
+    backToTripAction: 'Back to {name}',
   },
 
   // Section 13.19 — Saved bill detail
@@ -379,6 +462,13 @@ export const copy = {
     deleteConfirmHeading: 'Delete this bill?',
     deleteConfirmBody:
       'This permanently removes the bill, its receipt image, and everyone’s shares from this device.',
+    // Not from the spec — the Trip feature addition (see the 2026-08-18 spec
+    // Amendment): shown only when this bill's `tripId` is set, linking back
+    // to the trip hub. This is the screen "Finish and save" lands on, so the
+    // wording/prominence deliberately matches summary.backToTripAction below
+    // rather than reading as a passive info label — the user wants this
+    // obvious both before and after saving, not just on Summary.
+    tripLinkLabel: 'Back to {name}',
   },
 
   // Section 13.20 — Settings
@@ -410,6 +500,19 @@ export const copy = {
     versionLabel: 'Version',
     aboutSection: 'About Splitsy',
     aboutBody: 'Scan a receipt, assign the items, and split the total clearly.',
+  },
+
+  // Not from the spec — the persistent bottom tab bar (Home/Settings plus a
+  // floating "+" for starting a new bill/trip) added on top of the spec's own
+  // per-screen header navigation. Scope deliberately reduced from the
+  // reference UI this was modeled on (which shows four tabs) to just these
+  // two real destinations, confirmed directly by the user.
+  nav: {
+    homeTab: 'Home',
+    settingsTab: 'Settings',
+    // The center "+" button's accessibility label deliberately reuses
+    // copy.home.primaryAction ('New bill') below rather than duplicating a
+    // near-identical string here — see BottomTabBar.tsx's own usage.
   },
 
   // Section 14 — global

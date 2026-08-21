@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
@@ -15,7 +15,9 @@ type Props = {
   onPress?: () => void;
 };
 
-export function ParticipantChip({ name, selected, onPress }: Props) {
+// Memoized (RN perf rule) — rendered in a loop wherever a bill's/trip's
+// participant list is shown as chips.
+export const ParticipantChip = memo(function ParticipantChip({ name, selected, onPress }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const isInteractive = typeof onPress === 'function';
@@ -40,7 +42,7 @@ export function ParticipantChip({ name, selected, onPress }: Props) {
       </AppText>
     </Pressable>
   );
-}
+});
 
 function createStyles(colors: ColorTokens) {
   return StyleSheet.create({

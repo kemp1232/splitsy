@@ -15,9 +15,15 @@ type Props = {
   variant?: Variant;
   disabled?: boolean;
   loading?: boolean;
+  // Opts this button into the reference UI's fully-rounded "pill" shape
+  // (radius.pill instead of the usual radius.md) for the app's most
+  // prominent bottom-of-screen primary actions (e.g. "Settle up", "Finish
+  // and save") — left off by default so every other button keeps its
+  // existing, less attention-grabbing corner radius.
+  pill?: boolean;
 };
 
-export function AppButton({ label, onPress, variant = 'primary', disabled, loading }: Props) {
+export function AppButton({ label, onPress, variant = 'primary', disabled, loading, pill }: Props) {
   const { colors, scheme } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const isDisabled = disabled || loading;
@@ -31,6 +37,7 @@ export function AppButton({ label, onPress, variant = 'primary', disabled, loadi
       style={({ pressed }) => [
         styles.base,
         styles[variant],
+        pill && styles.pill,
         pressed && !isDisabled && pressedStyles(colors, scheme)[variant],
         isDisabled && styles.disabled,
       ]}
@@ -64,6 +71,9 @@ function createStyles(colors: ColorTokens) {
     },
     disabled: {
       opacity: 0.5,
+    },
+    pill: {
+      borderRadius: radius.pill,
     },
     primary: { backgroundColor: colors.primary },
     secondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primary },

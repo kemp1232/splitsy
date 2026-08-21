@@ -35,7 +35,11 @@ function RootNavigator() {
     <>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
+        {/* The (tabs) group owns Home (`/`) and Settings (`/settings`) behind
+            its own persistent bottom bar (BottomTabBar.tsx) — every other
+            screen below is pushed on top of it as a normal full-screen stack
+            route, so none of them show that bar. */}
+        <Stack.Screen name="(tabs)" />
       </Stack>
     </>
   );

@@ -1,8 +1,9 @@
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, Image, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
@@ -13,6 +14,7 @@ import { copy } from '@/constants/copy';
 import type { NewBill } from '@/db/repositories/bills.repository';
 import { createDraftBill } from '@/features/bills/bill.service';
 import { copyImageToAppStorage } from '@/features/receipt-capture/receiptImage.service';
+import { createBillInTrip } from '@/features/trips/trip.service';
 import type { ColorTokens } from '@/theme/tokens';
 import { radius, spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -20,6 +22,12 @@ import { useTheme } from '@/theme/ThemeProvider';
 type PreviewParams = {
   imageUri: string;
   entryMethod: NewBill['entryMethod'];
+  // Trip feature addition (not from the numbered MVP spec): forwarded here by
+  // useBillSourceActions.ts's pickFromGallery (and, for the camera path, by
+  // /bill/capture) the same way imageUri/entryMethod already are. When
+  // present, "Use this photo" below creates the bill inside this trip
+  // instead of as a standalone draft.
+  tripId?: string;
 };
 
 async function rotate90(uri: string): Promise<string> {
@@ -55,11 +63,14 @@ export default function PreviewScreen() {
     setBusy(true);
     try {
       const appUri = await copyImageToAppStorage(uri);
-      const bill = await createDraftBill({
+      const draftInput = {
         entryMethod: params.entryMethod,
         receiptImageUri: appUri,
         originalReceiptImageUri: appUri,
-      });
+      };
+      const bill = params.tripId
+        ? await createBillInTrip(params.tripId, draftInput)
+        : await createDraftBill(draftInput);
       router.replace({ pathname: '/bill/processing', params: { billId: bill.id } });
     } catch {
       Alert.alert(copy.global.genericErrorHeading, copy.global.imageCopyFailure);
@@ -110,7 +121,7 @@ export default function PreviewScreen() {
             sparingly, on receipt-related surfaces) — this is the photo of the
             actual receipt, the most literal place for it in the app. */}
         <View style={styles.imageCard}>
-          <Image source={{ uri }} style={styles.image} resizeMode="contain" />
+          <Image source={{ uri }} style={styles.image} contentFit="contain" />
         </View>
         <ReceiptTornEdge color={colors.surfaceMuted} borderColor={colors.border} />
       </View>

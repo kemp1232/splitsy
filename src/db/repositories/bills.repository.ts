@@ -23,6 +23,22 @@ export const billsRepository = {
     return row;
   },
 
+  // Every bill in one trip (any status), newest first — the Trip feature's
+  // one narrowly-scoped addition to this file (see the trip hub/settlement
+  // screens): everything else in this repository is unchanged. Mirrors
+  // listAllWithParticipantCounts's own join/shape exactly, just scoped down
+  // to a single trip, so callers (BillListItem) can keep working with the
+  // same BillWithParticipantCount shape without a separate query.
+  async listByTripId(tripId: string): Promise<BillWithParticipantCount[]> {
+    return db
+      .select({ bill: bills, participantCount: sql<number>`count(${participants.id})` })
+      .from(bills)
+      .leftJoin(participants, eq(participants.billId, bills.id))
+      .where(eq(bills.tripId, tripId))
+      .groupBy(bills.id)
+      .orderBy(desc(bills.updatedAt));
+  },
+
   async create(bill: NewBill): Promise<Bill> {
     const [row] = await db.insert(bills).values(bill).returning();
     if (!row) throw new Error('Failed to create bill');
