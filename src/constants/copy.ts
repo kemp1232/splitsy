@@ -515,6 +515,132 @@ export const copy = {
     // near-identical string here — see BottomTabBar.tsx's own usage.
   },
 
+  // Not from the spec — the account system added by the 2026-08-25 spec
+  // Amendment (docs/Splitsy_MVP_Spec.md, and PLAN.md's "Post-MVP feature:
+  // Account system (Better Auth)" entry). Section 13 predates this feature,
+  // so there is no exact-copy contract to match here — this copy is
+  // original, following this file's own tone and per-screen grouping
+  // elsewhere. Covers the (auth) route group's four screens
+  // (sign-in/register/forgot-password/reset-password), the root layout's
+  // session-gating states, and the Settings screen's new "Log out" action.
+  auth: {
+    // Sign in — src/app/(auth)/sign-in.tsx
+    signInHeading: 'Sign in to Splitsy',
+    signInBody: 'Sign in to continue splitting bills.',
+    signInButton: 'Sign in',
+    signInNoAccountPrompt: "Don't have an account?",
+    signInRegisterLink: 'Create one',
+    forgotPasswordLink: 'Forgot password?',
+    // Better Auth deliberately returns the same error whether the email
+    // doesn't exist or the password is wrong (spec-parallel to
+    // requestPasswordReset's own "don't reveal whether the email exists"
+    // behavior) — so there is exactly one message to show here, not a
+    // per-cause one.
+    signInInvalidCredentials: 'Incorrect email or password. Try again.',
+    // requireEmailVerification (2026-08-25 security review, Vuln 3) blocks
+    // sign-in with EMAIL_NOT_VERIFIED for a correct password on an
+    // unverified account — a distinct case from signInInvalidCredentials
+    // above, so it gets its own message and a way to recover from it.
+    signInEmailNotVerified: "You'll need to verify your email before signing in.",
+    resendVerificationAction: 'Resend verification email',
+    resendVerificationSentToast: "We've sent another verification email.",
+
+    // Register — src/app/(auth)/register.tsx
+    registerHeading: 'Create your account',
+    registerBody: 'Create an account to start splitting bills.',
+    nameLabel: 'Name',
+    namePlaceholder: 'Example: Alex',
+    registerButton: 'Create account',
+    registerHasAccountPrompt: 'Already have an account?',
+    registerSignInLink: 'Sign in',
+    registerEmailInUse: 'An account with this email already exists.',
+    // Shown instead of the form once sign-up succeeds — requireEmailVerification
+    // means there's no session yet (Better Auth returns `token: null`), so
+    // this screen can't rely on the root layout's session gate to move the
+    // user along the way sign-in.tsx does; it has to say so explicitly.
+    registerCheckEmailHeading: 'Check your email',
+    registerCheckEmailBody:
+      "We've sent a verification link to {email}. Open it on this device to finish creating your account, then sign in.",
+
+    // Forgot password — src/app/(auth)/forgot-password.tsx
+    forgotPasswordHeading: 'Reset your password',
+    forgotPasswordBody:
+      "Enter your account's email and we'll send you a link to reset your password.",
+    sendResetLinkButton: 'Send reset link',
+    // Better Auth's request-password-reset endpoint intentionally doesn't
+    // reveal whether the email exists (same reasoning as
+    // signInInvalidCredentials above) — this copy doesn't imply certainty
+    // either, matching that.
+    forgotPasswordConfirmation: "If that email exists, we've sent a reset link.",
+    backToSignIn: 'Back to sign in',
+
+    // Reset password — src/app/(auth)/reset-password.tsx
+    resetPasswordHeading: 'Choose a new password',
+    resetPasswordBody: 'Enter a new password for your account.',
+    newPasswordLabel: 'New password',
+    confirmPasswordLabel: 'Confirm new password',
+    resetPasswordButton: 'Reset password',
+    resetPasswordSuccessToast: 'Your password has been reset. Sign in with your new password.',
+    resetPasswordInvalidTokenError: 'This reset link is invalid or has expired. Request a new one.',
+    resetPasswordMissingTokenHeading: "This link isn't working",
+    resetPasswordMissingTokenBody:
+      'This reset link is missing information. Request a new one from the forgot password screen.',
+    requestNewLinkAction: 'Request a new link',
+
+    // Verify email — src/app/(auth)/verify-email.tsx. Reached the same way
+    // reset-password.tsx is: an emailed link deep-links back into the app.
+    // Unlike reset-password, this screen never makes its own API call — the
+    // verification itself already happened server-side on the request the
+    // email client's browser/webview followed to get here (see
+    // server/src/auth.ts's own comment on why autoSignInAfterVerification is
+    // off) — this screen just reports what already happened and points the
+    // user at sign-in.
+    verifyEmailSuccessHeading: 'Email verified',
+    verifyEmailSuccessBody: 'Your email is verified. You can now sign in.',
+    verifyEmailErrorHeading: "This link isn't working",
+    verifyEmailErrorBody: 'This verification link is invalid or has expired. Request a new one.',
+    verifyEmailGoToSignIn: 'Go to sign in',
+
+    // Shared field labels/placeholders/validation errors, used across more
+    // than one of the four screens above.
+    emailLabel: 'Email',
+    emailPlaceholder: 'you@example.com',
+    passwordLabel: 'Password',
+    requiredEmailError: 'Enter your email.',
+    invalidEmailError: 'Enter a valid email address.',
+    requiredPasswordError: 'Enter your password.',
+    requiredNameError: 'Enter your name.',
+    nameTooLongError: 'Use 80 characters or fewer.',
+    passwordTooShortError: 'Password must be at least {minLength} characters.',
+    passwordTooLongError: 'Password must be {maxLength} characters or fewer.',
+    passwordMismatchError: "Passwords don't match.",
+    // Distinct from copy.global.genericErrorBody, which explicitly mentions
+    // "Your saved bills are still on this device" — not applicable before a
+    // session even exists.
+    genericAuthError: 'Something went wrong. Try again.',
+    networkError: "We couldn't reach Splitsy. Check your connection and try again.",
+
+    // Session gating — src/app/_layout.tsx. Shown when authClient.useSession()
+    // itself fails (e.g. the auth backend is unreachable) — distinct from
+    // backendNotConfigured below, which is a build-time misconfiguration, not
+    // a runtime/network failure.
+    sessionCheckFailedHeading: "Can't check your sign-in status",
+    sessionCheckFailedBody:
+      "We couldn't reach Splitsy's sign-in server. Check your connection and try again.",
+
+    // Missing EXPO_PUBLIC_AUTH_BACKEND_URL — src/app/_layout.tsx. Unlike OCR's
+    // backend URL, there is no fallback for auth (2026-08-25 spec Amendment),
+    // so this is a hard, visible startup error rather than a silent skip.
+    backendNotConfiguredHeading: 'Splitsy is not set up yet',
+    backendNotConfiguredBody:
+      'This build is missing its sign-in server address (EXPO_PUBLIC_AUTH_BACKEND_URL). Contact the developer or check the project setup.',
+
+    // Log out — src/app/(tabs)/settings.tsx
+    accountSection: 'Account',
+    logOutAction: 'Log out',
+    logOutFailure: "We couldn't log you out. Check your connection and try again.",
+  },
+
   // Section 14 — global
   global: {
     genericErrorHeading: 'Something went wrong',

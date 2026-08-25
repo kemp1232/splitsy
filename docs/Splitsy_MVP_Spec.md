@@ -64,6 +64,20 @@
 
 ---
 
+> ## ⚠ Amendment — 2026-08-25
+>
+> **Splitsy now has an account system — email/password sign-in, required to use the app.** This is a materially different kind of change than every amendment above: those each crossed one specific, named boundary (an LLM in the OCR pipeline, a paid cloud vendor); this one crosses the MVP principle stated on line 9 of this document itself — *"Local-first, private, usable offline"* — and §2.2's explicit "User accounts, authentication, or authorization" exclusion. Flagged here at the user's own explicit, deliberate direction, exactly like every prior amendment, not silently absorbed — but called out more strongly because it changes what kind of app this is, not just what one feature does.
+>
+> - `server/` gains its first real database (SQLite, via Better Auth's own storage) and now runs [Better Auth](https://www.better-auth.com) for registration, email/password login, and password reset. Reset emails are sent through Resend.
+> - The client adds a `(auth)` route group (sign in / register / forgot password / reset password) and gates every other screen behind an active session — the app now opens to a sign-in screen instead of Home, and **requires a network connection to sign in**, which directly contradicts "usable offline" as a property of first launch. Once signed in, every existing feature (scanning, trips, settlement) is completely unchanged and still works exactly as before, including offline — only the initial sign-in itself needs connectivity.
+> - Session tokens are stored on-device via `expo-secure-store` (new native dependency).
+>
+> **What did NOT change:** bill/trip/participant data is still stored exactly where it always was — purely on-device SQLite, not scoped to the account, not synced anywhere. Signing in gates *access* to the app; it does not yet gate or scope *data*. There is still no cloud sync, no cross-device history, and no server-side storage of receipt content — the account system and the OCR backend are two separate concerns that happen to share one small Hono server.
+>
+> Full rationale and implementation details are logged in `PLAN.md`'s "Post-MVP feature: Account system (Better Auth)" entry.
+
+---
+
 ## 1. Product Summary
 
 Splitsy lets a user photograph or upload a receipt, review the detected items, add the people sharing the bill, assign items to one or more people, divide taxes and other adjustments, and generate an exact per-person breakdown.
