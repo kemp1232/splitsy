@@ -47,7 +47,9 @@ const fromEmail = process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev';
 // standalone build.
 const trustedOrigins = [
   `${EXPO_SCHEME}://`,
-  ...(process.env.NODE_ENV !== 'production' ? ['exp://', 'exp://**', 'exp://192.168.*.*:*/**'] : []),
+  ...(process.env.NODE_ENV !== 'production'
+    ? ['exp://', 'exp://**', 'exp://192.168.*.*:*/**']
+    : []),
 ];
 
 // Vitest sets NODE_ENV=test automatically, so test runs are routed to an
@@ -70,13 +72,46 @@ export const auth = betterAuth({
   trustedOrigins,
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: false,
+    // Flipped on per the 2026-08-25 security review (Vuln 3): without this,
+    // sign-up returns a distinguishable "email already in use" error for a
+    // registered address, letting an unauthenticated caller enumerate which
+    // emails have Splitsy accounts. Requiring verification makes Better
+    // Auth return its generic synthetic-user response instead (see
+    // `shouldReturnGenericDuplicateResponse` in its own sign-up route) — a
+    // side benefit on top of the actual verification requirement.
+    requireEmailVerification: true,
     sendResetPassword: async ({ user, url }) => {
       await resend.emails.send({
         from: fromEmail,
         to: user.email,
         subject: 'Reset your Splitsy password',
         html: `<p>Someone requested a password reset for your Splitsy account.</p><p><a href="${url}">Reset your password</a></p><p>If you didn't request this, you can safely ignore this email.</p>`,
+      });
+    },
+  },
+  emailVerification: {
+    // Both fire the same `sendVerificationEmail` below: `sendOnSignUp` right
+    // after registering (this is what actually makes `requireEmailVerification`
+    // usable at all — otherwise a new user would have no way to ever receive
+    // a link), `sendOnSignIn` as a courtesy resend if someone tries to sign
+    // in again before verifying, rather than only failing with no recourse.
+    sendOnSignUp: true,
+    sendOnSignIn: true,
+    // Deliberately left unset (false): this app's own client only ever picks
+    // up a session from its own authClient calls, stored via
+    // expo-secure-store — the verification link is opened by an external
+    // browser/webview (email client), so any session cookie Better Auth
+    // would set on *that* request never reaches the app's own session
+    // storage regardless of this flag. The client's verify-email screen
+    // shows a plain "verified, now sign in" confirmation instead of assuming
+    // it's authenticated — see src/app/(auth)/verify-email.tsx.
+    autoSignInAfterVerification: false,
+    sendVerificationEmail: async ({ user, url }) => {
+      await resend.emails.send({
+        from: fromEmail,
+        to: user.email,
+        subject: 'Verify your Splitsy email',
+        html: `<p>Welcome to Splitsy! Confirm your email address to finish setting up your account.</p><p><a href="${url}">Verify your email</a></p><p>If you didn't create a Splitsy account, you can safely ignore this email.</p>`,
       });
     },
   },

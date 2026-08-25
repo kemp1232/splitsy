@@ -1,3 +1,4 @@
+import * as Linking from 'expo-linking';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -8,6 +9,7 @@ import { AppTextInput } from '@/components/ui/AppTextInput';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { InlineError } from '@/components/ui/InlineError';
 import { Screen } from '@/components/ui/Screen';
+import appInfo from '@/constants/appInfo.json';
 import { copy } from '@/constants/copy';
 import { validateEmail, validateSignInPassword } from '@/features/auth/validateAuthForm';
 import { authClient } from '@/lib/authClient';
@@ -32,8 +34,34 @@ export default function SignInScreen() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Set only on an EMAIL_NOT_VERIFIED failure — offers a way to recover
+  // (server/src/auth.ts already resends on a blocked sign-in attempt via
+  // sendOnSignIn, but the user may have missed that first one too) rather
+  // than leaving them stuck with no path forward besides re-registering.
+  const [showResendVerification, setShowResendVerification] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendSent, setResendSent] = useState(false);
+
+  async function handleResendVerification() {
+    const emailResult = validateEmail(email);
+    if (!emailResult.valid) return;
+    setResending(true);
+    try {
+      await authClient.sendVerificationEmail({
+        email: emailResult.email,
+        callbackURL: Linking.createURL('verify-email', { scheme: appInfo.scheme }),
+      });
+      setResendSent(true);
+    } catch {
+      setFormError(copy.auth.networkError);
+    } finally {
+      setResending(false);
+    }
+  }
 
   async function handleSignIn() {
+    setShowResendVerification(false);
+    setResendSent(false);
     const emailResult = validateEmail(email);
     const passwordResult = validateSignInPassword(password);
 
@@ -55,7 +83,12 @@ export default function SignInScreen() {
         password: passwordResult.password,
       });
       if (error) {
-        setFormError(copy.auth.signInInvalidCredentials);
+        if (error.code === 'EMAIL_NOT_VERIFIED') {
+          setFormError(copy.auth.signInEmailNotVerified);
+          setShowResendVerification(true);
+        } else {
+          setFormError(copy.auth.signInInvalidCredentials);
+        }
         setSubmitting(false);
         return;
       }
@@ -74,6 +107,20 @@ export default function SignInScreen() {
       footer={
         <BottomActionBar>
           {formError ? <InlineError message={formError} /> : null}
+          {showResendVerification ? (
+            resendSent ? (
+              <AppText color="success" accessibilityLiveRegion="polite">
+                {copy.auth.resendVerificationSentToast}
+              </AppText>
+            ) : (
+              <AppButton
+                variant="secondary"
+                label={copy.auth.resendVerificationAction}
+                onPress={handleResendVerification}
+                loading={resending}
+              />
+            )
+          ) : null}
           <AppButton label={copy.auth.signInButton} onPress={handleSignIn} loading={submitting} />
         </BottomActionBar>
       }

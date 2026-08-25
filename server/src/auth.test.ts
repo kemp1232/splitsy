@@ -72,7 +72,12 @@ describe('auth.ts', () => {
 
       expect(auth.handler).toBeInstanceOf(Function);
       expect(auth.options.emailAndPassword?.enabled).toBe(true);
-      expect(auth.options.emailAndPassword?.requireEmailVerification).toBe(false);
+      // 2026-08-25 security review (Vuln 3): required so sign-up returns
+      // Better Auth's generic synthetic-user response for a duplicate email
+      // instead of a distinguishable "already exists" error.
+      expect(auth.options.emailAndPassword?.requireEmailVerification).toBe(true);
+      expect(auth.options.emailVerification?.sendOnSignUp).toBe(true);
+      expect(auth.options.emailVerification?.sendOnSignIn).toBe(true);
       // Scoped to exactly email/password + the Expo integration — no OAuth
       // providers configured, no plugin beyond expo().
       expect('socialProviders' in auth.options).toBe(false);
@@ -86,7 +91,7 @@ describe('auth.ts', () => {
   });
 
   describe('route smoke test', () => {
-    it('registers, signs in, and sends a reset email through the real Better Auth routes', async () => {
+    it('registers (no session, per requireEmailVerification), blocks sign-in until verified, and sends a reset email', async () => {
       const { auth } = await import('./auth.js');
       const { runMigrations } = await getMigrations(auth.options);
       await runMigrations();
@@ -105,17 +110,36 @@ describe('auth.ts', () => {
       expect(signUpRes.status).toBe(200);
       const signUpBody = await signUpRes.json();
       expect(signUpBody.user.email).toBe('test@example.com');
-      expect(signUpBody.token).toEqual(expect.any(String));
+      // No session on sign-up: requireEmailVerification makes
+      // shouldSkipAutoSignIn true in Better Auth's own sign-up route — the
+      // account exists, but isn't usable, until the emailed link is followed.
+      expect(signUpBody.token).toBeNull();
+      expect(sendMock).toHaveBeenCalledTimes(1);
+      expect(sendMock.mock.calls[0]?.[0]).toMatchObject({
+        to: 'test@example.com',
+        subject: expect.stringContaining('Verify your Splitsy email'),
+      });
+      sendMock.mockClear();
 
-      const signInRes = await auth.handler(
+      // Correct password, but the account isn't verified yet — must be
+      // rejected, not silently let through.
+      const blockedSignInRes = await auth.handler(
         new Request('http://localhost:8787/api/auth/sign-in/email', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ email: 'test@example.com', password: 'password1234' }),
         }),
       );
-      expect(signInRes.status).toBe(200);
-      expect((await signInRes.json()).token).toEqual(expect.any(String));
+      expect(blockedSignInRes.status).toBe(403);
+      expect((await blockedSignInRes.json()).code).toBe('EMAIL_NOT_VERIFIED');
+      // sendOnSignIn: true — a blocked sign-in attempt also resends the
+      // verification link, so a user who lost the first email isn't stuck.
+      expect(sendMock).toHaveBeenCalledTimes(1);
+      expect(sendMock.mock.calls[0]?.[0]).toMatchObject({
+        to: 'test@example.com',
+        subject: expect.stringContaining('Verify your Splitsy email'),
+      });
+      sendMock.mockClear();
 
       const resetRes = await auth.handler(
         new Request('http://localhost:8787/api/auth/request-password-reset', {
@@ -127,7 +151,9 @@ describe('auth.ts', () => {
       expect(resetRes.status).toBe(200);
       // Better Auth reports success regardless of whether the email exists,
       // to avoid leaking account existence — the real signal that
-      // sendResetPassword ran is the mock having been called.
+      // sendResetPassword ran is the mock having been called. Password reset
+      // deliberately works even for an unverified account (it's a distinct
+      // concern from email verification), so no EMAIL_NOT_VERIFIED gate here.
       expect(sendMock).toHaveBeenCalledTimes(1);
       expect(sendMock.mock.calls[0]?.[0]).toMatchObject({
         to: 'test@example.com',

@@ -1,3 +1,4 @@
+import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -8,6 +9,7 @@ import { AppTextInput } from '@/components/ui/AppTextInput';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { InlineError } from '@/components/ui/InlineError';
 import { Screen } from '@/components/ui/Screen';
+import appInfo from '@/constants/appInfo.json';
 import { copy } from '@/constants/copy';
 import {
   MAX_PASSWORD_LENGTH,
@@ -19,11 +21,21 @@ import {
 import { authClient } from '@/lib/authClient';
 import { spacing } from '@/theme/tokens';
 
-// Register — src/app/(auth)/register.tsx (2026-08-25 spec Amendment).
-// Better Auth's sign-up/email endpoint requires `name` in addition to
-// email/password. Like sign-in.tsx, this never navigates on success — the
-// root layout's session gate reveals the rest of the app on its own once
-// authClient reports an active session.
+// Register — src/app/(auth)/register.tsx (2026-08-25 spec Amendment, updated
+// for the same day's security-review follow-up requiring email
+// verification). `callbackURL` is what makes the verification link server/
+// src/auth.ts emails mobile-appropriate — same `Linking.createURL` pattern
+// forgot-password.tsx already uses for its own reset link, just pointed at
+// verify-email.tsx instead. Better Auth's sign-up/email endpoint requires
+// `name` in addition to email/password.
+//
+// Unlike sign-in.tsx, this screen CANNOT rely on the root layout's session
+// gate to move the user along on success: requireEmailVerification means
+// sign-up returns `token: null` (see server/src/auth.ts's own comment on
+// why) — no session exists yet, so nothing for the gate to react to. This
+// screen shows an explicit "check your email" state instead once sign-up
+// succeeds, the same shape forgot-password.tsx's own `sent` state already
+// uses for the analogous "we can't confirm anything more happened here" case.
 export default function RegisterScreen() {
   const router = useRouter();
   const [name, setName] = useState('');
@@ -34,6 +46,7 @@ export default function RegisterScreen() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
 
   async function handleRegister() {
     const nameResult = validateDisplayName(name);
@@ -72,6 +85,7 @@ export default function RegisterScreen() {
         name: nameResult.name,
         email: emailResult.email,
         password: passwordResult.password,
+        callbackURL: Linking.createURL('verify-email', { scheme: appInfo.scheme }),
       });
       if (error) {
         setFormError(
@@ -83,12 +97,32 @@ export default function RegisterScreen() {
         setSubmitting(false);
         return;
       }
-      // Success: same as sign-in.tsx — no manual navigation, the root
-      // layout's session gate takes it from here.
+      // No session to hand off to the root layout's gate (see this file's
+      // own header note) — show the "check your email" state directly.
+      setRegisteredEmail(emailResult.email);
+      setSubmitting(false);
     } catch {
       setFormError(copy.auth.networkError);
       setSubmitting(false);
     }
+  }
+
+  if (registeredEmail) {
+    return (
+      <Screen scroll>
+        <View style={styles.body}>
+          <AppText variant="heading">{copy.auth.registerCheckEmailHeading}</AppText>
+          <AppText variant="body" color="textSecondary" accessibilityLiveRegion="polite">
+            {copy.auth.registerCheckEmailBody.replace('{email}', registeredEmail)}
+          </AppText>
+          <AppButton
+            variant="secondary"
+            label={copy.auth.registerSignInLink}
+            onPress={() => router.replace('/sign-in')}
+          />
+        </View>
+      </Screen>
+    );
   }
 
   return (

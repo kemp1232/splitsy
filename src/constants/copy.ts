@@ -537,6 +537,13 @@ export const copy = {
     // behavior) — so there is exactly one message to show here, not a
     // per-cause one.
     signInInvalidCredentials: 'Incorrect email or password. Try again.',
+    // requireEmailVerification (2026-08-25 security review, Vuln 3) blocks
+    // sign-in with EMAIL_NOT_VERIFIED for a correct password on an
+    // unverified account — a distinct case from signInInvalidCredentials
+    // above, so it gets its own message and a way to recover from it.
+    signInEmailNotVerified: "You'll need to verify your email before signing in.",
+    resendVerificationAction: 'Resend verification email',
+    resendVerificationSentToast: "We've sent another verification email.",
 
     // Register — src/app/(auth)/register.tsx
     registerHeading: 'Create your account',
@@ -547,6 +554,13 @@ export const copy = {
     registerHasAccountPrompt: 'Already have an account?',
     registerSignInLink: 'Sign in',
     registerEmailInUse: 'An account with this email already exists.',
+    // Shown instead of the form once sign-up succeeds — requireEmailVerification
+    // means there's no session yet (Better Auth returns `token: null`), so
+    // this screen can't rely on the root layout's session gate to move the
+    // user along the way sign-in.tsx does; it has to say so explicitly.
+    registerCheckEmailHeading: 'Check your email',
+    registerCheckEmailBody:
+      "We've sent a verification link to {email}. Open it on this device to finish creating your account, then sign in.",
 
     // Forgot password — src/app/(auth)/forgot-password.tsx
     forgotPasswordHeading: 'Reset your password',
@@ -572,6 +586,20 @@ export const copy = {
     resetPasswordMissingTokenBody:
       'This reset link is missing information. Request a new one from the forgot password screen.',
     requestNewLinkAction: 'Request a new link',
+
+    // Verify email — src/app/(auth)/verify-email.tsx. Reached the same way
+    // reset-password.tsx is: an emailed link deep-links back into the app.
+    // Unlike reset-password, this screen never makes its own API call — the
+    // verification itself already happened server-side on the request the
+    // email client's browser/webview followed to get here (see
+    // server/src/auth.ts's own comment on why autoSignInAfterVerification is
+    // off) — this screen just reports what already happened and points the
+    // user at sign-in.
+    verifyEmailSuccessHeading: 'Email verified',
+    verifyEmailSuccessBody: 'Your email is verified. You can now sign in.',
+    verifyEmailErrorHeading: "This link isn't working",
+    verifyEmailErrorBody: 'This verification link is invalid or has expired. Request a new one.',
+    verifyEmailGoToSignIn: 'Go to sign in',
 
     // Shared field labels/placeholders/validation errors, used across more
     // than one of the four screens above.
