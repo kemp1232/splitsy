@@ -13,6 +13,7 @@ import { Screen } from '@/components/ui/Screen';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { copy } from '@/constants/copy';
 import { resetAllLocalData } from '@/features/bills/bill.service';
+import { authClient } from '@/lib/authClient';
 import type { ColorTokens } from '@/theme/tokens';
 import { radius, spacing, touchTarget } from '@/theme/tokens';
 import { useTheme, type ThemePreference } from '@/theme/ThemeProvider';
@@ -36,6 +37,28 @@ export default function SettingsScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
   const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logOutError, setLogOutError] = useState<string | null>(null);
+
+  async function handleLogOut() {
+    setLogOutError(null);
+    setLoggingOut(true);
+    try {
+      const { error } = await authClient.signOut();
+      if (error) {
+        setLogOutError(copy.auth.logOutFailure);
+        setLoggingOut(false);
+        return;
+      }
+      // No manual navigation: the root layout's SessionGate
+      // (src/app/_layout.tsx) reacts to the session clearing on its own and
+      // swaps the visible route tree back to (auth), same as sign-in.tsx/
+      // register.tsx never navigating themselves on success.
+    } catch {
+      setLogOutError(copy.auth.logOutFailure);
+      setLoggingOut(false);
+    }
+  }
 
   function handleConfirmDeleteAll() {
     setShowDeleteAllConfirm(false);
@@ -88,6 +111,16 @@ export default function SettingsScreen() {
               );
             })}
           </View>
+        </SectionCard>
+
+        <SectionCard title={copy.auth.accountSection}>
+          <AppButton
+            variant="secondary"
+            label={copy.auth.logOutAction}
+            onPress={handleLogOut}
+            loading={loggingOut}
+          />
+          {logOutError ? <InlineError message={logOutError} /> : null}
         </SectionCard>
 
         <SectionCard title={copy.settings.privacySection}>

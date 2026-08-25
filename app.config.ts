@@ -26,6 +26,10 @@ const config: ExpoConfig = {
     'expo-sqlite',
     'expo-file-system',
     'expo-image',
+    // Native storage for Better Auth's session cookie (see src/lib/authClient.ts)
+    // — a new native dependency added by the account system (2026-08-25 spec
+    // Amendment), requires a new native build, not just a Metro reload.
+    'expo-secure-store',
     [
       'expo-camera',
       {

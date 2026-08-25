@@ -35,6 +35,9 @@ yarn-error.*
 .env*.local
 server/.env
 
+# server-side SQLite data (auth users/sessions) — real user data, never committed
+server/data/
+
 # typescript
 *.tsbuildinfo
 
