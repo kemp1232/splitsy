@@ -1,5 +1,6 @@
+import type { ReactNode } from 'react';
 import { useMemo } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import type { ColorTokens } from '@/theme/tokens';
 import { radius, spacing, touchTarget } from '@/theme/tokens';
@@ -21,12 +22,33 @@ type Props = {
   // and save") — left off by default so every other button keeps its
   // existing, less attention-grabbing corner radius.
   pill?: boolean;
+  // A render-prop, not a bare ReactNode or a glyph-name lookup: this button
+  // already computes the correct per-variant label color below (onPrimary vs
+  // primary) — handing that color into the factory guarantees an icon always
+  // matches it (dark mode included) without a React.cloneElement trick, and
+  // without a second, IconButton-inconsistent "icon" API (IconButton's own
+  // `icon: ReactNode` prop doesn't have this per-variant-color problem, so it
+  // doesn't need the same treatment). e.g.
+  // `icon={(color) => <Feather name="arrow-right" size={18} color={color} />}`
+  icon?: (color: string) => ReactNode;
+  iconPosition?: 'leading' | 'trailing';
 };
 
-export function AppButton({ label, onPress, variant = 'primary', disabled, loading, pill }: Props) {
+export function AppButton({
+  label,
+  onPress,
+  variant = 'primary',
+  disabled,
+  loading,
+  pill,
+  icon,
+  iconPosition = 'leading',
+}: Props) {
   const { colors, scheme } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const isDisabled = disabled || loading;
+  const contentColor =
+    variant === 'primary' || variant === 'destructive' ? colors.onPrimary : colors.primary;
 
   return (
     <Pressable
@@ -43,18 +65,18 @@ export function AppButton({ label, onPress, variant = 'primary', disabled, loadi
       ]}
     >
       {loading ? (
-        <ActivityIndicator
-          color={
-            variant === 'primary' || variant === 'destructive' ? colors.onPrimary : colors.primary
-          }
-        />
+        <ActivityIndicator color={contentColor} />
       ) : (
-        <AppText
-          variant="subheading"
-          color={variant === 'primary' || variant === 'destructive' ? 'onPrimary' : 'primary'}
-        >
-          {label}
-        </AppText>
+        <View style={styles.content}>
+          {icon && iconPosition === 'leading' ? icon(contentColor) : null}
+          <AppText
+            variant="subheading"
+            color={variant === 'primary' || variant === 'destructive' ? 'onPrimary' : 'primary'}
+          >
+            {label}
+          </AppText>
+          {icon && iconPosition === 'trailing' ? icon(contentColor) : null}
+        </View>
       )}
     </Pressable>
   );
@@ -65,15 +87,23 @@ function createStyles(colors: ColorTokens) {
     base: {
       minHeight: touchTarget.preferred,
       borderRadius: radius.md,
+      borderCurve: 'continuous',
       alignItems: 'center',
       justifyContent: 'center',
       paddingHorizontal: spacing.lg,
+    },
+    content: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
     },
     disabled: {
       opacity: 0.5,
     },
     pill: {
       borderRadius: radius.pill,
+      borderCurve: 'continuous',
     },
     primary: { backgroundColor: colors.primary },
     secondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primary },

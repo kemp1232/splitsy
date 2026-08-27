@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -7,7 +8,7 @@ import { PersonTotalCard } from '@/components/bill/PersonTotalCard';
 import { SettlementCard } from '@/components/bill/SettlementCard';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
+import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { Divider } from '@/components/ui/Divider';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { GradientHeroCard } from '@/components/ui/GradientHeroCard';
@@ -380,31 +381,7 @@ export default function SummaryScreen() {
   }
 
   return (
-    <Screen
-      scroll
-      padded={false}
-      footer={
-        <>
-          {toastMessage ? (
-            <View style={styles.toast} accessibilityLiveRegion="polite">
-              <AppText color="onPrimary">{toastMessage}</AppText>
-            </View>
-          ) : null}
-          <BottomActionBar>
-            {saveError ? <InlineError message={saveError} /> : null}
-            {/* The reference UI's prominent bottom-of-screen pill primary
-                action (screenshot 2's "Bill Splitting" breakdown screen). */}
-            <AppButton
-              pill
-              label={copy.summary.saveAction}
-              onPress={handleSave}
-              loading={saving}
-              disabled={saving}
-            />
-          </BottomActionBar>
-        </>
-      }
-    >
+    <Screen scroll padded={false}>
       <View style={styles.headerRow}>
         <AppText variant="heading">{copy.summary.heading}</AppText>
       </View>
@@ -420,60 +397,83 @@ export default function SummaryScreen() {
       />
 
       <View style={styles.body}>
-        {hasDetectedTotal ? (
-          <StatusBadge
-            label={reconciliation.matches ? copy.summary.matchSuccess : copy.summary.mismatchStatus}
-            tone={reconciliation.matches ? 'success' : 'warning'}
-          />
-        ) : null}
+        <View style={styles.statusBlock}>
+          {hasDetectedTotal ? (
+            <StatusBadge
+              label={
+                reconciliation.matches ? copy.summary.matchSuccess : copy.summary.mismatchStatus
+              }
+              tone={reconciliation.matches ? 'success' : 'warning'}
+            />
+          ) : null}
 
-        {/* Deliberately obvious (secondary, full-width), not the quieter
-            text-styled link used on the saved-bill-detail screen — finishing
-            a bill is exactly the moment someone wants to jump back and scan
-            the trip's next one. */}
-        {tripLink ? (
-          <AppButton
-            variant="secondary"
-            label={copy.summary.backToTripAction.replace('{name}', tripLink.name)}
-            onPress={() => router.push(`/trip/${tripLink.id}`)}
-          />
-        ) : null}
-
-        <View style={styles.actionsRow}>
-          <View style={styles.actionColumn}>
-            <AppButton variant="secondary" label={copy.summary.shareAction} onPress={handleShare} />
-            {shareError ? <InlineError message={shareError} /> : null}
-          </View>
-          <View style={styles.actionColumn}>
-            <AppButton variant="secondary" label={copy.summary.copyAction} onPress={handleCopy} />
-            {copyError ? <InlineError message={copyError} /> : null}
-          </View>
+          {/* Deliberately obvious (secondary, full-width), not the quieter
+              text-styled link used on the saved-bill-detail screen — finishing
+              a bill is exactly the moment someone wants to jump back and scan
+              the trip's next one. */}
+          {tripLink ? (
+            <AppButton
+              variant="secondary"
+              label={copy.summary.backToTripAction.replace('{name}', tripLink.name)}
+              onPress={() => router.push(`/trip/${tripLink.id}`)}
+              icon={(color) => <Feather name="map-pin" size={18} color={color} />}
+            />
+          ) : null}
         </View>
-        <AppButton variant="text" label={copy.summary.editAction} onPress={handleEdit} />
 
-        <Divider />
-
-        <View style={styles.cardsList}>
-          {splitResult.participantShares.map((share) => {
-            const name = nameByParticipantId.get(share.participantId) ?? '';
-            return (
-              <PersonTotalCard
-                key={share.participantId}
-                name={name}
-                finalTotalCentavos={share.finalTotalCentavos}
-                itemShares={buildParticipantItemShareDisplay(share.itemShares, itemInfoById)}
-                adjustmentShares={buildParticipantAdjustmentShareDisplay(
-                  share.adjustmentShares,
-                  adjustmentInfoById,
-                )}
-                paidCentavos={
-                  hasAnyContribution
-                    ? contributionByParticipantId.get(share.participantId)?.contributedCentavos
-                    : undefined
-                }
+        <View style={styles.shareBlock}>
+          <View style={styles.actionsRow}>
+            <View style={styles.actionColumn}>
+              <AppButton
+                variant="secondary"
+                label={copy.summary.shareAction}
+                onPress={handleShare}
+                icon={(color) => <Feather name="share" size={18} color={color} />}
               />
-            );
-          })}
+              {shareError ? <InlineError message={shareError} /> : null}
+            </View>
+            <View style={styles.actionColumn}>
+              <AppButton
+                variant="secondary"
+                label={copy.summary.copyAction}
+                onPress={handleCopy}
+                icon={(color) => <Feather name="copy" size={18} color={color} />}
+              />
+              {copyError ? <InlineError message={copyError} /> : null}
+            </View>
+          </View>
+          <AppButton
+            variant="text"
+            label={copy.summary.editAction}
+            onPress={handleEdit}
+            icon={(color) => <Feather name="edit-2" size={18} color={color} />}
+          />
+        </View>
+
+        <View style={styles.cardsBlock}>
+          <Divider />
+          <View style={styles.cardsList}>
+            {splitResult.participantShares.map((share) => {
+              const name = nameByParticipantId.get(share.participantId) ?? '';
+              return (
+                <PersonTotalCard
+                  key={share.participantId}
+                  name={name}
+                  finalTotalCentavos={share.finalTotalCentavos}
+                  itemShares={buildParticipantItemShareDisplay(share.itemShares, itemInfoById)}
+                  adjustmentShares={buildParticipantAdjustmentShareDisplay(
+                    share.adjustmentShares,
+                    adjustmentInfoById,
+                  )}
+                  paidCentavos={
+                    hasAnyContribution
+                      ? contributionByParticipantId.get(share.participantId)?.contributedCentavos
+                      : undefined
+                  }
+                />
+              );
+            })}
+          </View>
         </View>
 
         {hasAnyContribution ? (
@@ -485,15 +485,42 @@ export default function SummaryScreen() {
           />
         ) : null}
 
-        {/* Direct entry point to Payments regardless of draft-progression
-            state (resolveNextRoute.ts has no concept of this screen —
-            "Skip for now" being a one-tap action means most drafts never
-            pass through it again otherwise). */}
-        <AppButton
-          variant="text"
-          label={copy.payments.editAction}
-          onPress={() => router.push(`/bill/${billId}/payments`)}
-        />
+        <View style={styles.finishBlock}>
+          {/* Direct entry point to Payments regardless of draft-progression
+              state (resolveNextRoute.ts has no concept of this screen —
+              "Skip for now" being a one-tap action means most drafts never
+              pass through it again otherwise). */}
+          <AppButton
+            variant="text"
+            label={copy.payments.editAction}
+            onPress={() => router.push(`/bill/${billId}/payments`)}
+          />
+
+          {/* Was a sticky BottomActionBar footer — moved inline, per the
+              user's own explicit request (2026-08-27) to drop sticky nav
+              footers in favor of plain in-flow buttons. */}
+          {toastMessage ? (
+            <View style={styles.toast} accessibilityLiveRegion="polite">
+              <AppText color="onPrimary">{toastMessage}</AppText>
+            </View>
+          ) : null}
+          {saveError ? <InlineError message={saveError} /> : null}
+          {/* The reference UI's prominent bottom-of-screen pill primary action
+              (screenshot 2's "Bill Splitting" breakdown screen). Leading
+              check-circle rather than arrow-right: unlike adjustments.tsx/
+              payments.tsx, this doesn't advance to another wizard step — it's
+              the "fully done" action that marks the bill COMPLETED (mapping
+              table's own "Mark trip settled" example is the same kind of
+              action). */}
+          <AppButton
+            pill
+            label={copy.summary.saveAction}
+            onPress={handleSave}
+            loading={saving}
+            disabled={saving}
+            icon={(color) => <Feather name="check-circle" size={18} color={color} />}
+          />
+        </View>
       </View>
     </Screen>
   );
@@ -503,12 +530,28 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     body: {
       padding: spacing.lg,
-      gap: spacing.md,
+      // The Save button used to sit in a sticky footer, which Screen.tsx
+      // pads above the global nav bar automatically — now that it's plain
+      // in-flow content, this screen reserves that space itself.
+      paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+      // Section-to-section rhythm: the hero card above already sits outside
+      // this View entirely, so the first gap here separates the status
+      // badge/trip-link block from the share/copy/edit block, then that from
+      // the person cards, the settlement card, and the finishing (payments
+      // link + save) block. spacing.md/sm stays reserved for tight,
+      // within-section grouping (see the block-specific styles below).
+      gap: spacing.xl,
     },
     headerRow: {
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.lg,
       paddingBottom: spacing.sm,
+    },
+    statusBlock: {
+      gap: spacing.sm,
+    },
+    shareBlock: {
+      gap: spacing.sm,
     },
     actionsRow: {
       flexDirection: 'row',
@@ -518,7 +561,13 @@ function createStyles(colors: ColorTokens) {
       flex: 1,
       gap: spacing.xs / 2,
     },
+    cardsBlock: {
+      gap: spacing.md,
+    },
     cardsList: {
+      gap: spacing.sm,
+    },
+    finishBlock: {
       gap: spacing.sm,
     },
     // Deliberately an inverted chip (textPrimary as the fill, onPrimary as
@@ -528,11 +577,10 @@ function createStyles(colors: ColorTokens) {
     // solid, high-contrast toast in either theme without its own
     // theme-conditional branch.
     toast: {
-      marginHorizontal: spacing.lg,
-      marginBottom: spacing.sm,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
       borderRadius: radius.md,
+      borderCurve: 'continuous',
       backgroundColor: colors.textPrimary,
     },
   });

@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import type { BottomTabBarProps } from 'expo-router/tabs';
+import { usePathname, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { type LayoutChangeEvent, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -48,26 +47,36 @@ const TRANSITION_RUN = 20;
 const BOTTOM_RADIUS = 32;
 // ----------------------------------------------------------------------------
 
-// Exported so the two screens this bar floats over (Home/Settings) can pad
-// their own scrollable content by roughly this much, keeping the last row
-// from sitting underneath the bar.
+// Exported so every screen can pad its own scrollable content by roughly
+// this much, keeping the last row from sitting underneath this bar — this
+// used to be needed only by Home/Settings (back when this bar was scoped to
+// a (tabs) route group covering just those two), but now that it's a global
+// overlay (2026-08-27 "show the nav bar on all views"), any screen without
+// its own sticky footer to stack above it (see Screen.tsx's own header note
+// on why that stacking mechanism was later removed entirely) needs this same
+// clearance. A generous approximation, not pixel-exact.
 export const TAB_BAR_CONTENT_CLEARANCE = BAR_HEIGHT + spacing.lg + spacing.md;
 
+// Fixed set of destinations this bar links to — no longer read from a real
+// Tabs navigator's route list (see this component's own header comment for
+// why it isn't one anymore), so this is now the one place that defines them.
 // Outline icon when inactive, filled icon when active (Ionicons ships both
 // variants for these) — selection is conveyed by icon *shape*, not by
 // swapping a background badge color behind it.
-const TAB_ICON: Record<
-  string,
-  { outline: keyof typeof Ionicons.glyphMap; filled: keyof typeof Ionicons.glyphMap }
-> = {
-  index: { outline: 'home-outline', filled: 'home' },
-  settings: { outline: 'settings-outline', filled: 'settings' },
-};
-
-const TAB_LABEL: Record<string, string> = {
-  index: copy.nav.homeTab,
-  settings: copy.nav.settingsTab,
-};
+const TABS: {
+  path: '/' | '/settings';
+  outlineIcon: keyof typeof Ionicons.glyphMap;
+  filledIcon: keyof typeof Ionicons.glyphMap;
+  label: string;
+}[] = [
+  { path: '/', outlineIcon: 'home-outline', filledIcon: 'home', label: copy.nav.homeTab },
+  {
+    path: '/settings',
+    outlineIcon: 'settings-outline',
+    filledIcon: 'settings',
+    label: copy.nav.settingsTab,
+  },
+];
 
 // One point on the cutout circle — center (cx, 0), the exact same center the
 // (locked) "+" button is drawn around — at angle `theta` (radians, standard
@@ -167,22 +176,30 @@ function buildBarPath(width: number, height: number): string {
   ].join(' ');
 }
 
-// Custom tab bar for the (tabs) group. Renders a real SVG background (not a
-// plain rectangle with a button floating over it) so the concave cutout
-// around the center "+" reads as one continuous shape, cradling the button
-// with a visible gap rather than the bar touching it. The curve is built
-// from the bar's *measured* width (`onLayout`,
-// never `Dimensions.get('window')`, since the bar's own rendered width — not
-// the raw screen width — is what the curve and button must center on), so it
-// stays exactly centered on every device size without any hardcoded
-// coordinate. The "+" is deliberately not a `Tabs.Screen` of its own: it's a
-// plain button that pushes straight to `/bill/new` (this app's existing
-// New-Bill/Start-a-Trip chooser) — the same single floating action the
-// now-retired FloatingActionButton.tsx used to own on Home alone. This app
-// keeps to that one floating action and to its existing two real
-// destinations (Home, Settings) rather than adding more tabs.
-export function BottomTabBar({ state, navigation }: BottomTabBarProps) {
+// Global nav bar, rendered once from the root layout (_layout.tsx) as a
+// persistent overlay above every authenticated screen — not a real Tabs
+// navigator's `tabBar` render prop anymore (it used to be, scoped to a
+// (tabs) route group covering only Home/Settings; see the 2026-08-27 "show
+// the nav bar on all views" change). Home/Settings are still its only two
+// real destinations, tracked via `usePathname()` rather than a navigator's
+// own route list — every other screen (bill/**, trip/**) shows this bar too,
+// just with neither tab highlighted, and stacks its own footer (if any)
+// above it (Screen.tsx). Renders a real SVG background (not a plain
+// rectangle with a button floating over it) so the concave cutout around the
+// center "+" reads as one continuous shape, cradling the button with a
+// visible gap rather than the bar touching it. The curve is built from the
+// bar's *measured* width (`onLayout`, never `Dimensions.get('window')`,
+// since the bar's own rendered width — not the raw screen width — is what
+// the curve and button must center on), so it stays exactly centered on
+// every device size without any hardcoded coordinate. The "+" pushes
+// straight to `/bill/new` (this app's existing New-Bill/Start-a-Trip
+// chooser) — the same single floating action the now-retired
+// FloatingActionButton.tsx used to own on Home alone. This app keeps to that
+// one floating action and to its existing two real destinations (Home,
+// Settings) rather than adding more tabs.
+export function BottomTabBar() {
   const router = useRouter();
+  const pathname = usePathname();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [barWidth, setBarWidth] = useState(0);
@@ -217,40 +234,36 @@ export function BottomTabBar({ state, navigation }: BottomTabBarProps) {
       ) : null}
 
       <View style={[styles.content, { paddingBottom: insets.bottom }]}>
-        {state.routes.map((route, index) => {
-          const isFocused = state.index === index;
-          const icons = TAB_ICON[route.name];
-          const label = TAB_LABEL[route.name] ?? route.name;
+        {TABS.map((tab) => {
+          const isFocused = pathname === tab.path;
           const tint = isFocused ? colors.primary : colors.textSecondary;
 
           function handlePress() {
-            const event = navigation.emit({
-              type: 'tabPress',
-              target: route.key,
-              canPreventDefault: true,
-            });
-            if (!isFocused && !event.defaultPrevented) {
-              navigation.navigate(route.name);
-            }
+            // `navigate` (not `push`): reconciles against the existing stack
+            // instead of piling on another Home/Settings screen every time
+            // it's tapped from deep inside a bill/trip flow.
+            if (!isFocused) router.navigate(tab.path);
           }
 
           return (
             <Pressable
-              key={route.key}
+              key={tab.path}
               accessibilityRole="tab"
               accessibilityState={{ selected: isFocused }}
-              accessibilityLabel={label}
+              accessibilityLabel={tab.label}
               onPress={handlePress}
               style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]}
             >
-              {icons ? (
-                <Ionicons name={isFocused ? icons.filled : icons.outline} size={22} color={tint} />
-              ) : null}
+              <Ionicons
+                name={isFocused ? tab.filledIcon : tab.outlineIcon}
+                size={22}
+                color={tint}
+              />
               <AppText
                 variant="caption"
                 style={[styles.label, { color: tint }, isFocused && styles.labelActive]}
               >
-                {label}
+                {tab.label}
               </AppText>
             </Pressable>
           );
@@ -330,14 +343,16 @@ function createStyles(colors: ColorTokens) {
       width: BUTTON_SIZE,
       height: BUTTON_SIZE,
       borderRadius: radius.pill,
+      borderCurve: 'continuous',
       backgroundColor: colors.primary,
       alignItems: 'center',
       justifyContent: 'center',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.28,
-      shadowRadius: 12,
-      elevation: 10,
+      // CSS box-shadow syntax (vercel-react-native-skills' ui-styling rule)
+      // in place of the old shadowColor/shadowOffset/shadowOpacity/
+      // shadowRadius/elevation quintet — one string renders on both iOS and
+      // Android on the New Architecture (this app's default on Expo SDK 57),
+      // so nothing here is Android-only elevation lost in the conversion.
+      boxShadow: '0 6px 12px rgba(0, 0, 0, 0.28)',
     },
     centerButtonPressed: {
       backgroundColor: colors.primaryPressed,

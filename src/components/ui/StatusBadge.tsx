@@ -40,6 +40,7 @@ function createStyles(colors: ColorTokens) {
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.xs / 2,
       borderRadius: radius.pill,
+      borderCurve: 'continuous',
       borderWidth: 1,
     },
     neutral: { backgroundColor: colors.surfaceMuted, borderColor: colors.border },

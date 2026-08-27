@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
+import { BottomTabBar } from '@/components/ui/BottomTabBar';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
@@ -58,16 +59,20 @@ function SessionGate() {
           changing. */}
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Protected guard={hasSession}>
-          {/* The (tabs) group owns Home (`/`) and Settings (`/settings`)
-              behind its own persistent bottom bar (BottomTabBar.tsx) — every
-              other screen (`bill/**`, `trip/**`) is pushed on top of it as a
-              normal full-screen stack route, so none of them show that bar. */}
-          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="index" />
+          <Stack.Screen name="settings" />
         </Stack.Protected>
         <Stack.Protected guard={!hasSession}>
           <Stack.Screen name="(auth)" />
         </Stack.Protected>
       </Stack>
+      {/* Persistent overlay above whichever screen the Stack above is
+          currently showing — every `bill/**`/`trip/**` route included, not
+          just Home/Settings (those two are just this bar's own highlighted
+          destinations, see BottomTabBar.tsx). Rendered here rather than
+          inside the Stack.Screen for "index"/"settings" so it survives
+          across pushes to other routes instead of unmounting/remounting. */}
+      {hasSession ? <BottomTabBar /> : null}
     </>
   );
 }

@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Share, StyleSheet, View } from 'react-native';
@@ -11,7 +12,7 @@ import {
 import { TripOverflowSheet } from '@/components/trip/TripOverflowSheet';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
+import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -67,7 +68,7 @@ type LoadedTripHubData = {
 };
 
 // Same lighter-weight sum used by the home screen's own trip-total
-// computation (see src/app/(tabs)/index.tsx) — the hub only needs one running
+// computation (see src/app/index.tsx) — the hub only needs one running
 // number, not a full per-person calculateSplit breakdown, so this reads
 // straight from each COMPLETED bill's own line items and adjustments rather
 // than assembling calculateSplit's full input shape.
@@ -253,7 +254,7 @@ export default function TripHubScreen() {
   // shared `load` callback (also used after every mutation below) directly
   // inside an effect trips the react-hooks/set-state-in-effect lint rule.
   // This inline IIFE with its own independent try/catch is this codebase's
-  // existing convention for a screen's first load (see e.g. src/app/(tabs)/index.tsx's
+  // existing convention for a screen's first load (see e.g. src/app/index.tsx's
   // own copy of this same shape).
   useEffect(() => {
     (async () => {
@@ -452,25 +453,7 @@ export default function TripHubScreen() {
   const existingRosterNames = data.roster.map((member) => member.name);
 
   return (
-    <Screen
-      scroll
-      padded={false}
-      footer={
-        <BottomActionBar>
-          {deleteTripError ? <InlineError message={deleteTripError} /> : null}
-          <View style={styles.footerRow}>
-            <AppButton
-              variant="secondary"
-              label={copy.trip.chooseFromGalleryAction}
-              onPress={handleChooseFromGallery}
-            />
-            <View style={styles.footerPrimary}>
-              <AppButton label={copy.trip.scanNextBillAction} onPress={handleScanNextBill} />
-            </View>
-          </View>
-        </BottomActionBar>
-      }
-    >
+    <Screen scroll padded={false}>
       <View style={styles.headerRow}>
         <View style={styles.headerText}>
           <AppText variant="heading">{title}</AppText>
@@ -482,11 +465,7 @@ export default function TripHubScreen() {
         <IconButton
           accessibilityLabel={copy.home.overflowAccessibilityLabel}
           onPress={() => setTripOverflowVisible(true)}
-          icon={
-            <AppText variant="subheading" color="textSecondary">
-              ⋮
-            </AppText>
-          }
+          icon={<Feather name="more-vertical" size={20} color={colors.textSecondary} />}
         />
       </View>
 
@@ -505,36 +484,43 @@ export default function TripHubScreen() {
       />
 
       <View style={styles.body}>
-        {actionError ? <InlineError message={actionError} /> : null}
+        <View style={styles.rosterBlock}>
+          {actionError ? <InlineError message={actionError} /> : null}
 
-        <SectionCard title={copy.trip.rosterSectionTitle}>
-          {data.roster.length === 0 ? (
-            <AppText color="textSecondary">{copy.trip.emptyBody}</AppText>
-          ) : (
-            <View style={styles.rosterList}>
-              {data.roster.map((member) => (
-                <View key={member.id} style={styles.rosterRow}>
-                  <AppText variant="body" numberOfLines={1} style={styles.rosterRowLabel}>
-                    {member.name}
-                  </AppText>
-                  <IconButton
-                    accessibilityLabel={copy.trip.removeConfirmHeading.replace(
-                      '{name}',
-                      member.name,
-                    )}
-                    onPress={() => setRemovingMember(member)}
-                    icon={<AppText color="danger">✕</AppText>}
-                  />
-                </View>
-              ))}
+          <SectionCard>
+            <View style={styles.rosterHeader}>
+              <Feather name="users" size={18} color={colors.textPrimary} />
+              <AppText variant="subheading">{copy.trip.rosterSectionTitle}</AppText>
             </View>
-          )}
-          <AppButton
-            variant="secondary"
-            label={copy.trip.addAction}
-            onPress={() => setAddingMember(true)}
-          />
-        </SectionCard>
+            {data.roster.length === 0 ? (
+              <AppText color="textSecondary">{copy.trip.emptyBody}</AppText>
+            ) : (
+              <View style={styles.rosterList}>
+                {data.roster.map((member) => (
+                  <View key={member.id} style={styles.rosterRow}>
+                    <AppText variant="body" numberOfLines={1} style={styles.rosterRowLabel}>
+                      {member.name}
+                    </AppText>
+                    <IconButton
+                      accessibilityLabel={copy.trip.removeConfirmHeading.replace(
+                        '{name}',
+                        member.name,
+                      )}
+                      onPress={() => setRemovingMember(member)}
+                      icon={<Feather name="x" size={20} color={colors.danger} />}
+                    />
+                  </View>
+                ))}
+              </View>
+            )}
+            <AppButton
+              variant="secondary"
+              label={copy.trip.addAction}
+              onPress={() => setAddingMember(true)}
+              icon={(color) => <Feather name="plus" size={18} color={color} />}
+            />
+          </SectionCard>
+        </View>
 
         {hasCompletedBill ? (
           // The reference UI's prominent bottom-of-screen pill primary
@@ -547,26 +533,49 @@ export default function TripHubScreen() {
           />
         ) : null}
 
-        <AppText variant="subheading">{copy.trip.billsSectionTitle}</AppText>
+        <View style={styles.billsBlock}>
+          <AppText variant="subheading">{copy.trip.billsSectionTitle}</AppText>
 
-        {data.bills.length === 0 ? (
-          <EmptyState heading={copy.trip.emptyBillsHeading} body={copy.trip.emptyBillsBody} />
-        ) : (
-          <FlatList
-            data={data.bills}
-            keyExtractor={(entry) => entry.bill.id}
-            scrollEnabled={false}
-            ItemSeparatorComponent={() => <View style={styles.itemGap} />}
-            renderItem={({ item }) => (
-              <BillListItem
-                entry={item}
-                participantNames={data.participantNamesByBillId.get(item.bill.id) ?? []}
-                onPress={handleOpenBill}
-                onOverflowPress={handleOverflowPress}
+          {data.bills.length === 0 ? (
+            <EmptyState heading={copy.trip.emptyBillsHeading} body={copy.trip.emptyBillsBody} />
+          ) : (
+            <FlatList
+              data={data.bills}
+              keyExtractor={(entry) => entry.bill.id}
+              scrollEnabled={false}
+              ItemSeparatorComponent={() => <View style={styles.itemGap} />}
+              renderItem={({ item }) => (
+                <BillListItem
+                  entry={item}
+                  participantNames={data.participantNamesByBillId.get(item.bill.id) ?? []}
+                  onPress={handleOpenBill}
+                  onOverflowPress={handleOverflowPress}
+                />
+              )}
+            />
+          )}
+        </View>
+
+        {/* Was a sticky BottomActionBar footer — moved inline, per the
+            user's own explicit request (2026-08-27) to drop sticky nav
+            footers in favor of plain in-flow buttons. */}
+        <View style={styles.footerBlock}>
+          {deleteTripError ? <InlineError message={deleteTripError} /> : null}
+          <View style={styles.footerRow}>
+            <AppButton
+              variant="secondary"
+              label={copy.trip.chooseFromGalleryAction}
+              onPress={handleChooseFromGallery}
+            />
+            <View style={styles.footerPrimary}>
+              <AppButton
+                label={copy.trip.scanNextBillAction}
+                onPress={handleScanNextBill}
+                icon={(color) => <Feather name="camera" size={18} color={color} />}
               />
-            )}
-          />
-        )}
+            </View>
+          </View>
+        </View>
       </View>
 
       <ParticipantEditorSheet
@@ -631,7 +640,29 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     body: {
       padding: spacing.lg,
+      // The scan/gallery buttons used to sit in a sticky footer, which
+      // Screen.tsx pads above the global nav bar automatically — now that
+      // they're plain in-flow content, this screen reserves that space
+      // itself.
+      paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+      // Section-to-section rhythm (roster card vs. the "Settle up" pill vs.
+      // the bills list vs. the scan/gallery actions) — spacing.xl, distinct
+      // from the tighter spacing.md/sm used within each of those blocks.
+      gap: spacing.xl,
+    },
+    rosterBlock: {
+      gap: spacing.sm,
+    },
+    rosterHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+    },
+    billsBlock: {
       gap: spacing.md,
+    },
+    footerBlock: {
+      gap: spacing.sm,
     },
     headerRow: {
       flexDirection: 'row',

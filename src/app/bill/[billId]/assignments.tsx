@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
@@ -6,7 +7,7 @@ import { AssignmentStatus } from '@/components/bill/AssignmentStatus';
 import { ParticipantPickerSheet } from '@/components/bill/ParticipantPickerSheet';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
+import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { Divider } from '@/components/ui/Divider';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { InlineError } from '@/components/ui/InlineError';
@@ -300,35 +301,19 @@ export default function AssignmentsScreen() {
   }
 
   return (
-    <Screen
-      scroll
-      padded={false}
-      footer={
-        <BottomActionBar>
-          {showBlockingError && isBlocked ? (
-            <View style={styles.blockingError} accessibilityLiveRegion="assertive">
-              <AppText variant="subheading" color="danger">
-                {copy.assignments.blockingErrorHeading}
-              </AppText>
-              <AppText variant="body" color="textSecondary">
-                {blockingErrorBody}
-              </AppText>
-            </View>
-          ) : null}
-          <AppButton label={copy.assignments.continueButton} onPress={handleContinue} />
-        </BottomActionBar>
-      }
-    >
+    <Screen scroll padded={false}>
       <View style={styles.body}>
-        <AppText variant="heading">{copy.assignments.heading}</AppText>
-        <AppText variant="body" color="textSecondary">
-          {copy.assignments.body}
-        </AppText>
-        <AppText variant="caption" color="textSecondary">
-          {copy.assignments.sharedNote}
-        </AppText>
+        <View style={styles.headerBlock}>
+          <AppText variant="heading">{copy.assignments.heading}</AppText>
+          <AppText variant="body" color="textSecondary">
+            {copy.assignments.body}
+          </AppText>
+          <AppText variant="caption" color="textSecondary">
+            {copy.assignments.sharedNote}
+          </AppText>
 
-        {actionError ? <InlineError message={actionError} /> : null}
+          {actionError ? <InlineError message={actionError} /> : null}
+        </View>
 
         <View style={styles.toggleRow}>
           <AppText variant="body" style={styles.toggleLabel}>
@@ -352,6 +337,7 @@ export default function AssignmentsScreen() {
               <AppButton
                 variant="text"
                 label={copy.assignments.bulkAssignAction}
+                icon={(color) => <Feather name="users" size={18} color={color} />}
                 onPress={() => handleBulkAssign(unassignedItems.map((item) => item.id))}
               />
             </View>
@@ -379,6 +365,28 @@ export default function AssignmentsScreen() {
             ))}
           </View>
         ) : null}
+
+        {/* Was a sticky BottomActionBar footer — moved inline, per the
+            user's own explicit request (2026-08-27) to drop sticky nav
+            footers in favor of plain in-flow buttons. */}
+        <View style={styles.actionsBlock}>
+          {showBlockingError && isBlocked ? (
+            <View style={styles.blockingError} accessibilityLiveRegion="assertive">
+              <AppText variant="subheading" color="danger">
+                {copy.assignments.blockingErrorHeading}
+              </AppText>
+              <AppText variant="body" color="textSecondary">
+                {blockingErrorBody}
+              </AppText>
+            </View>
+          ) : null}
+          <AppButton
+            label={copy.assignments.continueButton}
+            icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+            iconPosition="trailing"
+            onPress={handleContinue}
+          />
+        </View>
       </View>
 
       <ParticipantPickerSheet
@@ -397,6 +405,20 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     body: {
       padding: spacing.lg,
+      // Section-to-section rhythm (headerBlock / toggle row / unassigned
+      // section / assigned section / actionsBlock): spacing.xl between each
+      // distinct block, spacing.md/sm within one — see each block's own
+      // style below.
+      gap: spacing.xl,
+      // The Continue button used to sit in a sticky footer, which Screen.tsx
+      // pads above the global nav bar automatically — now that it's plain
+      // in-flow content, this screen reserves that space itself.
+      paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+    },
+    headerBlock: {
+      gap: spacing.sm,
+    },
+    actionsBlock: {
       gap: spacing.md,
     },
     toggleRow: {
@@ -407,6 +429,7 @@ function createStyles(colors: ColorTokens) {
       gap: spacing.md,
       padding: spacing.md,
       borderRadius: radius.md,
+      borderCurve: 'continuous',
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
@@ -429,6 +452,7 @@ function createStyles(colors: ColorTokens) {
       gap: spacing.md,
       padding: spacing.md,
       borderRadius: radius.md,
+      borderCurve: 'continuous',
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,

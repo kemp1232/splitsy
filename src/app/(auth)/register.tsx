@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -6,7 +7,6 @@ import { StyleSheet, View } from 'react-native';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { InlineError } from '@/components/ui/InlineError';
 import { Screen } from '@/components/ui/Screen';
 import appInfo from '@/constants/appInfo.json';
@@ -111,14 +111,17 @@ export default function RegisterScreen() {
     return (
       <Screen scroll>
         <View style={styles.body}>
-          <AppText variant="heading">{copy.auth.registerCheckEmailHeading}</AppText>
-          <AppText variant="body" color="textSecondary" accessibilityLiveRegion="polite">
-            {copy.auth.registerCheckEmailBody.replace('{email}', registeredEmail)}
-          </AppText>
+          <View style={styles.headerGroup}>
+            <AppText variant="heading">{copy.auth.registerCheckEmailHeading}</AppText>
+            <AppText variant="body" color="textSecondary" accessibilityLiveRegion="polite">
+              {copy.auth.registerCheckEmailBody.replace('{email}', registeredEmail)}
+            </AppText>
+          </View>
           <AppButton
             variant="secondary"
             label={copy.auth.registerSignInLink}
             onPress={() => router.replace('/sign-in')}
+            icon={(color) => <Feather name="arrow-left" size={18} color={color} />}
           />
         </View>
       </Screen>
@@ -126,73 +129,79 @@ export default function RegisterScreen() {
   }
 
   return (
-    <Screen
-      scroll
-      footer={
-        <BottomActionBar>
+    <Screen scroll>
+      <View style={styles.body}>
+        <View style={styles.headerGroup}>
+          <AppText variant="heading">{copy.auth.registerHeading}</AppText>
+          <AppText variant="body" color="textSecondary">
+            {copy.auth.registerBody}
+          </AppText>
+        </View>
+
+        <View style={styles.fields}>
+          <AppTextInput
+            label={copy.auth.nameLabel}
+            placeholder={copy.auth.namePlaceholder}
+            value={name}
+            onChangeText={(value) => {
+              setName(value);
+              if (nameError) setNameError(null);
+            }}
+            error={nameError ?? undefined}
+            textContentType="name"
+            autoComplete="name"
+          />
+
+          <AppTextInput
+            label={copy.auth.emailLabel}
+            placeholder={copy.auth.emailPlaceholder}
+            value={email}
+            onChangeText={(value) => {
+              setEmail(value);
+              if (emailError) setEmailError(null);
+            }}
+            error={emailError ?? undefined}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            textContentType="emailAddress"
+            autoComplete="email"
+          />
+
+          <AppTextInput
+            label={copy.auth.passwordLabel}
+            value={password}
+            onChangeText={(value) => {
+              setPassword(value);
+              if (passwordError) setPasswordError(null);
+            }}
+            error={passwordError ?? undefined}
+            secureTextEntry
+            textContentType="newPassword"
+            autoComplete="new-password"
+          />
+        </View>
+
+        <View style={styles.actions}>
+          <View style={styles.footerRow}>
+            <AppText color="textSecondary">{copy.auth.registerHasAccountPrompt}</AppText>
+            <AppButton
+              variant="text"
+              label={copy.auth.registerSignInLink}
+              onPress={() => router.push('/sign-in')}
+            />
+          </View>
+
+          {/* Was a sticky BottomActionBar footer — moved inline, per the
+              user's own explicit request (2026-08-27) to drop sticky nav
+              footers in favor of plain in-flow buttons. */}
           {formError ? <InlineError message={formError} /> : null}
           <AppButton
             label={copy.auth.registerButton}
             onPress={handleRegister}
             loading={submitting}
-          />
-        </BottomActionBar>
-      }
-    >
-      <View style={styles.body}>
-        <AppText variant="heading">{copy.auth.registerHeading}</AppText>
-        <AppText variant="body" color="textSecondary">
-          {copy.auth.registerBody}
-        </AppText>
-
-        <AppTextInput
-          label={copy.auth.nameLabel}
-          placeholder={copy.auth.namePlaceholder}
-          value={name}
-          onChangeText={(value) => {
-            setName(value);
-            if (nameError) setNameError(null);
-          }}
-          error={nameError ?? undefined}
-          textContentType="name"
-          autoComplete="name"
-        />
-
-        <AppTextInput
-          label={copy.auth.emailLabel}
-          placeholder={copy.auth.emailPlaceholder}
-          value={email}
-          onChangeText={(value) => {
-            setEmail(value);
-            if (emailError) setEmailError(null);
-          }}
-          error={emailError ?? undefined}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          textContentType="emailAddress"
-          autoComplete="email"
-        />
-
-        <AppTextInput
-          label={copy.auth.passwordLabel}
-          value={password}
-          onChangeText={(value) => {
-            setPassword(value);
-            if (passwordError) setPasswordError(null);
-          }}
-          error={passwordError ?? undefined}
-          secureTextEntry
-          textContentType="newPassword"
-          autoComplete="new-password"
-        />
-
-        <View style={styles.footerRow}>
-          <AppText color="textSecondary">{copy.auth.registerHasAccountPrompt}</AppText>
-          <AppButton
-            variant="text"
-            label={copy.auth.registerSignInLink}
-            onPress={() => router.push('/sign-in')}
+            icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+            iconPosition="trailing"
           />
         </View>
       </View>
@@ -202,6 +211,15 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({
   body: {
+    gap: spacing.xl,
+  },
+  headerGroup: {
+    gap: spacing.sm,
+  },
+  fields: {
+    gap: spacing.md,
+  },
+  actions: {
     gap: spacing.md,
   },
   footerRow: {

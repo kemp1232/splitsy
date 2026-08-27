@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
@@ -7,7 +8,7 @@ import { SettlementCard } from '@/components/bill/SettlementCard';
 import { TripPersonBalanceCard } from '@/components/trip/TripPersonBalanceCard';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
+import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { GradientHeroCard } from '@/components/ui/GradientHeroCard';
@@ -240,7 +241,7 @@ export default function TripSettlementScreen() {
   // shared `load` callback directly inside an effect trips the
   // react-hooks/set-state-in-effect lint rule. This inline IIFE with its own
   // independent try/catch is this codebase's existing convention for a
-  // screen's first load (see e.g. src/app/(tabs)/index.tsx's own copy of this same
+  // screen's first load (see e.g. src/app/index.tsx's own copy of this same
   // shape).
   useEffect(() => {
     (async () => {
@@ -351,23 +352,7 @@ export default function TripSettlementScreen() {
   }
 
   return (
-    <Screen
-      scroll
-      padded={false}
-      footer={
-        canMarkSettled ? (
-          <BottomActionBar>
-            {markError ? <InlineError message={markError} /> : null}
-            <AppButton
-              label={copy.tripSettlement.markSettledAction}
-              onPress={handleMarkSettled}
-              loading={marking}
-              disabled={marking}
-            />
-          </BottomActionBar>
-        ) : undefined
-      }
-    >
+    <Screen scroll padded={false}>
       <View style={styles.headerRow}>
         <AppText variant="heading">{copy.tripSettlement.heading}</AppText>
         <AppText variant="subheading">{title}</AppText>
@@ -389,12 +374,6 @@ export default function TripSettlementScreen() {
       ) : null}
 
       <View style={styles.body}>
-        {/* Rendered in the body, not the footer — the footer only exists
-            while canMarkSettled is true, which flips to false the instant
-            handleMarkSettled succeeds (isSettled becomes true), so a toast
-            set at that same moment would otherwise never actually be shown.
-            This also covers handleCopy's toast on an already-settled trip,
-            which has no footer at all. */}
         {toastMessage ? <AppText color="success">{toastMessage}</AppText> : null}
 
         {!data.result ? (
@@ -410,6 +389,7 @@ export default function TripSettlementScreen() {
                   variant="secondary"
                   label={copy.summary.shareAction}
                   onPress={handleShare}
+                  icon={(color) => <Feather name="share" size={18} color={color} />}
                 />
                 {shareError ? <InlineError message={shareError} /> : null}
               </View>
@@ -418,6 +398,7 @@ export default function TripSettlementScreen() {
                   variant="secondary"
                   label={copy.summary.copyAction}
                   onPress={handleCopy}
+                  icon={(color) => <Feather name="copy" size={18} color={color} />}
                 />
                 {copyError ? <InlineError message={copyError} /> : null}
               </View>
@@ -443,6 +424,23 @@ export default function TripSettlementScreen() {
             />
           </>
         )}
+
+        {/* Was a sticky BottomActionBar footer, shown only while
+            canMarkSettled — moved inline, per the user's own explicit
+            request (2026-08-27) to drop sticky nav footers in favor of plain
+            in-flow buttons. */}
+        {canMarkSettled ? (
+          <View style={styles.markSettledBlock}>
+            {markError ? <InlineError message={markError} /> : null}
+            <AppButton
+              label={copy.tripSettlement.markSettledAction}
+              onPress={handleMarkSettled}
+              loading={marking}
+              disabled={marking}
+              icon={(color) => <Feather name="check-circle" size={18} color={color} />}
+            />
+          </View>
+        ) : null}
       </View>
     </Screen>
   );
@@ -451,7 +449,15 @@ export default function TripSettlementScreen() {
 const styles = StyleSheet.create({
   body: {
     padding: spacing.lg,
-    gap: spacing.md,
+    // The mark-settled button used to sit in a sticky footer, which
+    // Screen.tsx pads above the global nav bar automatically — now that
+    // it's plain in-flow content, this screen reserves that space itself.
+    paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+    // Section-to-section rhythm (the share/copy row vs. the person-balance
+    // cards vs. the SettlementCard vs. the mark-settled action) —
+    // spacing.xl, distinct from the tighter spacing.md/sm used within each
+    // of those blocks.
+    gap: spacing.xl,
   },
   headerRow: {
     paddingHorizontal: spacing.lg,
@@ -468,6 +474,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs / 2,
   },
   cardsList: {
+    gap: spacing.sm,
+  },
+  markSettledBlock: {
     gap: spacing.sm,
   },
 });

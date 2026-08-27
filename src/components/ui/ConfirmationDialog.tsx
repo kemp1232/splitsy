@@ -68,6 +68,7 @@ function createStyles(colors: ColorTokens) {
       maxWidth: 400,
       backgroundColor: colors.surface,
       borderRadius: radius.lg,
+      borderCurve: 'continuous',
       padding: spacing.lg,
       gap: spacing.md,
     },

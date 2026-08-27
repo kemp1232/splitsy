@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
@@ -5,7 +6,7 @@ import { FlatList, StyleSheet, View } from 'react-native';
 import { PaymentContributionRow } from '@/components/bill/PaymentContributionRow';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
+import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { Divider } from '@/components/ui/Divider';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { InlineError } from '@/components/ui/InlineError';
@@ -285,27 +286,14 @@ export default function PaymentsScreen() {
   }
 
   return (
-    <Screen
-      scroll
-      padded={false}
-      footer={
-        <BottomActionBar>
-          {actionError ? <InlineError message={actionError} /> : null}
-          <AppButton variant="text" label={copy.payments.skipAction} onPress={handleSkip} />
-          <AppButton
-            label={copy.payments.continueButton}
-            onPress={handleContinue}
-            loading={saving}
-            disabled={saving}
-          />
-        </BottomActionBar>
-      }
-    >
+    <Screen scroll padded={false}>
       <View style={styles.body}>
-        <AppText variant="heading">{copy.payments.heading}</AppText>
-        <AppText variant="body" color="textSecondary">
-          {copy.payments.body}
-        </AppText>
+        <View style={styles.introBlock}>
+          <AppText variant="heading">{copy.payments.heading}</AppText>
+          <AppText variant="body" color="textSecondary">
+            {copy.payments.body}
+          </AppText>
+        </View>
 
         <Divider />
 
@@ -324,6 +312,24 @@ export default function PaymentsScreen() {
             />
           )}
         />
+
+        {/* Was a sticky BottomActionBar footer — moved inline, per the
+            user's own explicit request (2026-08-27) to drop sticky nav
+            footers in favor of plain in-flow buttons. Skip stays icon-less
+            (skipping isn't a forward wizard action worth an arrow-right, per
+            the polish-pass icon-mapping table). */}
+        <View style={styles.actionsBlock}>
+          {actionError ? <InlineError message={actionError} /> : null}
+          <AppButton variant="text" label={copy.payments.skipAction} onPress={handleSkip} />
+          <AppButton
+            label={copy.payments.continueButton}
+            onPress={handleContinue}
+            loading={saving}
+            disabled={saving}
+            icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+            iconPosition="trailing"
+          />
+        </View>
       </View>
     </Screen>
   );
@@ -332,7 +338,19 @@ export default function PaymentsScreen() {
 const styles = StyleSheet.create({
   body: {
     padding: spacing.lg,
-    gap: spacing.md,
+    // The Skip/Continue buttons used to sit in a sticky footer, which
+    // Screen.tsx pads above the global nav bar automatically — now that
+    // they're plain in-flow content, this screen reserves that space itself.
+    paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+    // Section-to-section rhythm (intro block / the contribution rows list /
+    // the skip+continue actions each read as their own distinct block).
+    gap: spacing.xl,
+  },
+  introBlock: {
+    gap: spacing.sm,
+  },
+  actionsBlock: {
+    gap: spacing.sm,
   },
   itemGap: {
     height: spacing.sm,

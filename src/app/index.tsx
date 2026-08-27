@@ -484,11 +484,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    // Section-to-section gap before the "Recent" list section below.
+    paddingBottom: spacing.xl,
   },
   sectionTitle: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xs,
+    // Within-section gap to the list rows directly under this label.
+    paddingBottom: spacing.sm,
   },
   list: {
     padding: spacing.lg,

@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -5,7 +6,6 @@ import { StyleSheet, View } from 'react-native';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { InlineError } from '@/components/ui/InlineError';
 import { Screen } from '@/components/ui/Screen';
 import { copy } from '@/constants/copy';
@@ -39,10 +39,12 @@ export default function ResetPasswordScreen() {
     return (
       <Screen scroll>
         <View style={styles.body}>
-          <AppText variant="heading">{copy.auth.resetPasswordMissingTokenHeading}</AppText>
-          <AppText variant="body" color="textSecondary">
-            {copy.auth.resetPasswordMissingTokenBody}
-          </AppText>
+          <View style={styles.headerGroup}>
+            <AppText variant="heading">{copy.auth.resetPasswordMissingTokenHeading}</AppText>
+            <AppText variant="body" color="textSecondary">
+              {copy.auth.resetPasswordMissingTokenBody}
+            </AppText>
+          </View>
           <AppButton
             label={copy.auth.requestNewLinkAction}
             onPress={() => router.replace('/forgot-password')}
@@ -96,50 +98,56 @@ export default function ResetPasswordScreen() {
   }
 
   return (
-    <Screen
-      scroll
-      footer={
-        <BottomActionBar>
+    <Screen scroll>
+      <View style={styles.body}>
+        <View style={styles.headerGroup}>
+          <AppText variant="heading">{copy.auth.resetPasswordHeading}</AppText>
+          <AppText variant="body" color="textSecondary">
+            {copy.auth.resetPasswordBody}
+          </AppText>
+        </View>
+
+        <View style={styles.fields}>
+          <AppTextInput
+            label={copy.auth.newPasswordLabel}
+            value={newPassword}
+            onChangeText={(value) => {
+              setNewPassword(value);
+              if (newPasswordError) setNewPasswordError(null);
+            }}
+            error={newPasswordError ?? undefined}
+            secureTextEntry
+            textContentType="newPassword"
+            autoComplete="new-password"
+          />
+
+          <AppTextInput
+            label={copy.auth.confirmPasswordLabel}
+            value={confirmPassword}
+            onChangeText={(value) => {
+              setConfirmPassword(value);
+              if (confirmPasswordError) setConfirmPasswordError(null);
+            }}
+            error={confirmPasswordError ?? undefined}
+            secureTextEntry
+            textContentType="newPassword"
+            autoComplete="new-password"
+          />
+        </View>
+
+        <View style={styles.actions}>
+          {/* Was a sticky BottomActionBar footer — moved inline, per the
+              user's own explicit request (2026-08-27) to drop sticky nav
+              footers in favor of plain in-flow buttons. */}
           {formError ? <InlineError message={formError} /> : null}
           <AppButton
             label={copy.auth.resetPasswordButton}
             onPress={handleResetPassword}
             loading={submitting}
+            icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+            iconPosition="trailing"
           />
-        </BottomActionBar>
-      }
-    >
-      <View style={styles.body}>
-        <AppText variant="heading">{copy.auth.resetPasswordHeading}</AppText>
-        <AppText variant="body" color="textSecondary">
-          {copy.auth.resetPasswordBody}
-        </AppText>
-
-        <AppTextInput
-          label={copy.auth.newPasswordLabel}
-          value={newPassword}
-          onChangeText={(value) => {
-            setNewPassword(value);
-            if (newPasswordError) setNewPasswordError(null);
-          }}
-          error={newPasswordError ?? undefined}
-          secureTextEntry
-          textContentType="newPassword"
-          autoComplete="new-password"
-        />
-
-        <AppTextInput
-          label={copy.auth.confirmPasswordLabel}
-          value={confirmPassword}
-          onChangeText={(value) => {
-            setConfirmPassword(value);
-            if (confirmPasswordError) setConfirmPasswordError(null);
-          }}
-          error={confirmPasswordError ?? undefined}
-          secureTextEntry
-          textContentType="newPassword"
-          autoComplete="new-password"
-        />
+        </View>
       </View>
     </Screen>
   );
@@ -147,6 +155,15 @@ export default function ResetPasswordScreen() {
 
 const styles = StyleSheet.create({
   body: {
+    gap: spacing.xl,
+  },
+  headerGroup: {
+    gap: spacing.sm,
+  },
+  fields: {
+    gap: spacing.md,
+  },
+  actions: {
     gap: spacing.md,
   },
 });

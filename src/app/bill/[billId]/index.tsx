@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -7,7 +8,7 @@ import { PersonTotalCard } from '@/components/bill/PersonTotalCard';
 import { SettlementCard } from '@/components/bill/SettlementCard';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
+import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { Divider } from '@/components/ui/Divider';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -315,15 +316,7 @@ export default function SavedBillDetailScreen() {
   }
 
   return (
-    <Screen
-      scroll
-      padded={false}
-      footer={
-        <BottomActionBar>
-          <AppButton label={copy.savedBillDetail.shareAction} onPress={handleShare} />
-        </BottomActionBar>
-      }
-    >
+    <Screen scroll padded={false}>
       <View style={styles.body}>
         <View style={styles.headerBlock}>
           <AppText variant="heading">{title}</AppText>
@@ -359,66 +352,80 @@ export default function SavedBillDetailScreen() {
               variant="secondary"
               label={copy.savedBillDetail.tripLinkLabel.replace('{name}', tripLink.name)}
               onPress={() => router.push(`/trip/${tripLink.id}`)}
+              icon={(color) => <Feather name="map-pin" size={18} color={color} />}
             />
           ) : null}
         </View>
 
-        <View style={styles.actionsRow}>
-          <AppButton
-            variant="secondary"
-            label={copy.savedBillDetail.editAction}
-            onPress={handleEditBill}
-          />
-          <AppButton
-            variant="destructive"
-            label={copy.savedBillDetail.deleteAction}
-            onPress={() => setConfirmingDelete(true)}
-          />
+        <View style={styles.actionsBlock}>
+          {/* Edit (non-destructive, secondary) and Delete (destructive) stay
+              spatially side by side but visually distinct — different
+              variants/colors plus different glyphs (edit-2 vs. trash-2), not
+              just the destructive-red fill alone. */}
+          <View style={styles.actionsRow}>
+            <AppButton
+              variant="secondary"
+              label={copy.savedBillDetail.editAction}
+              onPress={handleEditBill}
+              icon={(color) => <Feather name="edit-2" size={18} color={color} />}
+            />
+            <AppButton
+              variant="destructive"
+              label={copy.savedBillDetail.deleteAction}
+              onPress={() => setConfirmingDelete(true)}
+              icon={(color) => <Feather name="trash-2" size={18} color={color} />}
+            />
+          </View>
+          {shareError ? <InlineError message={shareError} /> : null}
+          {deleteError ? <InlineError message={deleteError} /> : null}
         </View>
-        {shareError ? <InlineError message={shareError} /> : null}
-        {deleteError ? <InlineError message={deleteError} /> : null}
 
-        {hasReceiptImage ? (
-          <AppButton
-            variant="text"
-            label={copy.savedBillDetail.receiptAction}
-            onPress={() => setShowReceiptImage(true)}
-          />
-        ) : null}
-        {hasRawOcrText ? (
-          <AppButton
-            variant="text"
-            label={copy.savedBillDetail.rawOcrAction}
-            onPress={() => setShowRawText(true)}
-          />
-        ) : null}
-        {!hasReceiptImage && !hasRawOcrText ? (
-          <AppText color="textSecondary">{copy.savedBillDetail.noReceiptText}</AppText>
-        ) : null}
+        <View style={styles.linksBlock}>
+          {hasReceiptImage ? (
+            <AppButton
+              variant="text"
+              label={copy.savedBillDetail.receiptAction}
+              onPress={() => setShowReceiptImage(true)}
+              icon={(color) => <Feather name="file-text" size={18} color={color} />}
+            />
+          ) : null}
+          {hasRawOcrText ? (
+            <AppButton
+              variant="text"
+              label={copy.savedBillDetail.rawOcrAction}
+              onPress={() => setShowRawText(true)}
+              icon={(color) => <Feather name="file-text" size={18} color={color} />}
+            />
+          ) : null}
+          {!hasReceiptImage && !hasRawOcrText ? (
+            <AppText color="textSecondary">{copy.savedBillDetail.noReceiptText}</AppText>
+          ) : null}
+        </View>
 
-        <Divider />
-
-        <View style={styles.cardsList}>
-          {splitResult.participantShares.map((share) => {
-            const name = nameByParticipantId.get(share.participantId) ?? '';
-            return (
-              <PersonTotalCard
-                key={share.participantId}
-                name={name}
-                finalTotalCentavos={share.finalTotalCentavos}
-                itemShares={buildParticipantItemShareDisplay(share.itemShares, itemInfoById)}
-                adjustmentShares={buildParticipantAdjustmentShareDisplay(
-                  share.adjustmentShares,
-                  adjustmentInfoById,
-                )}
-                paidCentavos={
-                  hasAnyContribution
-                    ? contributionByParticipantId.get(share.participantId)?.contributedCentavos
-                    : undefined
-                }
-              />
-            );
-          })}
+        <View style={styles.cardsBlock}>
+          <Divider />
+          <View style={styles.cardsList}>
+            {splitResult.participantShares.map((share) => {
+              const name = nameByParticipantId.get(share.participantId) ?? '';
+              return (
+                <PersonTotalCard
+                  key={share.participantId}
+                  name={name}
+                  finalTotalCentavos={share.finalTotalCentavos}
+                  itemShares={buildParticipantItemShareDisplay(share.itemShares, itemInfoById)}
+                  adjustmentShares={buildParticipantAdjustmentShareDisplay(
+                    share.adjustmentShares,
+                    adjustmentInfoById,
+                  )}
+                  paidCentavos={
+                    hasAnyContribution
+                      ? contributionByParticipantId.get(share.participantId)?.contributedCentavos
+                      : undefined
+                  }
+                />
+              );
+            })}
+          </View>
         </View>
 
         {hasAnyContribution ? (
@@ -429,6 +436,18 @@ export default function SavedBillDetailScreen() {
             totalCentavos={splitResult.computedTotalCentavos}
           />
         ) : null}
+
+        {/* Was a sticky BottomActionBar footer — moved inline, per the
+            user's own explicit request (2026-08-27) to drop sticky nav
+            footers in favor of plain in-flow buttons. This is a persisted
+            read view, not a wizard step, so its primary action gets the
+            mapping table's `share` icon rather than a "Continue"-style
+            arrow-right. */}
+        <AppButton
+          label={copy.savedBillDetail.shareAction}
+          onPress={handleShare}
+          icon={(color) => <Feather name="share" size={18} color={color} />}
+        />
       </View>
 
       <Modal
@@ -441,6 +460,7 @@ export default function SavedBillDetailScreen() {
             variant="text"
             label={copy.global.closeAccessibilityLabel}
             onPress={() => setShowReceiptImage(false)}
+            icon={(color) => <Feather name="x" size={18} color={color} />}
           />
           {bill.receiptImageUri ? (
             <Image
@@ -463,6 +483,7 @@ export default function SavedBillDetailScreen() {
             variant="text"
             label={copy.global.closeAccessibilityLabel}
             onPress={() => setShowRawText(false)}
+            icon={(color) => <Feather name="x" size={18} color={color} />}
           />
           <ScrollView style={styles.rawTextScroll}>
             <AppText selectable variant="caption" style={styles.rawText}>
@@ -490,7 +511,15 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     body: {
       padding: spacing.lg,
-      gap: spacing.md,
+      // The Share button used to sit in a sticky footer, which Screen.tsx
+      // pads above the global nav bar automatically — now that it's plain
+      // in-flow content, this screen reserves that space itself.
+      paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+      // Section-to-section rhythm: header block / edit+delete actions /
+      // receipt+raw-text links / person cards each read as their own
+      // distinct block. spacing.md/sm stays reserved for tight,
+      // within-section grouping (see the block-specific styles below).
+      gap: spacing.xl,
     },
     headerBlock: {
       gap: spacing.xs,
@@ -501,8 +530,17 @@ function createStyles(colors: ColorTokens) {
       justifyContent: 'space-between',
       marginTop: spacing.sm,
     },
+    actionsBlock: {
+      gap: spacing.sm,
+    },
     actionsRow: {
       flexDirection: 'row',
+      gap: spacing.md,
+    },
+    linksBlock: {
+      gap: spacing.sm,
+    },
+    cardsBlock: {
       gap: spacing.md,
     },
     cardsList: {

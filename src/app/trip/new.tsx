@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
@@ -9,7 +10,7 @@ import {
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
+import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { Divider } from '@/components/ui/Divider';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -100,27 +101,14 @@ export default function NewTripScreen() {
   }
 
   return (
-    <Screen
-      scroll
-      padded={false}
-      footer={
-        <BottomActionBar>
-          {!meetsMinimumParticipants ? <InlineError message={copy.trip.minimumError} /> : null}
-          {submitError ? <InlineError message={submitError} /> : null}
-          <AppButton
-            label={copy.trip.startTripAction}
-            disabled={!meetsMinimumParticipants}
-            loading={submitting}
-            onPress={handleStartTrip}
-          />
-        </BottomActionBar>
-      }
-    >
+    <Screen scroll padded={false}>
       <View style={styles.body}>
-        <AppText variant="heading">{copy.trip.newHeading}</AppText>
-        <AppText variant="body" color="textSecondary">
-          {copy.trip.newBody}
-        </AppText>
+        <View style={styles.headerBlock}>
+          <AppText variant="heading">{copy.trip.newHeading}</AppText>
+          <AppText variant="body" color="textSecondary">
+            {copy.trip.newBody}
+          </AppText>
+        </View>
 
         <AppTextInput
           label={copy.trip.nameLabel}
@@ -129,57 +117,78 @@ export default function NewTripScreen() {
           onChangeText={setName}
         />
 
-        <Divider />
+        <View style={styles.rosterSection}>
+          <Divider />
 
-        <AppText variant="subheading">{copy.trip.rosterHeading}</AppText>
+          <AppText variant="subheading">{copy.trip.rosterHeading}</AppText>
 
-        <AppButton
-          variant="secondary"
-          label={copy.trip.quickAddMe}
-          disabled={meAlreadyExists}
-          onPress={handleQuickAddMe}
-        />
-
-        {roster.length === 0 ? (
-          <EmptyState
-            heading={copy.trip.emptyHeading}
-            body={copy.trip.emptyBody}
-            actionLabel={copy.trip.addAction}
-            onAction={() => setEditingMember('new')}
+          <AppButton
+            variant="secondary"
+            label={copy.trip.quickAddMe}
+            disabled={meAlreadyExists}
+            onPress={handleQuickAddMe}
+            icon={(color) => <Feather name="plus" size={18} color={color} />}
           />
-        ) : (
-          <>
-            <FlatList
-              data={roster}
-              keyExtractor={(member) => member.draftId}
-              scrollEnabled={false}
-              ItemSeparatorComponent={() => <View style={styles.itemGap} />}
-              renderItem={({ item }) => (
-                <View style={styles.row}>
-                  <Pressable
-                    onPress={() => setEditingMember(item)}
-                    accessibilityRole="button"
-                    style={({ pressed }) => [styles.rowMain, pressed && styles.rowMainPressed]}
-                  >
-                    <AppText variant="body" numberOfLines={1}>
-                      {item.name}
-                    </AppText>
-                  </Pressable>
-                  <IconButton
-                    accessibilityLabel={copy.trip.removeConfirmHeading.replace('{name}', item.name)}
-                    onPress={() => setRemovingMember(item)}
-                    icon={<AppText color="danger">✕</AppText>}
-                  />
-                </View>
-              )}
+
+          {roster.length === 0 ? (
+            <EmptyState
+              heading={copy.trip.emptyHeading}
+              body={copy.trip.emptyBody}
+              actionLabel={copy.trip.addAction}
+              onAction={() => setEditingMember('new')}
             />
-            <AppButton
-              variant="secondary"
-              label={copy.trip.addAction}
-              onPress={() => setEditingMember('new')}
-            />
-          </>
-        )}
+          ) : (
+            <>
+              <FlatList
+                data={roster}
+                keyExtractor={(member) => member.draftId}
+                scrollEnabled={false}
+                ItemSeparatorComponent={() => <View style={styles.itemGap} />}
+                renderItem={({ item }) => (
+                  <View style={styles.row}>
+                    <Pressable
+                      onPress={() => setEditingMember(item)}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [styles.rowMain, pressed && styles.rowMainPressed]}
+                    >
+                      <AppText variant="body" numberOfLines={1}>
+                        {item.name}
+                      </AppText>
+                    </Pressable>
+                    <IconButton
+                      accessibilityLabel={copy.trip.removeConfirmHeading.replace(
+                        '{name}',
+                        item.name,
+                      )}
+                      onPress={() => setRemovingMember(item)}
+                      icon={<Feather name="x" size={20} color={colors.danger} />}
+                    />
+                  </View>
+                )}
+              />
+              <AppButton
+                variant="secondary"
+                label={copy.trip.addAction}
+                onPress={() => setEditingMember('new')}
+                icon={(color) => <Feather name="plus" size={18} color={color} />}
+              />
+            </>
+          )}
+        </View>
+
+        {/* Was a sticky BottomActionBar footer — moved inline, per the
+            user's own explicit request (2026-08-27) to drop sticky nav
+            footers in favor of plain in-flow buttons. */}
+        <View style={styles.actionsBlock}>
+          {!meetsMinimumParticipants ? <InlineError message={copy.trip.minimumError} /> : null}
+          {submitError ? <InlineError message={submitError} /> : null}
+          <AppButton
+            label={copy.trip.startTripAction}
+            disabled={!meetsMinimumParticipants}
+            loading={submitting}
+            onPress={handleStartTrip}
+          />
+        </View>
       </View>
 
       <ParticipantEditorSheet
@@ -208,7 +217,23 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     body: {
       padding: spacing.lg,
+      // The Start Trip button used to sit in a sticky footer, which
+      // Screen.tsx pads above the global nav bar automatically — now that
+      // it's plain in-flow content, this screen reserves that space itself.
+      paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+      // Section-to-section rhythm (name field vs. roster section vs. the
+      // final actions block) — spacing.xl, distinct from the tighter
+      // spacing.md/sm used within each of those sections below.
+      gap: spacing.xl,
+    },
+    headerBlock: {
+      gap: spacing.sm,
+    },
+    rosterSection: {
       gap: spacing.md,
+    },
+    actionsBlock: {
+      gap: spacing.sm,
     },
     row: {
       flexDirection: 'row',
@@ -217,6 +242,7 @@ function createStyles(colors: ColorTokens) {
       gap: spacing.md,
       padding: spacing.md,
       borderRadius: radius.md,
+      borderCurve: 'continuous',
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,

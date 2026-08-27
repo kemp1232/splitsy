@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -6,7 +7,6 @@ import { StyleSheet, View } from 'react-native';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { InlineError } from '@/components/ui/InlineError';
 import { Screen } from '@/components/ui/Screen';
 import appInfo from '@/constants/appInfo.json';
@@ -72,14 +72,17 @@ export default function ForgotPasswordScreen() {
     return (
       <Screen scroll>
         <View style={styles.body}>
-          <AppText variant="heading">{copy.auth.forgotPasswordHeading}</AppText>
-          <AppText variant="body" color="textSecondary" accessibilityLiveRegion="polite">
-            {copy.auth.forgotPasswordConfirmation}
-          </AppText>
+          <View style={styles.headerGroup}>
+            <AppText variant="heading">{copy.auth.forgotPasswordHeading}</AppText>
+            <AppText variant="body" color="textSecondary" accessibilityLiveRegion="polite">
+              {copy.auth.forgotPasswordConfirmation}
+            </AppText>
+          </View>
           <AppButton
             variant="secondary"
             label={copy.auth.backToSignIn}
             onPress={() => router.replace('/sign-in')}
+            icon={(color) => <Feather name="arrow-left" size={18} color={color} />}
           />
         </View>
       </Screen>
@@ -87,42 +90,53 @@ export default function ForgotPasswordScreen() {
   }
 
   return (
-    <Screen
-      scroll
-      footer={
-        <BottomActionBar>
+    <Screen scroll>
+      <View style={styles.body}>
+        <View style={styles.headerGroup}>
+          <AppText variant="heading">{copy.auth.forgotPasswordHeading}</AppText>
+          <AppText variant="body" color="textSecondary">
+            {copy.auth.forgotPasswordBody}
+          </AppText>
+        </View>
+
+        <View style={styles.fields}>
+          <AppTextInput
+            label={copy.auth.emailLabel}
+            placeholder={copy.auth.emailPlaceholder}
+            value={email}
+            onChangeText={(value) => {
+              setEmail(value);
+              if (emailError) setEmailError(null);
+            }}
+            error={emailError ?? undefined}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            textContentType="emailAddress"
+            autoComplete="email"
+          />
+        </View>
+
+        <View style={styles.actions}>
+          <AppButton
+            variant="text"
+            label={copy.auth.backToSignIn}
+            onPress={() => router.back()}
+            icon={(color) => <Feather name="arrow-left" size={18} color={color} />}
+          />
+
+          {/* Was a sticky BottomActionBar footer — moved inline, per the
+              user's own explicit request (2026-08-27) to drop sticky nav
+              footers in favor of plain in-flow buttons. */}
           {formError ? <InlineError message={formError} /> : null}
           <AppButton
             label={copy.auth.sendResetLinkButton}
             onPress={handleSendResetLink}
             loading={submitting}
+            icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+            iconPosition="trailing"
           />
-        </BottomActionBar>
-      }
-    >
-      <View style={styles.body}>
-        <AppText variant="heading">{copy.auth.forgotPasswordHeading}</AppText>
-        <AppText variant="body" color="textSecondary">
-          {copy.auth.forgotPasswordBody}
-        </AppText>
-
-        <AppTextInput
-          label={copy.auth.emailLabel}
-          placeholder={copy.auth.emailPlaceholder}
-          value={email}
-          onChangeText={(value) => {
-            setEmail(value);
-            if (emailError) setEmailError(null);
-          }}
-          error={emailError ?? undefined}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          textContentType="emailAddress"
-          autoComplete="email"
-        />
-
-        <AppButton variant="text" label={copy.auth.backToSignIn} onPress={() => router.back()} />
+        </View>
       </View>
     </Screen>
   );
@@ -130,6 +144,15 @@ export default function ForgotPasswordScreen() {
 
 const styles = StyleSheet.create({
   body: {
+    gap: spacing.xl,
+  },
+  headerGroup: {
+    gap: spacing.sm,
+  },
+  fields: {
+    gap: spacing.md,
+  },
+  actions: {
     gap: spacing.md,
   },
 });

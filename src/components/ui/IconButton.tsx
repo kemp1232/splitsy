@@ -40,6 +40,7 @@ function createStyles(colors: ColorTokens) {
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: radius.pill,
+      borderCurve: 'continuous',
     },
     pressed: {
       backgroundColor: colors.surfaceMuted,

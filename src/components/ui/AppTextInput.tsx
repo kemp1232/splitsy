@@ -44,6 +44,7 @@ function createStyles(colors: ColorTokens) {
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radius.md,
+      borderCurve: 'continuous',
       paddingHorizontal: spacing.md,
       fontSize: 15,
       color: colors.textPrimary,

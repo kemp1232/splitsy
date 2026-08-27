@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Modal, ScrollView, StyleSheet, View } from 'react-native';
@@ -7,7 +8,7 @@ import { LineItemRow } from '@/components/bill/LineItemRow';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
+import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { Divider } from '@/components/ui/Divider';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -199,115 +200,113 @@ export default function ReceiptReviewScreen() {
     : 0;
 
   return (
-    <Screen
-      scroll
-      padded={false}
-      footer={
-        <BottomActionBar>
-          <AppButton
-            label={copy.receiptReview.continueButton}
-            disabled={items.length === 0}
-            onPress={() => router.push(`/bill/${billId}/participants`)}
-          />
-        </BottomActionBar>
-      }
-    >
+    <Screen scroll padded={false}>
       <View style={styles.body}>
-        <AppText variant="heading">{copy.receiptReview.heading}</AppText>
-        <AppText variant="body" color="textSecondary">
-          {copy.receiptReview.body}
-        </AppText>
-
-        {/* Shared by every write path below (merchant/date autosave, item
-            save/delete) — mirrors participants.tsx's own actionError. */}
-        {actionError ? <InlineError message={actionError} /> : null}
-
-        {ocrSource ? (
-          <StatusBadge
-            label={
-              ocrSource === 'backend'
-                ? copy.receiptReview.ocrSourceBackend
-                : copy.receiptReview.ocrSourceOnDevice
-            }
-            tone={
-              ocrSource === 'backend'
-                ? 'success'
-                : fallbackReason === 'rate_limited'
-                  ? 'warning'
-                  : 'neutral'
-            }
-          />
-        ) : null}
-
-        {ocrSource === 'backend' ? (
-          <AppText variant="caption" color="textSecondary">
-            {copy.receiptReview.handwritingNote}
+        <View style={styles.headerBlock}>
+          <AppText variant="heading">{copy.receiptReview.heading}</AppText>
+          <AppText variant="body" color="textSecondary">
+            {copy.receiptReview.body}
           </AppText>
-        ) : null}
 
-        {fallbackReason === 'rate_limited' ? (
-          <AppText variant="caption" color="warning">
-            {copy.receiptReview.rateLimitedNote}
-          </AppText>
-        ) : null}
+          {/* Shared by every write path below (merchant/date autosave, item
+              save/delete) — mirrors participants.tsx's own actionError. */}
+          {actionError ? <InlineError message={actionError} /> : null}
 
-        <AppTextInput
-          label={copy.receiptReview.merchantLabel}
-          placeholder={copy.receiptReview.merchantPlaceholder}
-          value={merchantName}
-          onChangeText={setMerchantName}
-          onEndEditing={handleMerchantBlur}
-        />
-        <AppTextInput
-          label={copy.receiptReview.dateLabel}
-          placeholder={copy.receiptReview.datePlaceholder}
-          value={receiptDate}
-          onChangeText={(value) => {
-            setReceiptDate(value);
-            setDateError(null);
-          }}
-          onEndEditing={handleDateBlur}
-          error={dateError ?? undefined}
-        />
+          {ocrSource ? (
+            <StatusBadge
+              label={
+                ocrSource === 'backend'
+                  ? copy.receiptReview.ocrSourceBackend
+                  : copy.receiptReview.ocrSourceOnDevice
+              }
+              tone={
+                ocrSource === 'backend'
+                  ? 'success'
+                  : fallbackReason === 'rate_limited'
+                    ? 'warning'
+                    : 'neutral'
+              }
+            />
+          ) : null}
 
-        <Divider />
-
-        <View style={styles.sectionHeader}>
-          <AppText variant="subheading">{copy.receiptReview.itemsSection}</AppText>
-          {items.length > 0 ? (
+          {ocrSource === 'backend' ? (
             <AppText variant="caption" color="textSecondary">
-              {items.length === 1
-                ? copy.receiptReview.detectedCountSingular
-                : copy.receiptReview.detectedCountPlural.replace('{count}', String(items.length))}
+              {copy.receiptReview.handwritingNote}
+            </AppText>
+          ) : null}
+
+          {fallbackReason === 'rate_limited' ? (
+            <AppText variant="caption" color="warning">
+              {copy.receiptReview.rateLimitedNote}
             </AppText>
           ) : null}
         </View>
 
-        {items.length === 0 ? (
-          <EmptyState
-            heading={copy.receiptReview.noItemsHeading}
-            body={copy.receiptReview.noItemsBody}
-            actionLabel={copy.receiptReview.addItem}
-            onAction={() => setEditingItem('new')}
+        <View style={styles.fieldsBlock}>
+          <AppTextInput
+            label={copy.receiptReview.merchantLabel}
+            placeholder={copy.receiptReview.merchantPlaceholder}
+            value={merchantName}
+            onChangeText={setMerchantName}
+            onEndEditing={handleMerchantBlur}
           />
-        ) : (
-          <>
-            <FlatList
-              data={items}
-              keyExtractor={(item) => item.id}
-              scrollEnabled={false}
-              ItemSeparatorComponent={() => <View style={styles.itemGap} />}
-              renderItem={({ item }) => (
-                <LineItemRow item={item} onPress={() => setEditingItem(item)} />
-              )}
+          <AppTextInput
+            label={copy.receiptReview.dateLabel}
+            placeholder={copy.receiptReview.datePlaceholder}
+            value={receiptDate}
+            onChangeText={(value) => {
+              setReceiptDate(value);
+              setDateError(null);
+            }}
+            onEndEditing={handleDateBlur}
+            error={dateError ?? undefined}
+          />
+        </View>
+
+        <Divider />
+
+        <View style={styles.itemsBlock}>
+          <View style={styles.sectionHeader}>
+            <AppText variant="subheading">{copy.receiptReview.itemsSection}</AppText>
+            {items.length > 0 ? (
+              <AppText variant="caption" color="textSecondary">
+                {items.length === 1
+                  ? copy.receiptReview.detectedCountSingular
+                  : copy.receiptReview.detectedCountPlural.replace(
+                      '{count}',
+                      String(items.length),
+                    )}
+              </AppText>
+            ) : null}
+          </View>
+
+          {items.length === 0 ? (
+            <EmptyState
+              heading={copy.receiptReview.noItemsHeading}
+              body={copy.receiptReview.noItemsBody}
+              actionLabel={copy.receiptReview.addItem}
+              onAction={() => setEditingItem('new')}
             />
-            <AppButton
-              variant="secondary"
-              label={copy.receiptReview.addItem}
-              onPress={() => setEditingItem('new')}
-            />
-          </>
-        )}
+          ) : (
+            <>
+              <FlatList
+                data={items}
+                keyExtractor={(item) => item.id}
+                scrollEnabled={false}
+                ItemSeparatorComponent={() => <View style={styles.itemGap} />}
+                renderItem={({ item }) => (
+                  <LineItemRow item={item} onPress={() => setEditingItem(item)} />
+                )}
+              />
+              <AppButton
+                variant="secondary"
+                label={copy.receiptReview.addItem}
+                icon={(color) => <Feather name="plus" size={18} color={color} />}
+                onPress={() => setEditingItem('new')}
+              />
+            </>
+          )}
+        </View>
 
         <Divider />
 
@@ -349,13 +348,27 @@ export default function ReceiptReviewScreen() {
           ) : null}
         </View>
 
-        {bill.rawOcrText ? (
+        {/* Was a sticky BottomActionBar footer — moved inline, directly
+            below the raw-text action, per the user's own explicit request
+            (2026-08-27) to drop the sticky nav here in favor of a plain
+            in-flow button. */}
+        <View style={styles.actionsBlock}>
+          {bill.rawOcrText ? (
+            <AppButton
+              variant="text"
+              label={copy.receiptReview.rawTextAction}
+              icon={(color) => <Feather name="file-text" size={18} color={color} />}
+              onPress={() => setShowRawText(true)}
+            />
+          ) : null}
           <AppButton
-            variant="text"
-            label={copy.receiptReview.rawTextAction}
-            onPress={() => setShowRawText(true)}
+            label={copy.receiptReview.continueButton}
+            disabled={items.length === 0}
+            icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+            iconPosition="trailing"
+            onPress={() => router.push(`/bill/${billId}/participants`)}
           />
-        ) : null}
+        </View>
       </View>
 
       <LineItemEditorSheet
@@ -400,7 +413,24 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     body: {
       padding: spacing.lg,
+      // Section-to-section rhythm (headerBlock / fieldsBlock / itemsBlock /
+      // totalsBlock / actionsBlock): spacing.xl between each distinct block,
+      // spacing.md/sm within one — see each block's own style below.
+      gap: spacing.xl,
+      // The Continue button used to sit in a sticky footer, which
+      // Screen.tsx pads above the global nav bar automatically — now that
+      // it's plain in-flow content, this screen has to reserve that space
+      // itself so the button doesn't end up hidden underneath the bar.
+      paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+    },
+    headerBlock: {
+      gap: spacing.sm,
+    },
+    fieldsBlock: {
       gap: spacing.md,
+    },
+    itemsBlock: {
+      gap: spacing.sm,
     },
     sectionHeader: {
       gap: 2,
@@ -410,6 +440,9 @@ function createStyles(colors: ColorTokens) {
     },
     totalsBlock: {
       gap: spacing.xs,
+    },
+    actionsBlock: {
+      gap: spacing.md,
     },
     totalRow: {
       flexDirection: 'row',

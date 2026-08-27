@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
@@ -10,7 +11,7 @@ import { AdjustmentRow } from '@/components/bill/AdjustmentRow';
 import { ReconciliationCard } from '@/components/bill/ReconciliationCard';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
+import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { Divider } from '@/components/ui/Divider';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -388,32 +389,19 @@ export default function AdjustmentsScreen() {
       : null;
 
   return (
-    <Screen
-      scroll
-      padded={false}
-      footer={
-        <BottomActionBar>
-          <AppButton
-            label={
-              reconciliation.matches
-                ? copy.adjustments.continueButton
-                : copy.adjustments.continueWithDifferenceAction
-            }
-            onPress={handleContinuePress}
-          />
-        </BottomActionBar>
-      }
-    >
+    <Screen scroll padded={false}>
       <View style={styles.body}>
-        <AppText variant="heading">{copy.adjustments.heading}</AppText>
-        <AppText variant="body" color="textSecondary">
-          {copy.adjustments.body}
-        </AppText>
+        <View style={styles.introBlock}>
+          <AppText variant="heading">{copy.adjustments.heading}</AppText>
+          <AppText variant="body" color="textSecondary">
+            {copy.adjustments.body}
+          </AppText>
 
-        {/* Shared by every write path below (save/delete an adjustment, add
-            the reconciliation difference) — mirrors participants.tsx's and
-            receipt-review.tsx's own actionError. */}
-        {actionError ? <InlineError message={actionError} /> : null}
+          {/* Shared by every write path below (save/delete an adjustment, add
+              the reconciliation difference) — mirrors participants.tsx's and
+              receipt-review.tsx's own actionError. */}
+          {actionError ? <InlineError message={actionError} /> : null}
+        </View>
 
         <Divider />
 
@@ -425,7 +413,7 @@ export default function AdjustmentsScreen() {
             onAction={handleOpenNewEditor}
           />
         ) : (
-          <>
+          <View style={styles.listBlock}>
             <FlatList
               data={adjustments}
               keyExtractor={(adjustment) => adjustment.id}
@@ -439,8 +427,9 @@ export default function AdjustmentsScreen() {
               variant="secondary"
               label={copy.adjustments.addAction}
               onPress={handleOpenNewEditor}
+              icon={(color) => <Feather name="plus" size={18} color={color} />}
             />
-          </>
+          </View>
         )}
 
         <Divider />
@@ -454,6 +443,22 @@ export default function AdjustmentsScreen() {
           matches={reconciliation.matches}
           onAddDifference={handleAddDifference}
           onReviewItems={handleReviewItems}
+        />
+
+        {/* Was a sticky BottomActionBar footer — moved inline, per the
+            user's own explicit request (2026-08-27) to drop sticky nav
+            footers in favor of plain in-flow buttons. Trailing arrow-right:
+            this is a linear wizard step (spec section 15), whether or not a
+            reconciliation difference is still outstanding. */}
+        <AppButton
+          label={
+            reconciliation.matches
+              ? copy.adjustments.continueButton
+              : copy.adjustments.continueWithDifferenceAction
+          }
+          onPress={handleContinuePress}
+          icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+          iconPosition="trailing"
         />
       </View>
 
@@ -499,6 +504,20 @@ export default function AdjustmentsScreen() {
 const styles = StyleSheet.create({
   body: {
     padding: spacing.lg,
+    // The Continue button used to sit in a sticky footer, which Screen.tsx
+    // pads above the global nav bar automatically — now that it's plain
+    // in-flow content, this screen reserves that space itself.
+    paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+    // Section-to-section rhythm (intro block / adjustments list / the
+    // reconciliation card / the continue button each read as their own
+    // distinct block) — spacing.md is reserved for tight, within-section
+    // grouping instead (see introBlock/listBlock below).
+    gap: spacing.xl,
+  },
+  introBlock: {
+    gap: spacing.sm,
+  },
+  listBlock: {
     gap: spacing.md,
   },
   itemGap: {

@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -114,11 +115,7 @@ export const BillListItem = memo(function BillListItem({
         <IconButton
           accessibilityLabel={copy.home.overflowAccessibilityLabel}
           onPress={() => onOverflowPress(bill)}
-          icon={
-            <AppText variant="subheading" color="textSecondary">
-              ⋮
-            </AppText>
-          }
+          icon={<Feather name="more-vertical" size={20} color={colors.textSecondary} />}
         />
       </View>
       {/* Signature torn-receipt-edge treatment (theme direction: applied
@@ -139,6 +136,7 @@ function createStyles(colors: ColorTokens) {
       paddingRight: spacing.sm,
       borderTopLeftRadius: radius.md,
       borderTopRightRadius: radius.md,
+      borderCurve: 'continuous',
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderBottomWidth: 0,
@@ -158,6 +156,7 @@ function createStyles(colors: ColorTokens) {
       width: 40,
       height: 40,
       borderRadius: radius.pill,
+      borderCurve: 'continuous',
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.surfaceMuted,

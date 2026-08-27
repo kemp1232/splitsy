@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -6,7 +7,7 @@ import { AmountInput } from '@/components/ui/AmountInput';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
+import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { InlineError } from '@/components/ui/InlineError';
 import { Screen } from '@/components/ui/Screen';
 import { copy } from '@/constants/copy';
@@ -57,41 +58,47 @@ export default function QuickSplitScreen() {
   }
 
   return (
-    <Screen
-      scroll
-      footer={
-        <BottomActionBar>
+    <Screen scroll>
+      <View style={styles.body}>
+        <View style={styles.headingGroup}>
+          <AppText variant="heading">{copy.quickSplit.heading}</AppText>
+          <AppText variant="body" color="textSecondary">
+            {copy.quickSplit.body}
+          </AppText>
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <AppTextInput
+            label={copy.quickSplit.titleLabel}
+            placeholder={copy.quickSplit.titlePlaceholder}
+            value={title}
+            onChangeText={setTitle}
+          />
+
+          <AmountInput
+            label={copy.quickSplit.totalLabel}
+            valueCentavos={totalCentavos}
+            onChangeCentavos={(value) => {
+              setTotalCentavos(value);
+              if (amountError) setAmountError(null);
+            }}
+            error={amountError ?? undefined}
+          />
+        </View>
+
+        {/* Was a sticky BottomActionBar footer — moved inline, per the
+            user's own explicit request (2026-08-27) to drop sticky nav
+            footers in favor of plain in-flow buttons. */}
+        <View style={styles.actionsGroup}>
           {actionError ? <InlineError message={actionError} /> : null}
           <AppButton
             label={copy.quickSplit.continueButton}
             onPress={handleContinue}
             loading={submitting}
+            icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+            iconPosition="trailing"
           />
-        </BottomActionBar>
-      }
-    >
-      <View style={styles.body}>
-        <AppText variant="heading">{copy.quickSplit.heading}</AppText>
-        <AppText variant="body" color="textSecondary">
-          {copy.quickSplit.body}
-        </AppText>
-
-        <AppTextInput
-          label={copy.quickSplit.titleLabel}
-          placeholder={copy.quickSplit.titlePlaceholder}
-          value={title}
-          onChangeText={setTitle}
-        />
-
-        <AmountInput
-          label={copy.quickSplit.totalLabel}
-          valueCentavos={totalCentavos}
-          onChangeCentavos={(value) => {
-            setTotalCentavos(value);
-            if (amountError) setAmountError(null);
-          }}
-          error={amountError ?? undefined}
-        />
+        </View>
       </View>
     </Screen>
   );
@@ -99,6 +106,20 @@ export default function QuickSplitScreen() {
 
 const styles = StyleSheet.create({
   body: {
+    // Section-to-section rhythm: heading, field group, actions.
+    gap: spacing.xl,
+    // The Continue button used to sit in a sticky footer, which Screen.tsx
+    // pads above the global nav bar automatically — now that it's plain
+    // in-flow content, this screen reserves that space itself.
+    paddingBottom: TAB_BAR_CONTENT_CLEARANCE,
+  },
+  headingGroup: {
+    gap: spacing.xs,
+  },
+  fieldGroup: {
     gap: spacing.md,
+  },
+  actionsGroup: {
+    gap: spacing.sm,
   },
 });

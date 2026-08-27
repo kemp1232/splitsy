@@ -59,6 +59,7 @@ function createStyles(colors: ColorTokens) {
       gap: spacing.md,
       padding: spacing.md,
       borderRadius: radius.md,
+      borderCurve: 'continuous',
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,

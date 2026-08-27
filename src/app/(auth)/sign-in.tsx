@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -6,7 +7,6 @@ import { StyleSheet, View } from 'react-native';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { InlineError } from '@/components/ui/InlineError';
 import { Screen } from '@/components/ui/Screen';
 import appInfo from '@/constants/appInfo.json';
@@ -19,8 +19,9 @@ import { spacing } from '@/theme/tokens';
 // success this deliberately does not navigate anywhere itself: the root
 // layout (_layout.tsx) reads authClient.useSession() and swaps the visible
 // route tree (Stack.Protected) the moment the session becomes active, which
-// naturally reveals (tabs) without this screen needing to know where "the
-// rest of the app" even is.
+// naturally reveals the authenticated app (Home, plus the global
+// BottomTabBar) without this screen needing to know where "the rest of the
+// app" even is.
 export default function SignInScreen() {
   const router = useRouter();
   // Set by reset-password.tsx's `router.replace({ pathname: '/sign-in',
@@ -102,10 +103,71 @@ export default function SignInScreen() {
   }
 
   return (
-    <Screen
-      scroll
-      footer={
-        <BottomActionBar>
+    <Screen scroll>
+      <View style={styles.body}>
+        <View style={styles.headerGroup}>
+          <AppText variant="heading">{copy.auth.signInHeading}</AppText>
+          <AppText variant="body" color="textSecondary">
+            {copy.auth.signInBody}
+          </AppText>
+
+          {justReset ? (
+            <AppText color="success" accessibilityLiveRegion="polite">
+              {copy.auth.resetPasswordSuccessToast}
+            </AppText>
+          ) : null}
+        </View>
+
+        <View style={styles.fields}>
+          <AppTextInput
+            label={copy.auth.emailLabel}
+            placeholder={copy.auth.emailPlaceholder}
+            value={email}
+            onChangeText={(value) => {
+              setEmail(value);
+              if (emailError) setEmailError(null);
+            }}
+            error={emailError ?? undefined}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            textContentType="emailAddress"
+            autoComplete="email"
+          />
+
+          <AppTextInput
+            label={copy.auth.passwordLabel}
+            value={password}
+            onChangeText={(value) => {
+              setPassword(value);
+              if (passwordError) setPasswordError(null);
+            }}
+            error={passwordError ?? undefined}
+            secureTextEntry
+            textContentType="password"
+            autoComplete="current-password"
+          />
+        </View>
+
+        <View style={styles.actions}>
+          <AppButton
+            variant="text"
+            label={copy.auth.forgotPasswordLink}
+            onPress={() => router.push('/forgot-password')}
+          />
+
+          <View style={styles.footerRow}>
+            <AppText color="textSecondary">{copy.auth.signInNoAccountPrompt}</AppText>
+            <AppButton
+              variant="text"
+              label={copy.auth.signInRegisterLink}
+              onPress={() => router.push('/register')}
+            />
+          </View>
+
+          {/* Was a sticky BottomActionBar footer — moved inline, per the
+              user's own explicit request (2026-08-27) to drop sticky nav
+              footers in favor of plain in-flow buttons. */}
           {formError ? <InlineError message={formError} /> : null}
           {showResendVerification ? (
             resendSent ? (
@@ -121,63 +183,12 @@ export default function SignInScreen() {
               />
             )
           ) : null}
-          <AppButton label={copy.auth.signInButton} onPress={handleSignIn} loading={submitting} />
-        </BottomActionBar>
-      }
-    >
-      <View style={styles.body}>
-        <AppText variant="heading">{copy.auth.signInHeading}</AppText>
-        <AppText variant="body" color="textSecondary">
-          {copy.auth.signInBody}
-        </AppText>
-
-        {justReset ? (
-          <AppText color="success" accessibilityLiveRegion="polite">
-            {copy.auth.resetPasswordSuccessToast}
-          </AppText>
-        ) : null}
-
-        <AppTextInput
-          label={copy.auth.emailLabel}
-          placeholder={copy.auth.emailPlaceholder}
-          value={email}
-          onChangeText={(value) => {
-            setEmail(value);
-            if (emailError) setEmailError(null);
-          }}
-          error={emailError ?? undefined}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          textContentType="emailAddress"
-          autoComplete="email"
-        />
-
-        <AppTextInput
-          label={copy.auth.passwordLabel}
-          value={password}
-          onChangeText={(value) => {
-            setPassword(value);
-            if (passwordError) setPasswordError(null);
-          }}
-          error={passwordError ?? undefined}
-          secureTextEntry
-          textContentType="password"
-          autoComplete="current-password"
-        />
-
-        <AppButton
-          variant="text"
-          label={copy.auth.forgotPasswordLink}
-          onPress={() => router.push('/forgot-password')}
-        />
-
-        <View style={styles.footerRow}>
-          <AppText color="textSecondary">{copy.auth.signInNoAccountPrompt}</AppText>
           <AppButton
-            variant="text"
-            label={copy.auth.signInRegisterLink}
-            onPress={() => router.push('/register')}
+            label={copy.auth.signInButton}
+            onPress={handleSignIn}
+            loading={submitting}
+            icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+            iconPosition="trailing"
           />
         </View>
       </View>
@@ -187,6 +198,15 @@ export default function SignInScreen() {
 
 const styles = StyleSheet.create({
   body: {
+    gap: spacing.xl,
+  },
+  headerGroup: {
+    gap: spacing.sm,
+  },
+  fields: {
+    gap: spacing.md,
+  },
+  actions: {
     gap: spacing.md,
   },
   footerRow: {

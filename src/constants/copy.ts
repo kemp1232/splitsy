@@ -635,7 +635,7 @@ export const copy = {
     backendNotConfiguredBody:
       'This build is missing its sign-in server address (EXPO_PUBLIC_AUTH_BACKEND_URL). Contact the developer or check the project setup.',
 
-    // Log out — src/app/(tabs)/settings.tsx
+    // Log out — src/app/settings.tsx
     accountSection: 'Account',
     logOutAction: 'Log out',
     logOutFailure: "We couldn't log you out. Check your connection and try again.",

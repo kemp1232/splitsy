@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
@@ -25,23 +26,28 @@ export default function VerifyEmailScreen() {
   return (
     <Screen scroll>
       <View style={styles.body}>
-        <AppText variant="heading">
-          {succeeded ? copy.auth.verifyEmailSuccessHeading : copy.auth.verifyEmailErrorHeading}
-        </AppText>
-        <AppText variant="body" color="textSecondary" accessibilityLiveRegion="polite">
-          {succeeded ? copy.auth.verifyEmailSuccessBody : copy.auth.verifyEmailErrorBody}
-        </AppText>
+        <View style={styles.headerGroup}>
+          <AppText variant="heading">
+            {succeeded ? copy.auth.verifyEmailSuccessHeading : copy.auth.verifyEmailErrorHeading}
+          </AppText>
+          <AppText variant="body" color="textSecondary" accessibilityLiveRegion="polite">
+            {succeeded ? copy.auth.verifyEmailSuccessBody : copy.auth.verifyEmailErrorBody}
+          </AppText>
+        </View>
 
         {succeeded ? (
           <AppButton
             label={copy.auth.verifyEmailGoToSignIn}
             onPress={() => router.replace('/sign-in')}
+            icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+            iconPosition="trailing"
           />
         ) : (
           <AppButton
             variant="secondary"
             label={copy.auth.registerSignInLink}
             onPress={() => router.replace('/sign-in')}
+            icon={(color) => <Feather name="arrow-left" size={18} color={color} />}
           />
         )}
       </View>
@@ -51,6 +57,9 @@ export default function VerifyEmailScreen() {
 
 const styles = StyleSheet.create({
   body: {
-    gap: spacing.md,
+    gap: spacing.xl,
+  },
+  headerGroup: {
+    gap: spacing.sm,
   },
 });

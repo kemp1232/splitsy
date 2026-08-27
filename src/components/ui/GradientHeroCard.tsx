@@ -78,6 +78,7 @@ function createStyles(colors: ColorTokens) {
     card: {
       borderBottomLeftRadius: radius.xl,
       borderBottomRightRadius: radius.xl,
+      borderCurve: 'continuous',
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.xl,
       paddingBottom: spacing.xl,

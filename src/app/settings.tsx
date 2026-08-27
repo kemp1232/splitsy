@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
@@ -102,11 +103,17 @@ export default function SettingsScreen() {
                     pressed && styles.appearanceOptionPressed,
                   ]}
                 >
-                  {/* Selection is conveyed by the check mark text, not only
-                      the option's background color (spec section 17). */}
-                  <AppText variant="body" color={selected ? 'onPrimary' : 'textPrimary'}>
-                    {selected ? `✓ ${option.label}` : option.label}
-                  </AppText>
+                  {/* Selection is conveyed by the check icon, not only the
+                      option's background color (spec section 17) — was a
+                      literal "✓ " text prefix before the icon pass. */}
+                  <View style={styles.appearanceOptionContent}>
+                    {selected ? (
+                      <Feather name="check" size={16} color={colors.onPrimary} />
+                    ) : null}
+                    <AppText variant="body" color={selected ? 'onPrimary' : 'textPrimary'}>
+                      {option.label}
+                    </AppText>
+                  </View>
                 </Pressable>
               );
             })}
@@ -119,6 +126,7 @@ export default function SettingsScreen() {
             label={copy.auth.logOutAction}
             onPress={handleLogOut}
             loading={loggingOut}
+            icon={(color) => <Feather name="log-out" size={18} color={color} />}
           />
           {logOutError ? <InlineError message={logOutError} /> : null}
         </SectionCard>
@@ -132,6 +140,7 @@ export default function SettingsScreen() {
             variant="destructive"
             label={copy.settings.deleteAllAction}
             onPress={() => setShowDeleteAllConfirm(true)}
+            icon={(color) => <Feather name="trash-2" size={18} color={color} />}
           />
           {deleteAllError ? <InlineError message={deleteAllError} /> : null}
         </SectionCard>
@@ -163,7 +172,9 @@ export default function SettingsScreen() {
 function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     body: {
-      gap: spacing.md,
+      // Section-to-section rhythm (heading, then each SectionCard) — spacing
+      // within a card is SectionCard's own spacing.sm.
+      gap: spacing.xl,
       // So the last card isn't hidden underneath the persistent tab bar
       // that now floats over this screen.
       paddingBottom: TAB_BAR_CONTENT_CLEARANCE,
@@ -183,9 +194,15 @@ function createStyles(colors: ColorTokens) {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
       borderRadius: radius.pill,
+      borderCurve: 'continuous',
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surfaceMuted,
+    },
+    appearanceOptionContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
     },
     appearanceOptionSelected: {
       backgroundColor: colors.primary,

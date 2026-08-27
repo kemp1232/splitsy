@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -84,49 +85,59 @@ export default function ProcessingScreen() {
   if (stage === 'error') {
     return (
       <Screen scroll>
-        {/* Spec §17: announce processing completion/failure — matches
-            ErrorState's own live-region treatment used everywhere else in the
-            app; this screen can't use ErrorState directly since it needs four
-            distinct actions, not ErrorState's single retry button. */}
-        <View accessibilityLiveRegion="assertive">
-          <AppText variant="heading">{copy.ocrFailure.heading}</AppText>
-          <AppText variant="body" color="textSecondary" style={styles.spaced}>
-            {copy.ocrFailure.body}
-          </AppText>
-          {/* copy.global.ocrUnavailable, not copy.ocrFailure.body's own
-              retry-oriented framing: this catch only ever fires once
-              `ocrService` (FallbackReceiptOcrService) has already exhausted
-              both the backend and the on-device ML Kit path, so "scanning
-              isn't available on this device right now" is an accurate
-              description of what just happened, not a guess — it's shown
-              alongside spec 13.8's own required heading/body, not in place of
-              it, since that pair is an exact copy contract of its own. */}
-          <AppText variant="body" color="textSecondary" style={styles.spaced}>
-            {copy.global.ocrUnavailable}
-          </AppText>
-        </View>
+        <View style={styles.failureBody}>
+          {/* Spec §17: announce processing completion/failure — matches
+              ErrorState's own live-region treatment used everywhere else in
+              the app; this screen can't use ErrorState directly since it
+              needs four distinct actions, not ErrorState's single retry
+              button. */}
+          <View style={styles.headingGroup} accessibilityLiveRegion="assertive">
+            <AppText variant="heading">{copy.ocrFailure.heading}</AppText>
+            <AppText variant="body" color="textSecondary">
+              {copy.ocrFailure.body}
+            </AppText>
+            {/* copy.global.ocrUnavailable, not copy.ocrFailure.body's own
+                retry-oriented framing: this catch only ever fires once
+                `ocrService` (FallbackReceiptOcrService) has already
+                exhausted both the backend and the on-device ML Kit path, so
+                "scanning isn't available on this device right now" is an
+                accurate description of what just happened, not a guess —
+                it's shown alongside spec 13.8's own required heading/body,
+                not in place of it, since that pair is an exact copy
+                contract of its own. */}
+            <AppText variant="body" color="textSecondary">
+              {copy.global.ocrUnavailable}
+            </AppText>
+          </View>
 
-        <View style={styles.actions}>
-          <AppButton label={copy.ocrFailure.retryButton} onPress={() => setAttempt((a) => a + 1)} />
-          <AppButton
-            variant="secondary"
-            label={copy.ocrFailure.anotherPhotoButton}
-            onPress={() => router.back()}
-          />
-          <AppButton
-            variant="secondary"
-            label={copy.ocrFailure.manualButton}
-            onPress={() => router.replace(`/bill/${billId}/receipt-review`)}
-          />
-          <AppButton
-            variant="text"
-            label={copy.ocrFailure.technicalDetailsAction}
-            onPress={() => setShowRawText((value) => !value)}
-          />
+          <View style={styles.actions}>
+            <AppButton
+              label={copy.ocrFailure.retryButton}
+              onPress={() => setAttempt((a) => a + 1)}
+              icon={(color) => <Feather name="refresh-cw" size={18} color={color} />}
+            />
+            <AppButton
+              variant="secondary"
+              label={copy.ocrFailure.anotherPhotoButton}
+              onPress={() => router.back()}
+              icon={(color) => <Feather name="camera" size={18} color={color} />}
+            />
+            <AppButton
+              variant="secondary"
+              label={copy.ocrFailure.manualButton}
+              onPress={() => router.replace(`/bill/${billId}/receipt-review`)}
+              icon={(color) => <Feather name="edit-2" size={18} color={color} />}
+            />
+            <AppButton
+              variant="text"
+              label={copy.ocrFailure.technicalDetailsAction}
+              onPress={() => setShowRawText((value) => !value)}
+            />
+          </View>
         </View>
 
         {showRawText ? (
-          <AppText variant="caption" color="textSecondary" style={styles.spaced}>
+          <AppText variant="caption" color="textSecondary" style={styles.rawText}>
             {rawText && rawText.trim().length > 0 ? rawText : copy.ocrFailure.noTextDetail}
           </AppText>
         ) : null}
@@ -178,12 +189,17 @@ export default function ProcessingScreen() {
 const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   centerText: { textAlign: 'center' },
-  spaced: { marginTop: spacing.xs, marginBottom: spacing.lg },
+  // Section-to-section rhythm: the failure heading/body group vs. the
+  // actions group below it.
+  failureBody: { gap: spacing.xl },
+  headingGroup: { gap: spacing.sm },
+  rawText: { marginTop: spacing.md },
   actions: { gap: spacing.sm },
   imageCard: {
     width: '70%',
     aspectRatio: 3 / 4,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     overflow: 'hidden',
     marginBottom: spacing.md,
   },

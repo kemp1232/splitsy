@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions, type FlashMode } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
@@ -11,6 +12,7 @@ import { Screen } from '@/components/ui/Screen';
 import { copy } from '@/constants/copy';
 import { useBillSourceActions } from '@/features/bills/useBillSourceActions';
 import { radius, spacing, touchTarget } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 const FLASH_CYCLE: FlashMode[] = ['auto', 'on', 'off'];
 const FLASH_LABEL: Record<FlashMode, string> = {
@@ -36,6 +38,7 @@ const overlay = {
 
 export default function CaptureScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const { pickFromGallery, startManual } = useBillSourceActions();
   const [permission, requestPermission] = useCameraPermissions();
   const [flash, setFlash] = useState<FlashMode>('auto');
@@ -58,12 +61,21 @@ export default function CaptureScreen() {
         </AppText>
 
         {permission.canAskAgain ? (
-          <AppButton label={copy.cameraPermission.primaryButton} onPress={requestPermission} />
+          <AppButton
+            label={copy.cameraPermission.primaryButton}
+            onPress={requestPermission}
+            icon={(color) => <Feather name="camera" size={18} color={color} />}
+          />
         ) : (
           <View style={styles.spacedBelow}>
-            <AppText variant="body" color="danger">
-              {copy.cameraPermission.permanentDenialBody}
-            </AppText>
+            {/* Not color alone (spec section 17) — paired with the
+                alert-circle icon below, same as InlineError/ErrorState. */}
+            <View style={styles.deniedRow}>
+              <Feather name="alert-circle" size={16} color={colors.danger} />
+              <AppText variant="body" color="danger" style={styles.deniedText}>
+                {copy.cameraPermission.permanentDenialBody}
+              </AppText>
+            </View>
             <AppButton
               label={copy.cameraPermission.settingsButton}
               onPress={() => Linking.openSettings()}
@@ -76,11 +88,13 @@ export default function CaptureScreen() {
             variant="text"
             label={copy.cameraPermission.galleryAlternative}
             onPress={pickFromGallery}
+            icon={(color) => <Feather name="image" size={18} color={color} />}
           />
           <AppButton
             variant="text"
             label={copy.cameraPermission.manualAlternative}
             onPress={startManual}
+            icon={(color) => <Feather name="edit-2" size={18} color={color} />}
           />
         </View>
       </Screen>
@@ -102,7 +116,7 @@ export default function CaptureScreen() {
         <IconButton
           accessibilityLabel={copy.cameraCapture.closeAccessibilityLabel}
           onPress={() => router.back()}
-          icon={<AppText style={styles.overlayText}>✕</AppText>}
+          icon={<Feather name="x" size={22} color={overlay.text} />}
         />
         <Pressable
           onPress={() =>
@@ -148,6 +162,12 @@ export default function CaptureScreen() {
             variant="secondary"
             label={copy.cameraCapture.galleryAction}
             onPress={pickFromGallery}
+            // Fixed overlay.text, not the color AppButton's render-prop would
+            // otherwise hand back (theme-derived colors.primary for a
+            // secondary button) — this button sits on the camera's own fixed
+            // dark chrome, which never follows the app's light/dark theme
+            // (see this file's own `overlay` header comment).
+            icon={() => <Feather name="image" size={18} color={overlay.text} />}
           />
         </View>
         {/* The reference's large circular shutter button. */}
@@ -168,6 +188,8 @@ export default function CaptureScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: overlay.background },
   spacedBelow: { marginTop: spacing.sm, marginBottom: spacing.lg, gap: spacing.sm },
+  deniedRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs },
+  deniedText: { flex: 1 },
   fallbacks: { marginTop: spacing.xl, gap: spacing.xs },
   overlayText: { color: overlay.text },
   topBar: {
@@ -182,6 +204,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.pill,
+    borderCurve: 'continuous',
     backgroundColor: overlay.scrim,
   },
   instructionBlock: {
@@ -197,6 +220,7 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginBottom: spacing.lg,
     borderRadius: radius.xl,
+    borderCurve: 'continuous',
     overflow: 'hidden',
     backgroundColor: '#000000',
   },
@@ -208,6 +232,7 @@ const styles = StyleSheet.create({
     height: 2,
     backgroundColor: 'rgba(255,255,255,0.5)',
     borderRadius: radius.pill,
+    borderCurve: 'continuous',
   },
   bracket: {
     position: 'absolute',
@@ -257,6 +282,7 @@ const styles = StyleSheet.create({
     width: 84,
     height: 84,
     borderRadius: 42,
+    borderCurve: 'continuous',
     borderWidth: 4,
     borderColor: overlay.frame,
     alignItems: 'center',
@@ -266,6 +292,7 @@ const styles = StyleSheet.create({
     width: 68,
     height: 68,
     borderRadius: 34,
+    borderCurve: 'continuous',
     backgroundColor: overlay.text,
   },
 });

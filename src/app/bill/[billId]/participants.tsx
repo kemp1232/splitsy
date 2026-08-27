@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
@@ -8,7 +9,7 @@ import {
 } from '@/components/bill/ParticipantEditorSheet';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
+import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { Divider } from '@/components/ui/Divider';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -161,85 +162,92 @@ export default function ParticipantsScreen() {
     .map((participant) => participant.name);
 
   return (
-    <Screen
-      scroll
-      padded={false}
-      footer={
-        <BottomActionBar>
+    <Screen scroll padded={false}>
+      <View style={styles.body}>
+        <View style={styles.headerBlock}>
+          <AppText variant="heading">{copy.participants.heading}</AppText>
+          <AppText variant="body" color="textSecondary">
+            {copy.participants.body}
+          </AppText>
+
+          {/* Shared by all three write paths (save/quick-add/remove) below —
+              each closes its own sheet/dialog before this can ever render, so
+              it's always visible here rather than hidden behind a modal. */}
+          {actionError ? <InlineError message={actionError} /> : null}
+
+          <AppButton
+            variant="secondary"
+            label={copy.participants.quickAddMe}
+            disabled={meAlreadyExists}
+            icon={(color) => <Feather name="plus" size={18} color={color} />}
+            onPress={handleQuickAddMe}
+          />
+        </View>
+
+        <Divider />
+
+        <View style={styles.rosterBlock}>
+          {participants.length === 0 ? (
+            <EmptyState
+              heading={copy.participants.emptyHeading}
+              body={copy.participants.emptyBody}
+              actionLabel={copy.participants.addAction}
+              onAction={() => setEditingParticipant('new')}
+            />
+          ) : (
+            <>
+              <FlatList
+                data={participants}
+                keyExtractor={(participant) => participant.id}
+                scrollEnabled={false}
+                ItemSeparatorComponent={() => <View style={styles.itemGap} />}
+                renderItem={({ item }) => (
+                  <View style={styles.row}>
+                    <Pressable
+                      onPress={() => setEditingParticipant(item)}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [styles.rowMain, pressed && styles.rowMainPressed]}
+                    >
+                      <AppText variant="body" numberOfLines={1}>
+                        {item.name}
+                      </AppText>
+                    </Pressable>
+                    <IconButton
+                      accessibilityLabel={copy.participants.removeConfirmHeading.replace(
+                        '{name}',
+                        item.name,
+                      )}
+                      onPress={() => setRemovingParticipant(item)}
+                      icon={<Feather name="x" size={20} color={colors.danger} />}
+                    />
+                  </View>
+                )}
+              />
+              <AppButton
+                variant="secondary"
+                label={copy.participants.addAction}
+                icon={(color) => <Feather name="plus" size={18} color={color} />}
+                onPress={() => setEditingParticipant('new')}
+              />
+            </>
+          )}
+        </View>
+
+        {/* Was a sticky BottomActionBar footer — moved inline, per the
+            user's own explicit request (2026-08-27) to drop sticky nav
+            footers in favor of plain in-flow buttons. */}
+        <View style={styles.continueBlock}>
           {!meetsMinimumParticipants ? (
             <InlineError message={copy.participants.minimumError} />
           ) : null}
           <AppButton
             label={copy.participants.continueButton}
             disabled={!meetsMinimumParticipants}
+            icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+            iconPosition="trailing"
             onPress={() => router.push(`/bill/${billId}/assignments`)}
           />
-        </BottomActionBar>
-      }
-    >
-      <View style={styles.body}>
-        <AppText variant="heading">{copy.participants.heading}</AppText>
-        <AppText variant="body" color="textSecondary">
-          {copy.participants.body}
-        </AppText>
-
-        {/* Shared by all three write paths (save/quick-add/remove) below —
-            each closes its own sheet/dialog before this can ever render, so
-            it's always visible here rather than hidden behind a modal. */}
-        {actionError ? <InlineError message={actionError} /> : null}
-
-        <AppButton
-          variant="secondary"
-          label={copy.participants.quickAddMe}
-          disabled={meAlreadyExists}
-          onPress={handleQuickAddMe}
-        />
-
-        <Divider />
-
-        {participants.length === 0 ? (
-          <EmptyState
-            heading={copy.participants.emptyHeading}
-            body={copy.participants.emptyBody}
-            actionLabel={copy.participants.addAction}
-            onAction={() => setEditingParticipant('new')}
-          />
-        ) : (
-          <>
-            <FlatList
-              data={participants}
-              keyExtractor={(participant) => participant.id}
-              scrollEnabled={false}
-              ItemSeparatorComponent={() => <View style={styles.itemGap} />}
-              renderItem={({ item }) => (
-                <View style={styles.row}>
-                  <Pressable
-                    onPress={() => setEditingParticipant(item)}
-                    accessibilityRole="button"
-                    style={({ pressed }) => [styles.rowMain, pressed && styles.rowMainPressed]}
-                  >
-                    <AppText variant="body" numberOfLines={1}>
-                      {item.name}
-                    </AppText>
-                  </Pressable>
-                  <IconButton
-                    accessibilityLabel={copy.participants.removeConfirmHeading.replace(
-                      '{name}',
-                      item.name,
-                    )}
-                    onPress={() => setRemovingParticipant(item)}
-                    icon={<AppText color="danger">✕</AppText>}
-                  />
-                </View>
-              )}
-            />
-            <AppButton
-              variant="secondary"
-              label={copy.participants.addAction}
-              onPress={() => setEditingParticipant('new')}
-            />
-          </>
-        )}
+        </View>
       </View>
 
       <ParticipantEditorSheet
@@ -275,6 +283,22 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     body: {
       padding: spacing.lg,
+      // Section-to-section rhythm (headerBlock / roster list / continue
+      // block): spacing.xl between each distinct block, spacing.md/sm
+      // within one — see each block's own style below.
+      gap: spacing.xl,
+      // The Continue button used to sit in a sticky footer, which Screen.tsx
+      // pads above the global nav bar automatically — now that it's plain
+      // in-flow content, this screen reserves that space itself.
+      paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+    },
+    headerBlock: {
+      gap: spacing.md,
+    },
+    rosterBlock: {
+      gap: spacing.md,
+    },
+    continueBlock: {
       gap: spacing.md,
     },
     row: {
@@ -284,6 +308,7 @@ function createStyles(colors: ColorTokens) {
       gap: spacing.md,
       padding: spacing.md,
       borderRadius: radius.md,
+      borderCurve: 'continuous',
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,

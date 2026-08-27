@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
@@ -7,7 +8,7 @@ import { Alert, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
-import { BottomActionBar } from '@/components/ui/BottomActionBar';
+import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ReceiptTornEdge } from '@/components/ui/ReceiptTornEdge';
 import { Screen } from '@/components/ui/Screen';
 import { copy } from '@/constants/copy';
@@ -79,29 +80,50 @@ export default function PreviewScreen() {
   }
 
   return (
-    <Screen
-      scroll
-      padded={false}
-      footer={
-        <BottomActionBar>
+    <Screen scroll padded={false}>
+      <View style={styles.body}>
+        <View style={styles.headingGroup}>
+          <AppText variant="heading">{copy.preview.heading}</AppText>
+          <AppText variant="body" color="textSecondary">
+            {copy.preview.body}
+          </AppText>
+        </View>
+
+        <View style={styles.imageGroup}>
+          {/* Signature torn-receipt-edge treatment (theme direction: used
+              sparingly, on receipt-related surfaces) — this is the photo of
+              the actual receipt, the most literal place for it in the app. */}
+          <View style={styles.imageCard}>
+            <Image source={{ uri }} style={styles.image} contentFit="contain" />
+          </View>
+          <ReceiptTornEdge color={colors.surfaceMuted} borderColor={colors.border} />
+        </View>
+
+        {/* Was a sticky BottomActionBar footer — moved inline, per the
+            user's own explicit request (2026-08-27) to drop sticky nav
+            footers in favor of plain in-flow buttons. */}
+        <View style={styles.actionsGroup}>
           <View style={styles.row}>
             {params.entryMethod === 'CAMERA' ? (
               <AppButton
                 variant="secondary"
                 label={copy.preview.retakeAction}
                 onPress={() => router.back()}
+                icon={(color) => <Feather name="camera" size={18} color={color} />}
               />
             ) : (
               <AppButton
                 variant="secondary"
                 label={copy.preview.chooseAnotherAction}
                 onPress={handleChooseAnother}
+                icon={(color) => <Feather name="image" size={18} color={color} />}
               />
             )}
             <AppButton
               variant="secondary"
               label={copy.preview.rotateAction}
               onPress={handleRotate}
+              icon={(color) => <Feather name="rotate-cw" size={18} color={color} />}
             />
           </View>
           <AppButton
@@ -109,21 +131,7 @@ export default function PreviewScreen() {
             onPress={handleUseThisPhoto}
             loading={busy}
           />
-        </BottomActionBar>
-      }
-    >
-      <View style={styles.body}>
-        <AppText variant="heading">{copy.preview.heading}</AppText>
-        <AppText variant="body" color="textSecondary">
-          {copy.preview.body}
-        </AppText>
-        {/* Signature torn-receipt-edge treatment (theme direction: used
-            sparingly, on receipt-related surfaces) — this is the photo of the
-            actual receipt, the most literal place for it in the app. */}
-        <View style={styles.imageCard}>
-          <Image source={{ uri }} style={styles.image} contentFit="contain" />
         </View>
-        <ReceiptTornEdge color={colors.surfaceMuted} borderColor={colors.border} />
       </View>
     </Screen>
   );
@@ -133,18 +141,32 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     body: {
       padding: spacing.lg,
+      // The action buttons used to sit in a sticky footer, which Screen.tsx
+      // pads above the global nav bar automatically — now that they're plain
+      // in-flow content, this screen reserves that space itself.
+      paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+      // Section-to-section rhythm: heading block, image block, actions block.
+      gap: spacing.xl,
+    },
+    headingGroup: {
+      gap: spacing.xs,
+    },
+    imageGroup: {
       gap: spacing.sm,
     },
     imageCard: {
-      marginTop: spacing.sm,
       borderTopLeftRadius: radius.lg,
       borderTopRightRadius: radius.lg,
+      borderCurve: 'continuous',
       overflow: 'hidden',
       backgroundColor: colors.surfaceMuted,
     },
     image: {
       width: '100%',
       aspectRatio: 3 / 4,
+    },
+    actionsGroup: {
+      gap: spacing.sm,
     },
     row: {
       flexDirection: 'row',
