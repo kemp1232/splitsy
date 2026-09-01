@@ -110,10 +110,10 @@ function AssignmentItemRow({ item, assignedNames, onAssign }: ItemRowProps) {
   return (
     <View style={styles.itemRow}>
       <View style={styles.itemMain}>
-        <AppText variant="body" numberOfLines={1}>
+        <AppText variant="body" numberOfLines={1} style={styles.uniformText}>
           {item.name}
         </AppText>
-        <AppText variant="caption" color="textSecondary">
+        <AppText variant="caption" color="textSecondary" style={styles.uniformText}>
           {formatCentavos(item.lineTotalCentavos)}
         </AppText>
         <AssignmentStatus names={assignedNames} />
@@ -304,11 +304,13 @@ export default function AssignmentsScreen() {
     <Screen scroll padded={false}>
       <View style={styles.body}>
         <View style={styles.headerBlock}>
-          <AppText variant="heading">{copy.assignments.heading}</AppText>
-          <AppText variant="body" color="textSecondary">
+          <AppText variant="heading" style={styles.uniformText}>
+            {copy.assignments.heading}
+          </AppText>
+          <AppText variant="body" color="textSecondary" style={styles.uniformText}>
             {copy.assignments.body}
           </AppText>
-          <AppText variant="caption" color="textSecondary">
+          <AppText variant="caption" color="textSecondary" style={styles.uniformText}>
             {copy.assignments.sharedNote}
           </AppText>
 
@@ -316,7 +318,7 @@ export default function AssignmentsScreen() {
         </View>
 
         <View style={styles.toggleRow}>
-          <AppText variant="body" style={styles.toggleLabel}>
+          <AppText variant="body" style={[styles.uniformText, styles.toggleLabel]}>
             {copy.assignments.splitEquallyToggleLabel}
           </AppText>
           <Switch
@@ -333,7 +335,9 @@ export default function AssignmentsScreen() {
         {unassignedItems.length > 0 ? (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <AppText variant="subheading">{copy.assignments.unassignedSection}</AppText>
+              <AppText variant="subheading" style={styles.uniformText}>
+                {copy.assignments.unassignedSection}
+              </AppText>
               <AppButton
                 variant="text"
                 label={copy.assignments.bulkAssignAction}
@@ -354,7 +358,9 @@ export default function AssignmentsScreen() {
 
         {assignedItems.length > 0 ? (
           <View style={styles.section}>
-            <AppText variant="subheading">{copy.assignments.assignedSection}</AppText>
+            <AppText variant="subheading" style={styles.uniformText}>
+              {copy.assignments.assignedSection}
+            </AppText>
             {assignedItems.map((item) => (
               <AssignmentItemRow
                 key={item.id}
@@ -372,10 +378,10 @@ export default function AssignmentsScreen() {
         <View style={styles.actionsBlock}>
           {showBlockingError && isBlocked ? (
             <View style={styles.blockingError} accessibilityLiveRegion="assertive">
-              <AppText variant="subheading" color="danger">
+              <AppText variant="subheading" color="danger" style={styles.uniformText}>
                 {copy.assignments.blockingErrorHeading}
               </AppText>
-              <AppText variant="body" color="textSecondary">
+              <AppText variant="body" color="textSecondary" style={styles.uniformText}>
                 {blockingErrorBody}
               </AppText>
             </View>
@@ -403,6 +409,15 @@ export default function AssignmentsScreen() {
 
 function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
+    // Every AppText on this screen (and AssignmentItemRow above, which shares
+    // this same createStyles) renders at this one uniform size — matches the
+    // `caption` variant's own size exactly. `variant="heading"`/`"subheading"`
+    // still carry their bold font-weight, which is now the only thing
+    // distinguishing a heading from body text.
+    uniformText: {
+      fontSize: 13,
+      lineHeight: 18,
+    },
     body: {
       padding: spacing.lg,
       // Section-to-section rhythm (headerBlock / toggle row / unassigned

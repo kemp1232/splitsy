@@ -1,5 +1,6 @@
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, RefreshControl, Share, StyleSheet, View } from 'react-native';
 
 import { BillListItem } from '@/components/bill/BillListItem';
@@ -10,8 +11,10 @@ import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { IconButton } from '@/components/ui/IconButton';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
+import appInfo from '@/constants/appInfo.json';
 import { copy } from '@/constants/copy';
 import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
 import { adjustmentAllocationsRepository } from '@/db/repositories/adjustmentAllocations.repository';
@@ -34,8 +37,11 @@ import { resolveNextRoute, type NextRoute } from '@/features/bills/resolveNextRo
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
 import { buildShareText } from '@/features/splitting/shareText';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
+import { authClient } from '@/lib/authClient';
 import { nowIso } from '@/lib/date';
+import type { ColorTokens } from '@/theme/tokens';
 import { spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -236,6 +242,14 @@ async function buildShareTextForBill(bill: Bill): Promise<string> {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  // Display name only — never a route param, and never anything beyond what
+  // the session itself already carries (spec section 7's "route params
+  // aren't the source of truth" rule extends naturally to "neither is
+  // anything else this screen would have to invent").
+  const { data: session } = authClient.useSession();
+  const displayName = session?.user.name.trim() || copy.home.fallbackName;
   const [entries, setEntries] = useState<HomeEntry[]>([]);
   const [state, setState] = useState<LoadState>('loading');
   const [refreshing, setRefreshing] = useState(false);
@@ -409,7 +423,28 @@ export default function HomeScreen() {
   return (
     <Screen padded={false}>
       <View style={styles.header}>
-        <AppText variant="heading">{copy.home.pageTitle}</AppText>
+        <View style={styles.brandRow}>
+          <AppText variant="subheading">{appInfo.name}</AppText>
+          {/* Default person-glyph avatar, not a photo — this app collects no
+              profile image (spec-adjacent, same reasoning as
+              InitialsAvatar.tsx's own header note on why photos aren't a
+              thing here). Tapping it is just a shortcut into Settings
+              (already reachable via the bottom tab bar), so it reuses that
+              tab's own accessibility label rather than inventing a new one. */}
+          <IconButton
+            accessibilityLabel={copy.nav.settingsTab}
+            onPress={() => router.push('/settings')}
+            icon={
+              <View style={styles.avatarCircle}>
+                <Feather name="user" size={18} color={colors.primary} />
+              </View>
+            }
+          />
+        </View>
+        <AppText variant="heading">{copy.home.greeting.replace('{name}', displayName)}</AppText>
+        <AppText variant="body" color="textSecondary">
+          {copy.home.greetingSubtitle}
+        </AppText>
       </View>
 
       {entries.length === 0 ? (
@@ -479,29 +514,49 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    // Section-to-section gap before the "Recent" list section below.
-    paddingBottom: spacing.xl,
-  },
-  sectionTitle: {
-    paddingHorizontal: spacing.lg,
-    // Within-section gap to the list rows directly under this label.
-    paddingBottom: spacing.sm,
-  },
-  list: {
-    padding: spacing.lg,
-    // Extra bottom padding so the last row isn't hidden underneath the
-    // persistent tab bar that now floats over this screen.
-    paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
-    gap: spacing.sm,
-  },
-  separator: {
-    height: spacing.sm,
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    header: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.lg,
+      // Section-to-section gap before the "Recent" list section below.
+      paddingBottom: spacing.xl,
+      // Within-header gap between the greeting heading and its subtitle —
+      // brandRow gets its own larger, explicit gap below since it's a
+      // visually distinct row, not part of that tight heading/subtitle pair.
+      gap: spacing.xs,
+    },
+    brandRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: spacing.md,
+    },
+    avatarCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      borderCurve: 'continuous',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surfaceMuted,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    sectionTitle: {
+      paddingHorizontal: spacing.lg,
+      // Within-section gap to the list rows directly under this label.
+      paddingBottom: spacing.sm,
+    },
+    list: {
+      padding: spacing.lg,
+      // Extra bottom padding so the last row isn't hidden underneath the
+      // persistent tab bar that now floats over this screen.
+      paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+      gap: spacing.sm,
+    },
+    separator: {
+      height: spacing.sm,
+    },
+  });
+}

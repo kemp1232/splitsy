@@ -203,8 +203,10 @@ export default function ReceiptReviewScreen() {
     <Screen scroll padded={false}>
       <View style={styles.body}>
         <View style={styles.headerBlock}>
-          <AppText variant="heading">{copy.receiptReview.heading}</AppText>
-          <AppText variant="body" color="textSecondary">
+          <AppText variant="heading" style={styles.uniformText}>
+            {copy.receiptReview.heading}
+          </AppText>
+          <AppText variant="body" color="textSecondary" style={styles.uniformText}>
             {copy.receiptReview.body}
           </AppText>
 
@@ -230,13 +232,13 @@ export default function ReceiptReviewScreen() {
           ) : null}
 
           {ocrSource === 'backend' ? (
-            <AppText variant="caption" color="textSecondary">
+            <AppText variant="caption" color="textSecondary" style={styles.uniformText}>
               {copy.receiptReview.handwritingNote}
             </AppText>
           ) : null}
 
           {fallbackReason === 'rate_limited' ? (
-            <AppText variant="caption" color="warning">
+            <AppText variant="caption" color="warning" style={styles.uniformText}>
               {copy.receiptReview.rateLimitedNote}
             </AppText>
           ) : null}
@@ -267,9 +269,11 @@ export default function ReceiptReviewScreen() {
 
         <View style={styles.itemsBlock}>
           <View style={styles.sectionHeader}>
-            <AppText variant="subheading">{copy.receiptReview.itemsSection}</AppText>
+            <AppText variant="subheading" style={styles.uniformText}>
+              {copy.receiptReview.itemsSection}
+            </AppText>
             {items.length > 0 ? (
-              <AppText variant="caption" color="textSecondary">
+              <AppText variant="caption" color="textSecondary" style={styles.uniformText}>
                 {items.length === 1
                   ? copy.receiptReview.detectedCountSingular
                   : copy.receiptReview.detectedCountPlural.replace(
@@ -313,27 +317,44 @@ export default function ReceiptReviewScreen() {
         <View style={styles.totalsBlock}>
           {bill.detectedSubtotalCentavos != null ? (
             <View style={styles.totalRow}>
-              <AppText color="textSecondary">{copy.receiptReview.detectedSubtotalLabel}</AppText>
-              <AppText>{formatCentavos(bill.detectedSubtotalCentavos)}</AppText>
+              <AppText color="textSecondary" style={styles.uniformText}>
+                {copy.receiptReview.detectedSubtotalLabel}
+              </AppText>
+              <AppText style={styles.uniformText}>
+                {formatCentavos(bill.detectedSubtotalCentavos)}
+              </AppText>
             </View>
           ) : null}
           <View style={styles.totalRow}>
-            <AppText color="textSecondary">{copy.receiptReview.itemSubtotalLabel}</AppText>
-            <AppText>{formatCentavos(itemSubtotalCentavos)}</AppText>
+            <AppText color="textSecondary" style={styles.uniformText}>
+              {copy.receiptReview.itemSubtotalLabel}
+            </AppText>
+            <AppText style={styles.uniformText}>{formatCentavos(itemSubtotalCentavos)}</AppText>
           </View>
           {hasDetectedTotal ? (
             <View style={styles.totalRow}>
-              <AppText color="textSecondary">{copy.receiptReview.detectedTotalLabel}</AppText>
-              <AppText>{formatCentavos(bill.detectedReceiptTotalCentavos!)}</AppText>
+              <AppText color="textSecondary" style={styles.uniformText}>
+                {copy.receiptReview.detectedTotalLabel}
+              </AppText>
+              <AppText style={styles.uniformText}>
+                {formatCentavos(bill.detectedReceiptTotalCentavos!)}
+              </AppText>
             </View>
           ) : null}
           <View style={styles.totalRow}>
-            <AppText variant="subheading">{copy.receiptReview.computedTotalLabel}</AppText>
-            <AppText variant="subheading">{formatCentavos(computedTotalCentavos)}</AppText>
+            <AppText variant="subheading" style={styles.uniformText}>
+              {copy.receiptReview.computedTotalLabel}
+            </AppText>
+            <AppText variant="subheading" style={styles.uniformText}>
+              {formatCentavos(computedTotalCentavos)}
+            </AppText>
           </View>
 
           {hasDetectedTotal ? (
-            <AppText color={totalDifference === 0 ? 'success' : 'warning'}>
+            <AppText
+              color={totalDifference === 0 ? 'success' : 'warning'}
+              style={styles.uniformText}
+            >
               {totalDifference === 0
                 ? copy.receiptReview.matchSuccess
                 : copy.receiptReview.mismatchWarning
@@ -399,7 +420,11 @@ export default function ReceiptReviewScreen() {
             onPress={() => setShowRawText(false)}
           />
           <ScrollView style={styles.rawTextScroll}>
-            <AppText selectable variant="caption" style={styles.rawText}>
+            <AppText
+              selectable
+              variant="caption"
+              style={[styles.uniformText, styles.rawText]}
+            >
               {bill.rawOcrText}
             </AppText>
           </ScrollView>
@@ -411,6 +436,14 @@ export default function ReceiptReviewScreen() {
 
 function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
+    // Every AppText on this screen renders at this one uniform size — matches
+    // the `caption` variant's own size exactly. `variant="heading"`/
+    // `"subheading"` still carry their bold font-weight, which is now the
+    // only thing distinguishing a heading from body text.
+    uniformText: {
+      fontSize: 13,
+      lineHeight: 18,
+    },
     body: {
       padding: spacing.lg,
       // Section-to-section rhythm (headerBlock / fieldsBlock / itemsBlock /

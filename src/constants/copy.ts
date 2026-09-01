@@ -7,7 +7,19 @@ export const copy = {
 
   // Section 13.2 — Home
   home: {
-    pageTitle: 'Bills',
+    // Not from the spec — the greeting header (see the app-header task
+    // notes): a personal "Hi {name}!" heading in place of the old plain
+    // "Bills" page title, with a wordmark + settings-avatar row above it.
+    // `{name}` is filled from the signed-in session's own display name
+    // (authClient.useSession() — never a route param), falling back to
+    // fallbackName on the practically-unreachable case of an empty one
+    // (registration already requires a non-empty name).
+    greeting: 'Hi {name}! 👋',
+    greetingSubtitle: 'Got any bill to split for me?',
+    fallbackName: 'there',
+    // The old plain "Bills" page title this header replaced was never
+    // spec-mandated exact text (not referenced anywhere in
+    // docs/Splitsy_MVP_Spec.md) — removed rather than left as dead copy.
     primaryAction: 'New bill',
     emptyHeading: 'No bills yet',
     emptyBody: 'Scan a receipt or enter items manually to create your first split.',

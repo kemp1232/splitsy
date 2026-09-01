@@ -165,8 +165,10 @@ export default function ParticipantsScreen() {
     <Screen scroll padded={false}>
       <View style={styles.body}>
         <View style={styles.headerBlock}>
-          <AppText variant="heading">{copy.participants.heading}</AppText>
-          <AppText variant="body" color="textSecondary">
+          <AppText variant="heading" style={styles.uniformText}>
+            {copy.participants.heading}
+          </AppText>
+          <AppText variant="body" color="textSecondary" style={styles.uniformText}>
             {copy.participants.body}
           </AppText>
 
@@ -208,7 +210,7 @@ export default function ParticipantsScreen() {
                       accessibilityRole="button"
                       style={({ pressed }) => [styles.rowMain, pressed && styles.rowMainPressed]}
                     >
-                      <AppText variant="body" numberOfLines={1}>
+                      <AppText variant="body" numberOfLines={1} style={styles.uniformText}>
                         {item.name}
                       </AppText>
                     </Pressable>
@@ -281,6 +283,14 @@ export default function ParticipantsScreen() {
 
 function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
+    // Every AppText on this screen renders at this one uniform size — matches
+    // the `caption` variant's own size exactly. `variant="heading"`/
+    // `"subheading"` still carry their bold font-weight, which is now the
+    // only thing distinguishing a heading from body text.
+    uniformText: {
+      fontSize: 13,
+      lineHeight: 18,
+    },
     body: {
       padding: spacing.lg,
       // Section-to-section rhythm (headerBlock / roster list / continue

@@ -1,24 +1,73 @@
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
-import { AvatarStack } from '@/components/ui/InitialsAvatar';
 import { IconButton } from '@/components/ui/IconButton';
-import { ReceiptTornEdge } from '@/components/ui/ReceiptTornEdge';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { copy } from '@/constants/copy';
 import { formatBillListDate } from '@/lib/date';
-import { formatCentavos } from '@/lib/money';
+import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
 import type { ColorTokens } from '@/theme/tokens';
 import { radius, spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 import type { Bill, BillWithParticipantCount } from '../../db/repositories/bills.repository';
 
+// Not from the spec — a decorative, food-themed icon+color per row (see the
+// bill-row redesign task notes), the same substitute-for-a-real-photo
+// reasoning InitialsAvatar.tsx already documents for participant avatars:
+// this app has no receipt-category data to draw a *real* icon from, so a
+// small fixed set stands in, picked deterministically per bill (hashed from
+// `bill.id`, never re-randomized on re-render, so a given bill's icon never
+// flickers between renders — just looks arbitrary across *different* bills).
+// Ionicons rather than this file's own Feather (used below for the overflow
+// glyph, and the family the rest of the app's content icons use) — Feather's
+// set has essentially no food glyphs (just `coffee`), so it can't cover this
+// specific "food-related, several distinct options" ask on its own.
+// Every color here is a distinct mid-tone hue chosen only for visual variety
+// between rows — purely decorative (the row's own title text already names
+// the bill), never used to convey status, so it doesn't need the same
+// WCAG-text-contrast rigor as InitialsAvatar's palette (that one sits behind
+// legible initials text).
+const BILL_ICON_BADGES: { icon: keyof typeof Ionicons.glyphMap; background: string }[] = [
+  { icon: 'fast-food-outline', background: '#B0682F' },
+  { icon: 'pizza-outline', background: '#B03A2F' },
+  { icon: 'restaurant-outline', background: '#2E8A6E' },
+  { icon: 'cafe-outline', background: '#8A5A2E' },
+  { icon: 'wine-outline', background: '#6A3FA0' },
+  { icon: 'beer-outline', background: '#A98A2E' },
+  { icon: 'ice-cream-outline', background: '#2F6FB0' },
+  { icon: 'nutrition-outline', background: '#3E8A4A' },
+];
+
+function hashBillId(id: string): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+function billIconBadgeFor(billId: string) {
+  return BILL_ICON_BADGES[hashBillId(billId) % BILL_ICON_BADGES.length]!;
+}
+
+// First name only, for a compact per-participant chip — "Micheal Reyes" reads
+// as "Micheal", matching the reference row's own "Paid by Micheal" shorthand.
+function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? name;
+}
+
+// How many name chips show before collapsing into a trailing "+N" chip —
+// mirrors AvatarStack's own `max` cap (InitialsAvatar.tsx), just smaller:
+// chips take more horizontal room per person than an overlapping circle
+// does, and this row also has to fit a date next to them on the same line.
+const MAX_VISIBLE_NAME_CHIPS = 2;
+
 type Props = {
   entry: BillWithParticipantCount;
-  // Participant display names for this bill's avatar stack — fetched by the
+  // Participant display names for this bill's name-chip row — fetched by the
   // caller (home screen / trip hub) from participantsRepository, never
   // derived here (spec section 7: components render what they're given).
   // Empty when the bill has no participants yet (a fresh draft).
@@ -48,80 +97,117 @@ export const BillListItem = memo(function BillListItem({
     bill.detectedReceiptTotalCentavos != null
       ? formatCentavos(bill.detectedReceiptTotalCentavos)
       : null;
+  const badge = billIconBadgeFor(bill.id);
+  const visibleNames = participantNames.slice(0, MAX_VISIBLE_NAME_CHIPS);
+  const remainingNameCount = participantNames.length - visibleNames.length;
+  const isCompleted = bill.status === 'COMPLETED';
+  const statusLabel = isCompleted ? copy.home.completedBadge : copy.home.draftBadge;
 
   return (
-    <View>
-      <View style={styles.row}>
-        {/* The row's primary tap target (resume/view) is its own Pressable,
-            separate from the overflow IconButton below rather than one
-            Pressable wrapping both — nesting a touchable inside another
-            touchable is an accessibility/hit-testing hazard (which one
-            receives the tap becomes ambiguous), so this mirrors the
-            established sibling-Pressables row shape already used by
-            participants.tsx's own row + trailing IconButton. */}
-        <Pressable
-          onPress={() => onPress(bill)}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.main, pressed && styles.pressed]}
+    // Draft vs. completed is now a border-color cue only (no visible badge/
+    // label text — an explicit, deliberate simplification the user asked
+    // for), which alone would fail spec section 17's "status conveyed by
+    // more than color" rule for sighted users AND leave screen-reader users
+    // with no status signal at all. The row's own accessibilityLabel below
+    // is what keeps that information actually available — a screen reader
+    // still hears the status even though it's no longer drawn as its own
+    // badge — rather than silently dropping it.
+    <View
+      style={[
+        styles.row,
+        // Completed gets a lighter tint of `success` (a 40%-alpha wash, same
+        // technique StatusBadge.tsx already uses for its own tone fills)
+        // rather than the fully-saturated token — draft just keeps the row's
+        // own plain, neutral `colors.border` (already a grayish token in
+        // both themes), so it reads as "unaccented" next to completed's
+        // accent rather than needing a second color of its own.
+        { borderColor: isCompleted ? `${colors.success}66` : colors.border },
+      ]}
+    >
+      {/* The row's primary tap target (resume/view) is its own Pressable,
+          separate from the overflow IconButton below rather than one
+          Pressable wrapping both — nesting a touchable inside another
+          touchable is an accessibility/hit-testing hazard (which one
+          receives the tap becomes ambiguous), so this mirrors the
+          established sibling-Pressables row shape already used by
+          participants.tsx's own row + trailing IconButton. */}
+      <Pressable
+        onPress={() => onPress(bill)}
+        accessibilityRole="button"
+        accessibilityLabel={`${title}, ${statusLabel}${
+          bill.detectedReceiptTotalCentavos != null
+            ? `, ${formatCentavosForSpeech(bill.detectedReceiptTotalCentavos)}`
+            : ''
+        }`}
+        style={({ pressed }) => [styles.main, pressed && styles.pressed]}
+      >
+        {/* Decorative food-icon badge — the row's own title text already
+            names the bill, so this is hidden from screen readers rather than
+            announced on its own. */}
+        <View
+          style={[styles.thumbnail, { backgroundColor: badge.background }]}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
         >
-          {/* Decorative thumbnail-in-a-circle (reference row shape) — the
-              row's own title text already names the bill, so this glyph is
-              hidden from screen readers rather than announced on its own. */}
-          <View
-            style={styles.thumbnail}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-          >
-            <AppText variant="subheading">🧾</AppText>
-          </View>
+          <Ionicons name={badge.icon} size={20} color="#FFFFFF" />
+        </View>
 
-          <View style={styles.mainText}>
-            <AppText variant="subheading" numberOfLines={1}>
-              {title}
+        <View style={styles.mainText}>
+          <AppText variant="subheading" numberOfLines={1} style={styles.titleText}>
+            {title}
+          </AppText>
+          <View style={styles.metaRow}>
+            <AppText variant="caption" color="textSecondary">
+              {formatBillListDate(bill.updatedAt)}
             </AppText>
-            <View style={styles.metaRow}>
-              <AppText variant="caption" color="textSecondary">
-                {formatBillListDate(bill.updatedAt)}
-              </AppText>
-              {participantCount > 0 ? (
-                <AvatarStack names={participantNames} size={18} max={3} />
-              ) : null}
-            </View>
-          </View>
-          <View style={styles.trailing}>
-            {total ? (
-              <AppText variant="amount" style={styles.totalText}>
-                {total}
-              </AppText>
+            {participantCount > 0 ? (
+              <View style={styles.chipRow}>
+                {visibleNames.map((name, index) => (
+                  <View key={`${name}-${index}`} style={styles.chip}>
+                    <AppText variant="caption" color="textSecondary" numberOfLines={1}>
+                      {firstName(name)}
+                    </AppText>
+                  </View>
+                ))}
+                {remainingNameCount > 0 ? (
+                  <View style={styles.chip}>
+                    <AppText variant="caption" color="textSecondary">
+                      +{remainingNameCount}
+                    </AppText>
+                  </View>
+                ) : null}
+              </View>
             ) : null}
-            <StatusBadge
-              label={bill.status === 'COMPLETED' ? copy.home.completedBadge : copy.home.draftBadge}
-              tone={bill.status === 'COMPLETED' ? 'success' : 'neutral'}
-            />
-            {/* Spec 13.2 defines both `resumeAction` ("Continue") and
-                `openAction` ("View split") but leaves their placement to
-                implementation. Surfaced here as a plain caption label rather
-                than a second nested Pressable/button, so this Pressable stays
-                a single tap target while still telling the user what tapping
-                it actually does, instead of leaving that to the status badge
-                alone. */}
-            <AppText variant="caption" color="primary">
-              {bill.status === 'COMPLETED' ? copy.home.openAction : copy.home.resumeAction}
-            </AppText>
           </View>
-        </Pressable>
+        </View>
+        <View style={styles.trailing}>
+          {total ? (
+            <AppText variant="amount" style={styles.totalText}>
+              {total}
+            </AppText>
+          ) : null}
+          {/* Draft only — a completed bill has nothing left to flag (the
+              lighter border-color cue is enough there on its own), so the
+              badge would just be noise repeating what's already obvious.
+              `style` right-aligns it (StatusBadge's own default is
+              `alignSelf: 'flex-start'`, which every other usage of it wants,
+              but this column needs the opposite). */}
+          {!isCompleted ? (
+            <StatusBadge label={statusLabel} tone="neutral" style={styles.trailingBadge} />
+          ) : null}
+        </View>
+      </Pressable>
 
-        {/* Icon-only control — accessibilityLabel is required (spec section 17). */}
-        <IconButton
-          accessibilityLabel={copy.home.overflowAccessibilityLabel}
-          onPress={() => onOverflowPress(bill)}
-          icon={<Feather name="more-vertical" size={20} color={colors.textSecondary} />}
-        />
-      </View>
-      {/* Signature torn-receipt-edge treatment (theme direction: applied
-          sparingly to receipt/settlement surfaces only) — this row is the
-          list's own stand-in for a physical receipt. */}
-      <ReceiptTornEdge color={colors.surface} borderColor={colors.border} height={8} teeth={20} />
+      {/* Icon-only control — accessibilityLabel is required (spec section 17).
+          Sized down from this app's other overflow triggers (still inside
+          IconButton's own unchanged touchTarget.preferred hit box, so the
+          tap target itself stays accessibility-compliant — only the visible
+          glyph shrinks). */}
+      <IconButton
+        accessibilityLabel={copy.home.overflowAccessibilityLabel}
+        onPress={() => onOverflowPress(bill)}
+        icon={<Feather name="more-vertical" size={16} color={colors.textSecondary} />}
+      />
     </View>
   );
 });
@@ -131,54 +217,89 @@ function createStyles(colors: ColorTokens) {
     row: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.xs,
+      // No gap here (was spacing.xs) and `main` below drops its own
+      // right-side padding — both per the user's own request to close the
+      // space between the overflow button and the total next to it.
       paddingVertical: spacing.xs,
       paddingRight: spacing.sm,
-      borderTopLeftRadius: radius.md,
-      borderTopRightRadius: radius.md,
+      // Fully rounded card (reference row shape) now that this row no longer
+      // pairs with a ReceiptTornEdge underneath it, which needed the bottom
+      // corners left square to sit flush against.
+      borderRadius: radius.xl,
       borderCurve: 'continuous',
       backgroundColor: colors.surface,
       borderWidth: 1,
-      borderBottomWidth: 0,
       borderColor: colors.border,
+      // Clips `main`'s own pressed-state background (a plain rectangle) to
+      // this row's rounded corners — without this, that rectangle's sharp
+      // corners poke out past the border's curve on press.
+      overflow: 'hidden',
     },
     main: {
       flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.md,
-      padding: spacing.md,
+      paddingVertical: spacing.md,
+      paddingLeft: spacing.md,
     },
     pressed: {
       backgroundColor: colors.surfaceMuted,
     },
     thumbnail: {
-      width: 40,
-      height: 40,
-      borderRadius: radius.pill,
+      width: 44,
+      height: 44,
+      borderRadius: radius.lg,
       borderCurve: 'continuous',
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: colors.surfaceMuted,
-      borderWidth: 1,
-      borderColor: colors.border,
     },
     mainText: {
       flex: 1,
       gap: 2,
     },
+    // Matches the `caption` variant's own size (used by the date, name
+    // chips, and StatusBadge's label below) — every text in this row now
+    // reads at one uniform size, `subheading`'s bold weight is what still
+    // marks this out as the title rather than a bigger font.
+    titleText: {
+      fontSize: 13,
+      lineHeight: 18,
+    },
     metaRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.sm,
+      flexWrap: 'wrap',
+      gap: spacing.xs,
+      marginTop: 2,
+    },
+    chipRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs / 2,
+    },
+    chip: {
+      paddingHorizontal: spacing.xs,
+      paddingVertical: 1,
+      borderRadius: radius.pill,
+      borderCurve: 'continuous',
+      backgroundColor: colors.surfaceMuted,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     trailing: {
       alignItems: 'flex-end',
       gap: spacing.xs,
     },
+    trailingBadge: {
+      alignSelf: 'flex-end',
+    },
+    // Matches the `caption` variant's own size, same as titleText above —
+    // the `amount` variant's tabular-nums digit alignment is the one thing
+    // still worth keeping here even at this size.
     totalText: {
-      fontSize: 17,
-      lineHeight: 22,
+      fontSize: 13,
+      lineHeight: 18,
     },
   });
 }

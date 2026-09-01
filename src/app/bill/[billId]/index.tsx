@@ -319,16 +319,21 @@ export default function SavedBillDetailScreen() {
     <Screen scroll padded={false}>
       <View style={styles.body}>
         <View style={styles.headerBlock}>
-          <AppText variant="heading">{title}</AppText>
+          <AppText variant="heading" style={styles.uniformText}>
+            {title}
+          </AppText>
 
           <View style={styles.totalRow}>
-            <AppText color="textSecondary">{copy.summary.totalLabel}</AppText>
+            <AppText color="textSecondary" style={styles.uniformText}>
+              {copy.summary.totalLabel}
+            </AppText>
             {/* accessibilityLabel is the spoken form (spec section 17's "520
                 pesos and 25 centavos" example), distinct from the visible
                 formatCentavos text. */}
             <AppText
               variant="amount"
               accessibilityLabel={formatCentavosForSpeech(splitResult.computedTotalCentavos)}
+              style={styles.uniformText}
             >
               {formatCentavos(splitResult.computedTotalCentavos)}
             </AppText>
@@ -398,7 +403,9 @@ export default function SavedBillDetailScreen() {
             />
           ) : null}
           {!hasReceiptImage && !hasRawOcrText ? (
-            <AppText color="textSecondary">{copy.savedBillDetail.noReceiptText}</AppText>
+            <AppText color="textSecondary" style={styles.uniformText}>
+              {copy.savedBillDetail.noReceiptText}
+            </AppText>
           ) : null}
         </View>
 
@@ -486,7 +493,11 @@ export default function SavedBillDetailScreen() {
             icon={(color) => <Feather name="x" size={18} color={color} />}
           />
           <ScrollView style={styles.rawTextScroll}>
-            <AppText selectable variant="caption" style={styles.rawText}>
+            <AppText
+              selectable
+              variant="caption"
+              style={[styles.uniformText, styles.rawText]}
+            >
               {bill.rawOcrText}
             </AppText>
           </ScrollView>
@@ -555,6 +566,15 @@ function createStyles(colors: ColorTokens) {
     rawText: {
       fontFamily: 'monospace',
       color: colors.textPrimary,
+    },
+    // Matches the `caption` variant's own size — every AppText directly in
+    // this screen now reads at one uniform size (see BillListItem.tsx's own
+    // titleText/totalText for the same treatment); each variant's own
+    // font-weight (and, for `amount`, tabular-nums) is what still
+    // distinguishes the heading/total from body text.
+    uniformText: {
+      fontSize: 13,
+      lineHeight: 18,
     },
   });
 }

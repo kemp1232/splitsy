@@ -383,7 +383,9 @@ export default function SummaryScreen() {
   return (
     <Screen scroll padded={false}>
       <View style={styles.headerRow}>
-        <AppText variant="heading">{copy.summary.heading}</AppText>
+        <AppText variant="heading" style={styles.uniformText}>
+          {copy.summary.heading}
+        </AppText>
       </View>
 
       {/* Gradient hero card (reference UI's rounded-bottom-corner "hero
@@ -501,7 +503,9 @@ export default function SummaryScreen() {
               footers in favor of plain in-flow buttons. */}
           {toastMessage ? (
             <View style={styles.toast} accessibilityLiveRegion="polite">
-              <AppText color="onPrimary">{toastMessage}</AppText>
+              <AppText color="onPrimary" style={styles.uniformText}>
+                {toastMessage}
+              </AppText>
             </View>
           ) : null}
           {saveError ? <InlineError message={saveError} /> : null}
@@ -582,6 +586,14 @@ function createStyles(colors: ColorTokens) {
       borderRadius: radius.md,
       borderCurve: 'continuous',
       backgroundColor: colors.textPrimary,
+    },
+    // Matches the `caption` variant's own size — every AppText directly in
+    // this screen now reads at one uniform size (see BillListItem.tsx's own
+    // titleText/totalText for the same treatment); each variant's own
+    // font-weight is what still distinguishes the heading from body text.
+    uniformText: {
+      fontSize: 13,
+      lineHeight: 18,
     },
   });
 }

@@ -392,8 +392,10 @@ export default function AdjustmentsScreen() {
     <Screen scroll padded={false}>
       <View style={styles.body}>
         <View style={styles.introBlock}>
-          <AppText variant="heading">{copy.adjustments.heading}</AppText>
-          <AppText variant="body" color="textSecondary">
+          <AppText variant="heading" style={styles.uniformText}>
+            {copy.adjustments.heading}
+          </AppText>
+          <AppText variant="body" color="textSecondary" style={styles.uniformText}>
             {copy.adjustments.body}
           </AppText>
 
@@ -522,5 +524,14 @@ const styles = StyleSheet.create({
   },
   itemGap: {
     height: spacing.sm,
+  },
+  // Matches the `caption` variant's own size — every AppText directly in
+  // this screen now reads at one uniform size (see BillListItem.tsx's own
+  // titleText/totalText for the same treatment); each variant's own
+  // font-weight (and, for `amount`, tabular-nums) is what still distinguishes
+  // headings/money from body text.
+  uniformText: {
+    fontSize: 13,
+    lineHeight: 18,
   },
 });
