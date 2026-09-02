@@ -1,4 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
+import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -15,10 +16,33 @@ type Props = {
   // Raw centavos — formatted here, at the UI boundary, never passed back
   // into calculation logic (spec section 7).
   amountCentavos: number;
-  // Merchant/bill/trip name shown under the amount.
+  // Merchant/bill/trip name — shown above the label/amount now (see the
+  // render function's own comment on the reordering).
   subtitle?: string;
   // Small trailing detail, e.g. a formatted date.
   meta?: string;
+  // Optional icon shown beside `label` — a render prop (like AppButton's own
+  // `icon`) so the caller's chosen color always matches `onPrimary`, this
+  // card's one text color, without this component hardcoding a Feather glyph
+  // for every possible caller.
+  icon?: (color: string) => ReactNode;
+  // Rounds the top corners to match the bottom ones, instead of this card's
+  // default flush-with-the-screen-top shape. Opt-in: the trip hub/settlement
+  // screens render this as the literal first thing on the screen (see the
+  // component's own header comment) and keep the flush top; summary.tsx
+  // renders its own heading above this card, so a flush top edge there reads
+  // as an odd square notch rather than matching the screen's actual edge.
+  roundTopCorners?: boolean;
+  // Adds spacing.lg left/right margin — the same horizontal inset `body`'s
+  // own padding gives PersonTotalCard below it — instead of this card's
+  // default flush-with-the-screen-sides shape. Opt-in for the same reason as
+  // `roundTopCorners`: the trip hub/settlement screens keep the flush sides.
+  sideInset?: boolean;
+  // Optional status badge shown directly below the amount — e.g.
+  // summary.tsx's own "matches the receipt"/mismatch badge, placed here so
+  // it reads as directly describing the total above it rather than as a
+  // separate block further down the screen.
+  statusBadge?: ReactNode;
 };
 
 // The reference UI's large rounded gradient "hero" panel (screenshots 1 and
@@ -29,7 +53,16 @@ type Props = {
 // screen with only its bottom corners rounded, matching the reference's own
 // "hero panel" shape, since every screen that uses this renders it as the
 // first thing on an otherwise unpadded (`padded={false}`) Screen.
-export function GradientHeroCard({ label, amountCentavos, subtitle, meta }: Props) {
+export function GradientHeroCard({
+  label,
+  amountCentavos,
+  subtitle,
+  meta,
+  icon,
+  roundTopCorners,
+  sideInset,
+  statusBadge,
+}: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -38,20 +71,13 @@ export function GradientHeroCard({ label, amountCentavos, subtitle, meta }: Prop
       colors={[colors.gradientStart, colors.gradientEnd]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={styles.card}
+      style={[styles.card, roundTopCorners && styles.cardRoundTop, sideInset && styles.cardSideInset]}
     >
-      <AppText variant="body" color="onPrimary" style={styles.label}>
-        {label}
-      </AppText>
-      <AppText
-        variant="amount"
-        color="onPrimary"
-        accessibilityLabel={formatCentavosForSpeech(amountCentavos)}
-      >
-        {formatCentavos(amountCentavos)}
-      </AppText>
+      {/* Subtitle/meta (which bill/trip this is) now reads first, above the
+          label+amount — telling the user what they're looking at before the
+          number, rather than after it. */}
       {subtitle || meta ? (
-        <View style={styles.footerRow}>
+        <View style={styles.contextRow}>
           {subtitle ? (
             <AppText
               variant="subheading"
@@ -69,6 +95,20 @@ export function GradientHeroCard({ label, amountCentavos, subtitle, meta }: Prop
           ) : null}
         </View>
       ) : null}
+      <View style={styles.labelRow}>
+        {icon ? icon(colors.onPrimary) : null}
+        <AppText variant="body" color="onPrimary" style={styles.label}>
+          {label}
+        </AppText>
+      </View>
+      <AppText
+        variant="amount"
+        color="onPrimary"
+        accessibilityLabel={formatCentavosForSpeech(amountCentavos)}
+      >
+        {formatCentavos(amountCentavos)}
+      </AppText>
+      {statusBadge ?? null}
     </LinearGradient>
   );
 }
@@ -93,14 +133,25 @@ function createStyles(colors: ColorTokens) {
       shadowRadius: 12,
       elevation: 4,
     },
+    cardRoundTop: {
+      borderTopLeftRadius: radius.xl,
+      borderTopRightRadius: radius.xl,
+    },
+    cardSideInset: {
+      marginHorizontal: spacing.lg,
+    },
+    labelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+    },
     label: {
       opacity: 0.85,
     },
-    footerRow: {
+    contextRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginTop: spacing.xs,
       gap: spacing.sm,
     },
     subtitle: {

@@ -133,7 +133,7 @@ export default function ForgotPasswordScreen() {
             label={copy.auth.sendResetLinkButton}
             onPress={handleSendResetLink}
             loading={submitting}
-            icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+            icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
             iconPosition="trailing"
           />
         </View>

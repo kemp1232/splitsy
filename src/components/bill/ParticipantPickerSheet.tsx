@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, View } from 'react-native';
+import { Animated, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ParticipantChip } from '@/components/bill/ParticipantChip';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { InlineError } from '@/components/ui/InlineError';
+import { useSlideUpAnimation } from '@/components/ui/useSlideUpAnimation';
 import { copy } from '@/constants/copy';
 import type { Participant } from '@/db/repositories/participants.repository';
 import type { ColorTokens } from '@/theme/tokens';
@@ -36,6 +37,7 @@ export function ParticipantPickerSheet({
 }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const translateY = useSlideUpAnimation(visible);
   const [selectedIds, setSelectedIds] = useState<string[]>(initialSelectedIds);
   const [error, setError] = useState<string | null>(null);
 
@@ -76,14 +78,23 @@ export function ParticipantPickerSheet({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="none"
       onShow={handleShow}
       onRequestClose={onCancel}
       testID={`participant-picker-sheet-${mode}`}
     >
-      <View style={styles.backdrop}>
-        <View style={styles.sheet}>
-          <AppText variant="subheading">{copy.participantPicker.heading}</AppText>
+      {/* Tapping the dimmed area outside the sheet dismisses it, same as
+          Cancel — see BillOverflowSheet's identical treatment for why the
+          inner Pressable needs its own no-op onPress and why the Modal's own
+          animation is off in favor of useSlideUpAnimation. `maxHeight` lives
+          on this Animated.View, not the inner `sheet` Pressable — a
+          percentage height needs to resolve against `backdrop`'s real
+          (screen-height) size, which this wrapper sits directly inside;
+          `sheet` itself has no defined height of its own to resolve against. */}
+      <Pressable style={styles.backdrop} onPress={onCancel}>
+        <Animated.View style={[styles.sheetMaxHeight, { transform: [{ translateY }] }]}>
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            <AppText variant="subheading">{copy.participantPicker.heading}</AppText>
           <AppText variant="body" color="textSecondary">
             {copy.participantPicker.body}
           </AppText>
@@ -116,8 +127,9 @@ export function ParticipantPickerSheet({
             <AppButton variant="secondary" label={copy.global.cancelAction} onPress={onCancel} />
             <AppButton label={copy.participantPicker.saveAction} onPress={handleSave} />
           </View>
-        </View>
-      </View>
+          </Pressable>
+        </Animated.View>
+      </Pressable>
     </Modal>
   );
 }
@@ -129,13 +141,17 @@ function createStyles(colors: ColorTokens) {
       backgroundColor: 'rgba(0,0,0,0.4)',
       justifyContent: 'flex-end',
     },
+    // On the Animated.View wrapper, not `sheet` below — see this file's own
+    // render-side comment on why a percentage height has to resolve there.
+    sheetMaxHeight: {
+      maxHeight: '80%',
+    },
     sheet: {
       backgroundColor: colors.surface,
       borderTopLeftRadius: radius.lg,
       borderTopRightRadius: radius.lg,
       padding: spacing.lg,
       gap: spacing.md,
-      maxHeight: '80%',
     },
     quickActions: {
       flexDirection: 'row',

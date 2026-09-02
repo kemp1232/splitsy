@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Switch, View } from 'react-native';
+import { Modal, StyleSheet, Switch, View } from 'react-native';
 
 import { AssignmentStatus } from '@/components/bill/AssignmentStatus';
 import { ParticipantPickerSheet } from '@/components/bill/ParticipantPickerSheet';
@@ -136,6 +137,7 @@ export default function AssignmentsScreen() {
   const [assignmentRows, setAssignmentRows] = useState<ItemAssignment[]>([]);
   const [picker, setPicker] = useState<PickerState>(null);
   const [showBlockingError, setShowBlockingError] = useState(false);
+  const [showReceiptImage, setShowReceiptImage] = useState(false);
   // One shared error slot for this screen's own write path (the "Split
   // everything equally" toggle) — mirrors participants.tsx's/adjustments.tsx's
   // own actionError.
@@ -304,9 +306,13 @@ export default function AssignmentsScreen() {
     <Screen scroll padded={false}>
       <View style={styles.body}>
         <View style={styles.headerBlock}>
-          <AppText variant="heading" style={styles.uniformText}>
-            {copy.assignments.heading}
-          </AppText>
+          {/* Full-size heading (no uniformText override) + leading icon —
+              matches receipt-review.tsx's/participants.tsx's own header
+              treatment, so every step in the draft wizard reads the same. */}
+          <View style={styles.headingRow}>
+            <Feather name="trello" size={24} color={colors.primary} />
+            <AppText variant="heading">{copy.assignments.heading}</AppText>
+          </View>
           <AppText variant="body" color="textSecondary" style={styles.uniformText}>
             {copy.assignments.body}
           </AppText>
@@ -386,9 +392,20 @@ export default function AssignmentsScreen() {
               </AppText>
             </View>
           ) : null}
+          {/* Quick access back to the original receipt image without
+              backtracking to receipt-review.tsx — same modal shape that
+              screen already uses for its own "Receipt" button. */}
+          {bill.receiptImageUri ? (
+            <AppButton
+              variant="secondary"
+              label={copy.receiptReview.receiptAction}
+              icon={(color) => <Feather name="image" size={18} color={color} />}
+              onPress={() => setShowReceiptImage(true)}
+            />
+          ) : null}
           <AppButton
             label={copy.assignments.continueButton}
-            icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+            icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
             iconPosition="trailing"
             onPress={handleContinue}
           />
@@ -403,6 +420,29 @@ export default function AssignmentsScreen() {
         onSave={handleSavePicker}
         onCancel={() => setPicker(null)}
       />
+
+      {/* Mirrors receipt-review.tsx's own receipt-image modal. */}
+      <Modal
+        visible={showReceiptImage}
+        animationType="slide"
+        onRequestClose={() => setShowReceiptImage(false)}
+      >
+        <Screen scroll={false}>
+          <AppButton
+            variant="text"
+            label={copy.global.closeAccessibilityLabel}
+            onPress={() => setShowReceiptImage(false)}
+          />
+          {bill.receiptImageUri ? (
+            <Image
+              source={{ uri: bill.receiptImageUri }}
+              style={styles.receiptImage}
+              contentFit="contain"
+              accessibilityLabel={copy.receiptReview.receiptAction}
+            />
+          ) : null}
+        </Screen>
+      </Modal>
     </Screen>
   );
 }
@@ -415,8 +455,8 @@ function createStyles(colors: ColorTokens) {
     // still carry their bold font-weight, which is now the only thing
     // distinguishing a heading from body text.
     uniformText: {
-      fontSize: 13,
-      lineHeight: 18,
+      fontSize: 14,
+      lineHeight: 19,
     },
     body: {
       padding: spacing.lg,
@@ -431,6 +471,11 @@ function createStyles(colors: ColorTokens) {
       paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
     },
     headerBlock: {
+      gap: spacing.sm,
+    },
+    headingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
       gap: spacing.sm,
     },
     actionsBlock: {
@@ -478,6 +523,9 @@ function createStyles(colors: ColorTokens) {
     },
     blockingError: {
       gap: spacing.xs / 2,
+    },
+    receiptImage: {
+      flex: 1,
     },
   });
 }

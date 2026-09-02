@@ -1,8 +1,9 @@
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { FoodIconBadge } from '@/components/ui/FoodIconBadge';
 import { IconButton } from '@/components/ui/IconButton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { copy } from '@/constants/copy';
@@ -13,45 +14,6 @@ import { radius, spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 import type { Bill, BillWithParticipantCount } from '../../db/repositories/bills.repository';
-
-// Not from the spec — a decorative, food-themed icon+color per row (see the
-// bill-row redesign task notes), the same substitute-for-a-real-photo
-// reasoning InitialsAvatar.tsx already documents for participant avatars:
-// this app has no receipt-category data to draw a *real* icon from, so a
-// small fixed set stands in, picked deterministically per bill (hashed from
-// `bill.id`, never re-randomized on re-render, so a given bill's icon never
-// flickers between renders — just looks arbitrary across *different* bills).
-// Ionicons rather than this file's own Feather (used below for the overflow
-// glyph, and the family the rest of the app's content icons use) — Feather's
-// set has essentially no food glyphs (just `coffee`), so it can't cover this
-// specific "food-related, several distinct options" ask on its own.
-// Every color here is a distinct mid-tone hue chosen only for visual variety
-// between rows — purely decorative (the row's own title text already names
-// the bill), never used to convey status, so it doesn't need the same
-// WCAG-text-contrast rigor as InitialsAvatar's palette (that one sits behind
-// legible initials text).
-const BILL_ICON_BADGES: { icon: keyof typeof Ionicons.glyphMap; background: string }[] = [
-  { icon: 'fast-food-outline', background: '#B0682F' },
-  { icon: 'pizza-outline', background: '#B03A2F' },
-  { icon: 'restaurant-outline', background: '#2E8A6E' },
-  { icon: 'cafe-outline', background: '#8A5A2E' },
-  { icon: 'wine-outline', background: '#6A3FA0' },
-  { icon: 'beer-outline', background: '#A98A2E' },
-  { icon: 'ice-cream-outline', background: '#2F6FB0' },
-  { icon: 'nutrition-outline', background: '#3E8A4A' },
-];
-
-function hashBillId(id: string): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash);
-}
-
-function billIconBadgeFor(billId: string) {
-  return BILL_ICON_BADGES[hashBillId(billId) % BILL_ICON_BADGES.length]!;
-}
 
 // First name only, for a compact per-participant chip — "Micheal Reyes" reads
 // as "Micheal", matching the reference row's own "Paid by Micheal" shorthand.
@@ -97,7 +59,6 @@ export const BillListItem = memo(function BillListItem({
     bill.detectedReceiptTotalCentavos != null
       ? formatCentavos(bill.detectedReceiptTotalCentavos)
       : null;
-  const badge = billIconBadgeFor(bill.id);
   const visibleNames = participantNames.slice(0, MAX_VISIBLE_NAME_CHIPS);
   const remainingNameCount = participantNames.length - visibleNames.length;
   const isCompleted = bill.status === 'COMPLETED';
@@ -141,16 +102,7 @@ export const BillListItem = memo(function BillListItem({
         }`}
         style={({ pressed }) => [styles.main, pressed && styles.pressed]}
       >
-        {/* Decorative food-icon badge — the row's own title text already
-            names the bill, so this is hidden from screen readers rather than
-            announced on its own. */}
-        <View
-          style={[styles.thumbnail, { backgroundColor: badge.background }]}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-        >
-          <Ionicons name={badge.icon} size={20} color="#FFFFFF" />
-        </View>
+        <FoodIconBadge id={bill.id} />
 
         <View style={styles.mainText}>
           <AppText variant="subheading" numberOfLines={1} style={styles.titleText}>
@@ -246,14 +198,6 @@ function createStyles(colors: ColorTokens) {
     pressed: {
       backgroundColor: colors.surfaceMuted,
     },
-    thumbnail: {
-      width: 44,
-      height: 44,
-      borderRadius: radius.lg,
-      borderCurve: 'continuous',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
     mainText: {
       flex: 1,
       gap: 2,
@@ -263,8 +207,8 @@ function createStyles(colors: ColorTokens) {
     // reads at one uniform size, `subheading`'s bold weight is what still
     // marks this out as the title rather than a bigger font.
     titleText: {
-      fontSize: 13,
-      lineHeight: 18,
+      fontSize: 14,
+      lineHeight: 19,
     },
     metaRow: {
       flexDirection: 'row',
@@ -298,8 +242,8 @@ function createStyles(colors: ColorTokens) {
     // the `amount` variant's tabular-nums digit alignment is the one thing
     // still worth keeping here even at this size.
     totalText: {
-      fontSize: 13,
-      lineHeight: 18,
+      fontSize: 14,
+      lineHeight: 19,
     },
   });
 }

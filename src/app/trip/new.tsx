@@ -127,7 +127,7 @@ export default function NewTripScreen() {
             label={copy.trip.quickAddMe}
             disabled={meAlreadyExists}
             onPress={handleQuickAddMe}
-            icon={(color) => <Feather name="plus" size={18} color={color} />}
+            icon={(color) => <Feather name="plus-circle" size={18} color={color} />}
           />
 
           {roster.length === 0 ? (
@@ -170,7 +170,7 @@ export default function NewTripScreen() {
                 variant="secondary"
                 label={copy.trip.addAction}
                 onPress={() => setEditingMember('new')}
-                icon={(color) => <Feather name="plus" size={18} color={color} />}
+                icon={(color) => <Feather name="plus-circle" size={18} color={color} />}
               />
             </>
           )}

@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { type LayoutChangeEvent, Pressable, StyleSheet, View } from 'react-native';
@@ -60,22 +60,19 @@ export const TAB_BAR_CONTENT_CLEARANCE = BAR_HEIGHT + spacing.lg + spacing.md;
 // Fixed set of destinations this bar links to — no longer read from a real
 // Tabs navigator's route list (see this component's own header comment for
 // why it isn't one anymore), so this is now the one place that defines them.
-// Outline icon when inactive, filled icon when active (Ionicons ships both
-// variants for these) — selection is conveyed by icon *shape*, not by
-// swapping a background badge color behind it.
+// One Feather icon per tab (app-wide standardization on Feather for every
+// icon, 2026-08-27) rather than an outline/filled pair — Feather is a
+// single-weight line-icon set with no filled variants, so the icon no longer
+// changes *shape* on selection the way the previous Ionicons pair did.
+// Selection still isn't color alone, though: `tint` below recolors it and
+// the label's own `labelActive` style bolds the text at the same time.
 const TABS: {
   path: '/' | '/settings';
-  outlineIcon: keyof typeof Ionicons.glyphMap;
-  filledIcon: keyof typeof Ionicons.glyphMap;
+  icon: keyof typeof Feather.glyphMap;
   label: string;
 }[] = [
-  { path: '/', outlineIcon: 'home-outline', filledIcon: 'home', label: copy.nav.homeTab },
-  {
-    path: '/settings',
-    outlineIcon: 'settings-outline',
-    filledIcon: 'settings',
-    label: copy.nav.settingsTab,
-  },
+  { path: '/', icon: 'home', label: copy.nav.homeTab },
+  { path: '/settings', icon: 'settings', label: copy.nav.settingsTab },
 ];
 
 // One point on the cutout circle — center (cx, 0), the exact same center the
@@ -254,11 +251,7 @@ export function BottomTabBar() {
               onPress={handlePress}
               style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]}
             >
-              <Ionicons
-                name={isFocused ? tab.filledIcon : tab.outlineIcon}
-                size={22}
-                color={tint}
-              />
+              <Feather name={tab.icon} size={22} color={tint} />
               <AppText
                 variant="caption"
                 style={[styles.label, { color: tint }, isFocused && styles.labelActive]}
@@ -282,7 +275,12 @@ export function BottomTabBar() {
         onPress={() => router.push('/bill/new')}
         style={({ pressed }) => [styles.centerButton, pressed && styles.centerButtonPressed]}
       >
-        <Ionicons name="add-outline" size={26} color={colors.onPrimary} />
+        {/* LOCKED — `plus-square`, specifically, per the user's own explicit
+            standing instruction: keep this exact icon on this exact button
+            even through future "change all icons/all plus icons" sweeps
+            elsewhere in the app, unless a future request calls this button
+            out by name again. */}
+        <Feather name="plus-square" size={26} color={colors.onPrimary} />
       </Pressable>
     </View>
   );

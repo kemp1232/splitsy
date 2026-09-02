@@ -165,9 +165,13 @@ export default function ParticipantsScreen() {
     <Screen scroll padded={false}>
       <View style={styles.body}>
         <View style={styles.headerBlock}>
-          <AppText variant="heading" style={styles.uniformText}>
-            {copy.participants.heading}
-          </AppText>
+          {/* Full-size heading (no uniformText override) — matches
+              receipt-review.tsx's own header treatment, so every step in the
+              draft wizard reads as having a real page header. */}
+          <View style={styles.headingRow}>
+            <Feather name="users" size={24} color={colors.primary} />
+            <AppText variant="heading">{copy.participants.heading}</AppText>
+          </View>
           <AppText variant="body" color="textSecondary" style={styles.uniformText}>
             {copy.participants.body}
           </AppText>
@@ -181,7 +185,7 @@ export default function ParticipantsScreen() {
             variant="secondary"
             label={copy.participants.quickAddMe}
             disabled={meAlreadyExists}
-            icon={(color) => <Feather name="plus" size={18} color={color} />}
+            icon={(color) => <Feather name="plus-circle" size={18} color={color} />}
             onPress={handleQuickAddMe}
           />
         </View>
@@ -205,6 +209,13 @@ export default function ParticipantsScreen() {
                 ItemSeparatorComponent={() => <View style={styles.itemGap} />}
                 renderItem={({ item }) => (
                   <View style={styles.row}>
+                    {/* Same circular person-icon treatment as the Home
+                        header's own avatar button (top right of the Splitsy
+                        wordmark) — decorative here too, the row's own name
+                        text already identifies the person. */}
+                    <View style={styles.avatarCircle} accessibilityElementsHidden>
+                      <Feather name="user" size={18} color={colors.primary} />
+                    </View>
                     <Pressable
                       onPress={() => setEditingParticipant(item)}
                       accessibilityRole="button"
@@ -220,7 +231,7 @@ export default function ParticipantsScreen() {
                         item.name,
                       )}
                       onPress={() => setRemovingParticipant(item)}
-                      icon={<Feather name="x" size={20} color={colors.danger} />}
+                      icon={<Feather name="trash" size={20} color={colors.danger} />}
                     />
                   </View>
                 )}
@@ -228,7 +239,7 @@ export default function ParticipantsScreen() {
               <AppButton
                 variant="secondary"
                 label={copy.participants.addAction}
-                icon={(color) => <Feather name="plus" size={18} color={color} />}
+                icon={(color) => <Feather name="plus-circle" size={18} color={color} />}
                 onPress={() => setEditingParticipant('new')}
               />
             </>
@@ -245,7 +256,7 @@ export default function ParticipantsScreen() {
           <AppButton
             label={copy.participants.continueButton}
             disabled={!meetsMinimumParticipants}
-            icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+            icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
             iconPosition="trailing"
             onPress={() => router.push(`/bill/${billId}/assignments`)}
           />
@@ -288,8 +299,8 @@ function createStyles(colors: ColorTokens) {
     // `"subheading"` still carry their bold font-weight, which is now the
     // only thing distinguishing a heading from body text.
     uniformText: {
-      fontSize: 13,
-      lineHeight: 18,
+      fontSize: 14,
+      lineHeight: 19,
     },
     body: {
       padding: spacing.lg,
@@ -305,6 +316,11 @@ function createStyles(colors: ColorTokens) {
     headerBlock: {
       gap: spacing.md,
     },
+    headingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
     rosterBlock: {
       gap: spacing.md,
     },
@@ -316,10 +332,32 @@ function createStyles(colors: ColorTokens) {
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: spacing.md,
-      padding: spacing.md,
+      // Not a plain `padding: spacing.md` — the trailing delete IconButton
+      // has its own built-in touchTarget.preferred (48x48) hit box around a
+      // 20px icon, noticeably roomier than the leading avatarCircle's tight
+      // 36x36 fit around an 18px icon. Left/top/bottom stay at spacing.md;
+      // right is pulled in so the *visible* trash icon ends up roughly the
+      // same distance from the row's true edge as the visible user icon does
+      // on the left, instead of IconButton's own extra internal padding
+      // stacking on top of the row's own.
+      paddingVertical: spacing.md,
+      paddingLeft: spacing.md,
+      paddingRight: spacing.xs,
       borderRadius: radius.md,
       borderCurve: 'continuous',
       backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    // Same treatment as Home's own avatar circle (src/app/index.tsx).
+    avatarCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      borderCurve: 'continuous',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surfaceMuted,
       borderWidth: 1,
       borderColor: colors.border,
     },

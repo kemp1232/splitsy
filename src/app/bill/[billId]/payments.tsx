@@ -40,6 +40,7 @@ import type {
 } from '@/features/splitting/split.types';
 import { nowIso } from '@/lib/date';
 import { spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -129,6 +130,7 @@ function computeSplitAndReconciliation(data: LoadedData): {
 // truth for bill data" rule).
 export default function PaymentsScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const { billId } = useLocalSearchParams<{ billId: string }>();
 
   const [state, setState] = useState<LoadState>('loading');
@@ -258,6 +260,11 @@ export default function PaymentsScreen() {
         ),
       );
       router.push(`/bill/${billId}/summary`);
+      // Expo Router keeps this screen mounted underneath the pushed Summary
+      // screen rather than unmounting it, so without this the Continue
+      // button would still read as loading/disabled if the user later
+      // presses back into this screen.
+      setSaving(false);
     } catch {
       setActionError(copy.global.storageFailure);
       setSaving(false);
@@ -289,7 +296,12 @@ export default function PaymentsScreen() {
     <Screen scroll padded={false}>
       <View style={styles.body}>
         <View style={styles.introBlock}>
-          <AppText variant="heading">{copy.payments.heading}</AppText>
+          {/* Full-size heading (no uniformText override) + leading icon —
+              matches every other draft-wizard step's own header treatment. */}
+          <View style={styles.headingRow}>
+            <Feather name="credit-card" size={24} color={colors.primary} />
+            <AppText variant="heading">{copy.payments.heading}</AppText>
+          </View>
           <AppText variant="body" color="textSecondary">
             {copy.payments.body}
           </AppText>
@@ -320,13 +332,18 @@ export default function PaymentsScreen() {
             the polish-pass icon-mapping table). */}
         <View style={styles.actionsBlock}>
           {actionError ? <InlineError message={actionError} /> : null}
-          <AppButton variant="text" label={copy.payments.skipAction} onPress={handleSkip} />
+          <AppButton
+            variant="text"
+            label={copy.payments.skipAction}
+            icon={(color) => <Feather name="skip-forward" size={18} color={color} />}
+            onPress={handleSkip}
+          />
           <AppButton
             label={copy.payments.continueButton}
             onPress={handleContinue}
             loading={saving}
             disabled={saving}
-            icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+            icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
             iconPosition="trailing"
           />
         </View>
@@ -347,6 +364,11 @@ const styles = StyleSheet.create({
     gap: spacing.xl,
   },
   introBlock: {
+    gap: spacing.sm,
+  },
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
   },
   actionsBlock: {

@@ -209,7 +209,13 @@ export const copy = {
     mismatchWarning: 'The current total is {difference} {higherOrLower} than the receipt.',
     higherWord: 'higher',
     lowerWord: 'lower',
-    rawTextAction: 'View extracted text',
+    rawTextAction: 'Extracted text',
+    // Deliberately its own key rather than reusing
+    // copy.savedBillDetail.receiptAction ('View receipt') — that string is
+    // shared by the saved-bill-detail screen's own button and modal, and
+    // this screen wanting shorter label text shouldn't also shorten that
+    // other screen's.
+    receiptAction: 'Receipt',
     ocrSourceBackend: 'Read online (higher accuracy)',
     ocrSourceOnDevice: 'Read on-device (offline)',
     handwritingNote:
@@ -377,7 +383,7 @@ export const copy = {
   // split" entry).
   payments: {
     heading: 'Who paid?',
-    body: 'Add how much each person actually paid — Splitsy will work out who owes who.',
+    body: 'Add how much each person actually paid. Splitsy will work out who owes who.',
     fullAmountAction: 'Paid in full',
     skipAction: 'Skip for now',
     continueButton: 'Continue',
@@ -438,6 +444,7 @@ export const copy = {
   // Section 13.18 — Summary
   summary: {
     heading: "Everyone's share",
+    body: "Review each person's total, then share or save the bill.",
     totalLabel: 'Bill total',
     matchSuccess: 'Matches the receipt',
     mismatchStatus: 'Does not match the receipt',

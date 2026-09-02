@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { FlatList, Modal, StyleSheet, View } from 'react-native';
 
 import {
   AdjustmentEditorSheet,
@@ -48,6 +49,7 @@ import { nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
 import { formatCentavos } from '@/lib/money';
 import { spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -125,6 +127,7 @@ function computeSplitAndReconciliation(data: LoadedData): {
 
 export default function AdjustmentsScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const { billId } = useLocalSearchParams<{ billId: string }>();
 
   const [state, setState] = useState<LoadState>('loading');
@@ -139,6 +142,7 @@ export default function AdjustmentsScreen() {
   );
   const [deletingAdjustment, setDeletingAdjustment] = useState<Adjustment | null>(null);
   const [showContinueWithDifference, setShowContinueWithDifference] = useState(false);
+  const [showReceiptImage, setShowReceiptImage] = useState(false);
   // One shared error slot for this screen's write paths (save/delete an
   // adjustment, add the reconciliation difference) — mirrors participants.tsx
   // and receipt-review.tsx's own actionError.
@@ -392,9 +396,12 @@ export default function AdjustmentsScreen() {
     <Screen scroll padded={false}>
       <View style={styles.body}>
         <View style={styles.introBlock}>
-          <AppText variant="heading" style={styles.uniformText}>
-            {copy.adjustments.heading}
-          </AppText>
+          {/* Full-size heading (no uniformText override) + leading icon —
+              matches every other draft-wizard step's own header treatment. */}
+          <View style={styles.headingRow}>
+            <Feather name="percent" size={24} color={colors.primary} />
+            <AppText variant="heading">{copy.adjustments.heading}</AppText>
+          </View>
           <AppText variant="body" color="textSecondary" style={styles.uniformText}>
             {copy.adjustments.body}
           </AppText>
@@ -429,7 +436,7 @@ export default function AdjustmentsScreen() {
               variant="secondary"
               label={copy.adjustments.addAction}
               onPress={handleOpenNewEditor}
-              icon={(color) => <Feather name="plus" size={18} color={color} />}
+              icon={(color) => <Feather name="plus-circle" size={18} color={color} />}
             />
           </View>
         )}
@@ -452,16 +459,29 @@ export default function AdjustmentsScreen() {
             footers in favor of plain in-flow buttons. Trailing arrow-right:
             this is a linear wizard step (spec section 15), whether or not a
             reconciliation difference is still outstanding. */}
-        <AppButton
-          label={
-            reconciliation.matches
-              ? copy.adjustments.continueButton
-              : copy.adjustments.continueWithDifferenceAction
-          }
-          onPress={handleContinuePress}
-          icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
-          iconPosition="trailing"
-        />
+        <View style={styles.actionsBlock}>
+          {/* Quick access back to the original receipt image without
+              backtracking to receipt-review.tsx — same modal shape that
+              screen already uses for its own "Receipt" button. */}
+          {bill.receiptImageUri ? (
+            <AppButton
+              variant="secondary"
+              label={copy.receiptReview.receiptAction}
+              icon={(color) => <Feather name="image" size={18} color={color} />}
+              onPress={() => setShowReceiptImage(true)}
+            />
+          ) : null}
+          <AppButton
+            label={
+              reconciliation.matches
+                ? copy.adjustments.continueButton
+                : copy.adjustments.continueWithDifferenceAction
+            }
+            onPress={handleContinuePress}
+            icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
+            iconPosition="trailing"
+          />
+        </View>
       </View>
 
       <AdjustmentEditorSheet
@@ -499,6 +519,29 @@ export default function AdjustmentsScreen() {
         onConfirm={handleConfirmContinueWithDifference}
         onCancel={handleReviewBillFromDialog}
       />
+
+      {/* Mirrors receipt-review.tsx's own receipt-image modal. */}
+      <Modal
+        visible={showReceiptImage}
+        animationType="slide"
+        onRequestClose={() => setShowReceiptImage(false)}
+      >
+        <Screen scroll={false}>
+          <AppButton
+            variant="text"
+            label={copy.global.closeAccessibilityLabel}
+            onPress={() => setShowReceiptImage(false)}
+          />
+          {bill.receiptImageUri ? (
+            <Image
+              source={{ uri: bill.receiptImageUri }}
+              style={styles.receiptImage}
+              contentFit="contain"
+              accessibilityLabel={copy.receiptReview.receiptAction}
+            />
+          ) : null}
+        </Screen>
+      </Modal>
     </Screen>
   );
 }
@@ -519,11 +562,22 @@ const styles = StyleSheet.create({
   introBlock: {
     gap: spacing.sm,
   },
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  actionsBlock: {
+    gap: spacing.md,
+  },
   listBlock: {
     gap: spacing.md,
   },
   itemGap: {
     height: spacing.sm,
+  },
+  receiptImage: {
+    flex: 1,
   },
   // Matches the `caption` variant's own size — every AppText directly in
   // this screen now reads at one uniform size (see BillListItem.tsx's own
@@ -531,7 +585,7 @@ const styles = StyleSheet.create({
   // font-weight (and, for `amount`, tabular-nums) is what still distinguishes
   // headings/money from body text.
   uniformText: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 14,
+    lineHeight: 19,
   },
 });

@@ -24,7 +24,7 @@ export function LineItemRow({ item, onPress }: Props) {
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
       <View style={styles.main}>
-        <AppText variant="body" numberOfLines={1}>
+        <AppText variant="body" numberOfLines={1} style={styles.smallText}>
           {item.name}
         </AppText>
         {item.quantity > 1 ? (
@@ -33,7 +33,9 @@ export function LineItemRow({ item, onPress }: Props) {
           </AppText>
         ) : null}
       </View>
-      <AppText variant="subheading">{formatCentavos(item.lineTotalCentavos)}</AppText>
+      <AppText variant="amount" style={styles.smallText}>
+        {formatCentavos(item.lineTotalCentavos)}
+      </AppText>
     </Pressable>
   );
 }
@@ -43,7 +45,6 @@ function createStyles(colors: ColorTokens) {
     row: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
       gap: spacing.md,
       padding: spacing.md,
       borderRadius: radius.md,
@@ -58,6 +59,14 @@ function createStyles(colors: ColorTokens) {
     main: {
       flex: 1,
       gap: 2,
+    },
+    // Matches receipt-review.tsx's own uniform text size (see that screen's
+    // `uniformText` style) — title/price no longer stand out by size, only
+    // by the `variant` each already carries (body's regular weight vs
+    // amount's bold weight + tabular-nums digit alignment).
+    smallText: {
+      fontSize: 14,
+      lineHeight: 19,
     },
   });
 }

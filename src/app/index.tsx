@@ -1,4 +1,5 @@
 import { Feather } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, RefreshControl, Share, StyleSheet, View } from 'react-native';
@@ -34,7 +35,9 @@ import {
 import { partitionLineItemsByAssignment } from '@/features/assignments/partitionLineItemsByAssignment';
 import { deleteBill } from '@/features/bills/bill.service';
 import { resolveNextRoute, type NextRoute } from '@/features/bills/resolveNextRoute';
+import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
+import { computeSettlement } from '@/features/splitting/settlement';
 import { buildShareText } from '@/features/splitting/shareText';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import { authClient } from '@/lib/authClient';
@@ -225,11 +228,33 @@ async function buildShareTextForBill(bill: Bill): Promise<string> {
     adjustments: buildSplitAdjustments(adjustmentRows, customAllocationsByAdjustmentId),
   });
 
+  // Same hasAnyContribution gate as summary.tsx's/saved-bill-detail's own
+  // SettlementCard — nobody having used the (skippable) Payments screen
+  // isn't "money unaccounted for," so this shouldn't add a meaningless
+  // "Settle up" block to a bill's shared text.
+  const hasAnyContribution = participantRows.some(
+    (participant) => participant.contributedCentavos !== 0,
+  );
+  const settlementTransactions = hasAnyContribution
+    ? computeSettlement(
+        buildSettlementParticipants(
+          splitResult.participantShares,
+          new Map(
+            participantRows.map((participant) => [
+              participant.id,
+              { contributedCentavos: participant.contributedCentavos },
+            ]),
+          ),
+        ),
+      ).transactions
+    : undefined;
+
   return buildShareText({
     billTitle: bill.merchantName ?? bill.title,
     participants: participantRows.map((participant) => ({
       participantId: participant.id,
       name: participant.name,
+      paidCentavos: hasAnyContribution ? participant.contributedCentavos : undefined,
     })),
     items: itemRows.map((item) => ({ lineItemId: item.id, name: item.name })),
     adjustments: adjustmentRows.map((adjustment) => ({
@@ -237,6 +262,7 @@ async function buildShareTextForBill(bill: Bill): Promise<string> {
       label: adjustment.label,
     })),
     splitResult,
+    settlementTransactions,
   });
 }
 
@@ -424,7 +450,21 @@ export default function HomeScreen() {
     <Screen padded={false}>
       <View style={styles.header}>
         <View style={styles.brandRow}>
-          <AppText variant="subheading">{appInfo.name}</AppText>
+          <View style={styles.brandGroup}>
+            {/* App logo — the "Splitsy" text right next to it already names
+                the app, so this is hidden from screen readers rather than
+                announced on its own (same treatment as every other
+                decorative icon in this app, e.g. BillListItem's food
+                badge). */}
+            <Image
+              source={require('../../assets/images/logo.png')}
+              style={styles.logo}
+              contentFit="contain"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            />
+            <AppText variant="subheading">{appInfo.name}</AppText>
+          </View>
           {/* Default person-glyph avatar, not a photo — this app collects no
               profile image (spec-adjacent, same reasoning as
               InitialsAvatar.tsx's own header note on why photos aren't a
@@ -441,10 +481,51 @@ export default function HomeScreen() {
             }
           />
         </View>
-        <AppText variant="heading">{copy.home.greeting.replace('{name}', displayName)}</AppText>
-        <AppText variant="body" color="textSecondary">
-          {copy.home.greetingSubtitle}
-        </AppText>
+        {/* The ninja mascot + speech-bubble artwork (assets/images/greeting.png,
+            a fixed 1774x887 graphic) with the actual greeting text laid over
+            the bubble's empty interior — `imageWrap` locks the container to
+            the image's own aspect ratio so it scales to any screen width
+            without distortion, and the overlay's percentages are the
+            bubble's measured position within that fixed image, so they stay
+            correctly aligned at any render size. Only the image itself is
+            hidden from screen readers; the overlaid text is a normal
+            sibling, not part of the image, so it's still announced. */}
+        <View style={styles.greetingImageWrap}>
+          <Image
+            source={require('../../assets/images/greeting.png')}
+            style={styles.greetingImage}
+            contentFit="contain"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          />
+          <View style={styles.greetingTextOverlay} pointerEvents="none">
+            {/* The speech bubble itself is a fixed white graphic baked into
+                greeting.png — it doesn't repaint for dark mode, so the text
+                laid over it can't use the theme's own textPrimary/
+                textSecondary tokens either (those flip to near-white in dark
+                mode and would all but disappear here). Fixed dark literals
+                instead, same reasoning as bill/capture.tsx's own overlay
+                colors for its camera-chrome text. */}
+            <AppText
+              variant="heading"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.6}
+              style={styles.greetingHeadingText}
+            >
+              {copy.home.greeting.replace('{name}', displayName)}
+            </AppText>
+            <AppText
+              variant="body"
+              numberOfLines={2}
+              style={styles.greetingSubtitleText}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+            >
+              {copy.home.greetingSubtitle}
+            </AppText>
+          </View>
+        </View>
       </View>
 
       {entries.length === 0 ? (
@@ -519,18 +600,75 @@ function createStyles(colors: ColorTokens) {
     header: {
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.lg,
-      // Section-to-section gap before the "Recent" list section below.
-      paddingBottom: spacing.xl,
-      // Within-header gap between the greeting heading and its subtitle —
-      // brandRow gets its own larger, explicit gap below since it's a
-      // visually distinct row, not part of that tight heading/subtitle pair.
-      gap: spacing.xs,
+      // Small breathing room below the greeting image, before "Recent" —
+      // deliberately modest (not the section-to-section spacing.xl every
+      // other screen boundary uses), just enough that the image doesn't
+      // butt directly against the list below it.
+      paddingBottom: spacing.sm,
     },
     brandRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: spacing.md,
+      // Small breathing room above the greeting image, same amount as
+      // `header`'s own paddingBottom below it.
+      marginBottom: spacing.sm,
+    },
+    brandGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+    },
+    logo: {
+      width: 28,
+      height: 28,
+    },
+    // Locks this container to greeting.png's own fixed aspect ratio (1774x887)
+    // so it scales to any screen width without distorting — the overlay
+    // below is positioned as a percentage of this same box, so it tracks the
+    // bubble's actual position at whatever size this ends up rendering at.
+    greetingImageWrap: {
+      width: '100%',
+      // Must match greeting.png's own current pixel dimensions exactly — a
+      // mismatch here is what caused the "space above/below" bug even after
+      // the image itself was re-cropped with no internal padding:
+      // contentFit="contain" letterboxes a shorter actual image inside a
+      // container shaped for the old, taller one, leaving visible empty gaps
+      // that have nothing to do with the image file itself. Re-check this
+      // value with `file assets/images/greeting.png` if the asset changes again.
+      aspectRatio: 1774 / 528,
+    },
+    greetingImage: {
+      width: '100%',
+      height: '100%',
+    },
+    // Fixed literals, not theme tokens — see the render-side comment on why
+    // (the speech bubble itself doesn't repaint for dark mode). Darker than
+    // the theme's own textPrimary/textSecondary tokens too, since white text
+    // isn't the only failure mode here — plain gray reads as washed-out
+    // against a stark white bubble the way it wouldn't against this app's
+    // usual off-white/dark surfaces.
+    greetingHeadingText: {
+      color: '#10141C',
+    },
+    greetingSubtitleText: {
+      color: '#2A2E38',
+    },
+    // Percentages are the speech bubble's own measured interior within
+    // greeting.png — the ninja + bubble tail occupy the left ~35%, so text
+    // starts to the right of that; the rounded corners get a further margin
+    // on all sides so text never touches the bubble's own border. Re-measure
+    // these if the image is re-cropped again (see greetingImageWrap's own
+    // note) — unlike the aspect ratio, these aren't derivable from the file's
+    // raw dimensions, they're read off the bubble's actual position in it.
+    greetingTextOverlay: {
+      position: 'absolute',
+      left: '37%',
+      right: '7%',
+      top: '10%',
+      bottom: '18%',
+      justifyContent: 'center',
+      gap: 2,
     },
     avatarCircle: {
       width: 36,

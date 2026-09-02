@@ -44,7 +44,9 @@ import { partitionLineItemsByAssignment } from '@/features/assignments/partition
 import { deleteBill } from '@/features/bills/bill.service';
 import { useBillSourceActions } from '@/features/bills/useBillSourceActions';
 import { resolveNextRoute, type NextRoute } from '@/features/bills/resolveNextRoute';
+import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
+import { computeSettlement } from '@/features/splitting/settlement';
 import { buildShareText } from '@/features/splitting/shareText';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import { deleteTrip } from '@/features/trips/trip.service';
@@ -184,11 +186,33 @@ async function buildShareTextForBill(bill: Bill): Promise<string> {
     adjustments: buildSplitAdjustments(adjustmentRows, customAllocationsByAdjustmentId),
   });
 
+  // Same hasAnyContribution gate as summary.tsx's/saved-bill-detail's own
+  // SettlementCard — nobody having used the (skippable) Payments screen
+  // isn't "money unaccounted for," so this shouldn't add a meaningless
+  // "Settle up" block to a bill's shared text.
+  const hasAnyContribution = participantRows.some(
+    (participant) => participant.contributedCentavos !== 0,
+  );
+  const settlementTransactions = hasAnyContribution
+    ? computeSettlement(
+        buildSettlementParticipants(
+          splitResult.participantShares,
+          new Map(
+            participantRows.map((participant) => [
+              participant.id,
+              { contributedCentavos: participant.contributedCentavos },
+            ]),
+          ),
+        ),
+      ).transactions
+    : undefined;
+
   return buildShareText({
     billTitle: bill.merchantName ?? bill.title,
     participants: participantRows.map((participant) => ({
       participantId: participant.id,
       name: participant.name,
+      paidCentavos: hasAnyContribution ? participant.contributedCentavos : undefined,
     })),
     items: itemRows.map((item) => ({ lineItemId: item.id, name: item.name })),
     adjustments: adjustmentRows.map((adjustment) => ({
@@ -196,6 +220,7 @@ async function buildShareTextForBill(bill: Bill): Promise<string> {
       label: adjustment.label,
     })),
     splitResult,
+    settlementTransactions,
   });
 }
 
@@ -517,7 +542,7 @@ export default function TripHubScreen() {
               variant="secondary"
               label={copy.trip.addAction}
               onPress={() => setAddingMember(true)}
-              icon={(color) => <Feather name="plus" size={18} color={color} />}
+              icon={(color) => <Feather name="plus-circle" size={18} color={color} />}
             />
           </SectionCard>
         </View>

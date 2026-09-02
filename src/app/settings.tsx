@@ -140,7 +140,7 @@ export default function SettingsScreen() {
             variant="destructive"
             label={copy.settings.deleteAllAction}
             onPress={() => setShowDeleteAllConfirm(true)}
-            icon={(color) => <Feather name="trash-2" size={18} color={color} />}
+            icon={(color) => <Feather name="trash" size={18} color={color} />}
           />
           {deleteAllError ? <InlineError message={deleteAllError} /> : null}
         </SectionCard>

@@ -265,6 +265,7 @@ export default function SavedBillDetailScreen() {
         participants: participants.map((participant) => ({
           participantId: participant.id,
           name: participant.name,
+          paidCentavos: hasAnyContribution ? participant.contributedCentavos : undefined,
         })),
         items: items.map((item) => ({ lineItemId: item.id, name: item.name })),
         adjustments: adjustments.map((adjustment) => ({
@@ -272,6 +273,10 @@ export default function SavedBillDetailScreen() {
           label: adjustment.label,
         })),
         splitResult,
+        // Same hasAnyContribution gate as the on-screen SettlementCard — a
+        // bill that never touched Payments shouldn't get a "Settle up" block
+        // (or "Paid" lines) in its shared text either.
+        settlementTransactions: hasAnyContribution ? settlement.transactions : undefined,
       });
       await Share.share({ message: text });
     } catch {
@@ -372,13 +377,13 @@ export default function SavedBillDetailScreen() {
               variant="secondary"
               label={copy.savedBillDetail.editAction}
               onPress={handleEditBill}
-              icon={(color) => <Feather name="edit-2" size={18} color={color} />}
+              icon={(color) => <Feather name="edit" size={18} color={color} />}
             />
             <AppButton
               variant="destructive"
               label={copy.savedBillDetail.deleteAction}
               onPress={() => setConfirmingDelete(true)}
-              icon={(color) => <Feather name="trash-2" size={18} color={color} />}
+              icon={(color) => <Feather name="trash" size={18} color={color} />}
             />
           </View>
           {shareError ? <InlineError message={shareError} /> : null}
@@ -573,8 +578,8 @@ function createStyles(colors: ColorTokens) {
     // font-weight (and, for `amount`, tabular-nums) is what still
     // distinguishes the heading/total from body text.
     uniformText: {
-      fontSize: 13,
-      lineHeight: 18,
+      fontSize: 14,
+      lineHeight: 19,
     },
   });
 }

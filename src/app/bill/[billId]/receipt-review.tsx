@@ -1,4 +1,5 @@
 import { Feather } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Modal, ScrollView, StyleSheet, View } from 'react-native';
@@ -61,6 +62,7 @@ export default function ReceiptReviewScreen() {
   const [receiptDate, setReceiptDate] = useState('');
   const [editingItem, setEditingItem] = useState<LineItem | 'new' | null>(null);
   const [showRawText, setShowRawText] = useState(false);
+  const [showReceiptImage, setShowReceiptImage] = useState(false);
   const [dateError, setDateError] = useState<string | null>(null);
   // One shared error slot for this screen's write paths (merchant/date
   // autosave, item save/delete) — mirrors participants.tsx's own
@@ -203,9 +205,14 @@ export default function ReceiptReviewScreen() {
     <Screen scroll padded={false}>
       <View style={styles.body}>
         <View style={styles.headerBlock}>
-          <AppText variant="heading" style={styles.uniformText}>
-            {copy.receiptReview.heading}
-          </AppText>
+          {/* Deliberately full-size `heading` (no uniformText override,
+              unlike everything else on this screen) — matches the Home
+              screen's own greeting header, so this screen reads as having a
+              real page header rather than blending into the body copy. */}
+          <View style={styles.headingRow}>
+            <Feather name="file-text" size={24} color={colors.primary} />
+            <AppText variant="heading">{copy.receiptReview.heading}</AppText>
+          </View>
           <AppText variant="body" color="textSecondary" style={styles.uniformText}>
             {copy.receiptReview.body}
           </AppText>
@@ -305,11 +312,43 @@ export default function ReceiptReviewScreen() {
               <AppButton
                 variant="secondary"
                 label={copy.receiptReview.addItem}
-                icon={(color) => <Feather name="plus" size={18} color={color} />}
+                icon={(color) => <Feather name="plus-circle" size={18} color={color} />}
                 onPress={() => setEditingItem('new')}
               />
             </>
           )}
+
+          {/* Moved below Add item per the user's own request — was down in
+              actionsBlock, alongside Continue. "View receipt" is new here
+              (mirrors bill/[billId]/index.tsx's own receipt-image modal),
+              placed beside "View extracted text" since both are just
+              different views onto the same underlying OCR pass. Hidden
+              entirely rather than showing an empty row when a manually-
+              entered bill has neither. */}
+          {bill.receiptImageUri || bill.rawOcrText ? (
+            <View style={styles.viewActionsRow}>
+              {bill.receiptImageUri ? (
+                <View style={styles.viewActionColumn}>
+                  <AppButton
+                    variant="text"
+                    label={copy.receiptReview.receiptAction}
+                    icon={(color) => <Feather name="image" size={18} color={color} />}
+                    onPress={() => setShowReceiptImage(true)}
+                  />
+                </View>
+              ) : null}
+              {bill.rawOcrText ? (
+                <View style={styles.viewActionColumn}>
+                  <AppButton
+                    variant="text"
+                    label={copy.receiptReview.rawTextAction}
+                    icon={(color) => <Feather name="file-text" size={18} color={color} />}
+                    onPress={() => setShowRawText(true)}
+                  />
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </View>
 
         <Divider />
@@ -351,41 +390,35 @@ export default function ReceiptReviewScreen() {
           </View>
 
           {hasDetectedTotal ? (
-            <AppText
-              color={totalDifference === 0 ? 'success' : 'warning'}
-              style={styles.uniformText}
-            >
-              {totalDifference === 0
-                ? copy.receiptReview.matchSuccess
-                : copy.receiptReview.mismatchWarning
-                    .replace('{difference}', formatCentavos(Math.abs(totalDifference)))
-                    .replace(
-                      '{higherOrLower}',
-                      totalDifference > 0
-                        ? copy.receiptReview.higherWord
-                        : copy.receiptReview.lowerWord,
-                    )}
-            </AppText>
+            <StatusBadge
+              tone={totalDifference === 0 ? 'success' : 'warning'}
+              style={styles.matchBadge}
+              label={
+                totalDifference === 0
+                  ? copy.receiptReview.matchSuccess
+                  : copy.receiptReview.mismatchWarning
+                      .replace('{difference}', formatCentavos(Math.abs(totalDifference)))
+                      .replace(
+                        '{higherOrLower}',
+                        totalDifference > 0
+                          ? copy.receiptReview.higherWord
+                          : copy.receiptReview.lowerWord,
+                      )
+              }
+            />
           ) : null}
         </View>
 
-        {/* Was a sticky BottomActionBar footer — moved inline, directly
-            below the raw-text action, per the user's own explicit request
-            (2026-08-27) to drop the sticky nav here in favor of a plain
-            in-flow button. */}
+        {/* Was a sticky BottomActionBar footer — moved inline, per the
+            user's own explicit request (2026-08-27) to drop the sticky nav
+            here in favor of a plain in-flow button. View extracted text/View
+            receipt used to live here too — moved up into itemsBlock,
+            directly below Add item. */}
         <View style={styles.actionsBlock}>
-          {bill.rawOcrText ? (
-            <AppButton
-              variant="text"
-              label={copy.receiptReview.rawTextAction}
-              icon={(color) => <Feather name="file-text" size={18} color={color} />}
-              onPress={() => setShowRawText(true)}
-            />
-          ) : null}
           <AppButton
             label={copy.receiptReview.continueButton}
             disabled={items.length === 0}
-            icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+            icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
             iconPosition="trailing"
             onPress={() => router.push(`/bill/${billId}/participants`)}
           />
@@ -407,6 +440,30 @@ export default function ReceiptReviewScreen() {
         onDelete={editingItem && editingItem !== 'new' ? handleDeleteItem : undefined}
         onCancel={() => setEditingItem(null)}
       />
+
+      {/* Mirrors bill/[billId]/index.tsx's own receipt-image modal — same
+          shape, new here since this screen didn't have one before. */}
+      <Modal
+        visible={showReceiptImage}
+        animationType="slide"
+        onRequestClose={() => setShowReceiptImage(false)}
+      >
+        <Screen scroll={false}>
+          <AppButton
+            variant="text"
+            label={copy.global.closeAccessibilityLabel}
+            onPress={() => setShowReceiptImage(false)}
+          />
+          {bill.receiptImageUri ? (
+            <Image
+              source={{ uri: bill.receiptImageUri }}
+              style={styles.receiptImage}
+              contentFit="contain"
+              accessibilityLabel={copy.receiptReview.receiptAction}
+            />
+          ) : null}
+        </Screen>
+      </Modal>
 
       <Modal
         visible={showRawText}
@@ -441,8 +498,8 @@ function createStyles(colors: ColorTokens) {
     // `"subheading"` still carry their bold font-weight, which is now the
     // only thing distinguishing a heading from body text.
     uniformText: {
-      fontSize: 13,
-      lineHeight: 18,
+      fontSize: 14,
+      lineHeight: 19,
     },
     body: {
       padding: spacing.lg,
@@ -459,11 +516,27 @@ function createStyles(colors: ColorTokens) {
     headerBlock: {
       gap: spacing.sm,
     },
+    headingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
     fieldsBlock: {
       gap: spacing.md,
     },
     itemsBlock: {
       gap: spacing.sm,
+    },
+    // "View receipt" / "View extracted text" side by side, below Add item —
+    // equal-width columns (mirrors preview.tsx's own Retake/Rotate row and
+    // summary.tsx's Share/Copy row) so the pair stays visually balanced
+    // regardless of which one/both are present.
+    viewActionsRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    viewActionColumn: {
+      flex: 1,
     },
     sectionHeader: {
       gap: 2,
@@ -473,6 +546,9 @@ function createStyles(colors: ColorTokens) {
     },
     totalsBlock: {
       gap: spacing.xs,
+    },
+    matchBadge: {
+      marginTop: spacing.xs,
     },
     actionsBlock: {
       gap: spacing.md,
@@ -487,6 +563,9 @@ function createStyles(colors: ColorTokens) {
     rawText: {
       fontFamily: 'monospace',
       color: colors.textPrimary,
+    },
+    receiptImage: {
+      flex: 1,
     },
   });
 }

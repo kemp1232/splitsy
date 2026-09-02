@@ -4,7 +4,7 @@ export const typography = {
   heading: { fontSize: 22, fontWeight: '700', lineHeight: 28 },
   subheading: { fontSize: 17, fontWeight: '600', lineHeight: 22 },
   body: { fontSize: 15, fontWeight: '400', lineHeight: 21 },
-  caption: { fontSize: 13, fontWeight: '400', lineHeight: 18 },
+  caption: { fontSize: 14, fontWeight: '400', lineHeight: 19 },
   // The one deliberate, subject-true signature typography choice (see the
   // theme direction notes): every money figure renders with tabular
   // (monospaced) numerals, so digits line up in a column the way they do on a

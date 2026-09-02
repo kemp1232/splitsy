@@ -29,7 +29,7 @@ type Props = {
   // without a second, IconButton-inconsistent "icon" API (IconButton's own
   // `icon: ReactNode` prop doesn't have this per-variant-color problem, so it
   // doesn't need the same treatment). e.g.
-  // `icon={(color) => <Feather name="arrow-right" size={18} color={color} />}`
+  // `icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}`
   icon?: (color: string) => ReactNode;
   iconPosition?: 'leading' | 'trailing';
 };
@@ -72,6 +72,7 @@ export function AppButton({
           <AppText
             variant="subheading"
             color={variant === 'primary' || variant === 'destructive' ? 'onPrimary' : 'primary'}
+            style={styles.label}
           >
             {label}
           </AppText>
@@ -97,6 +98,18 @@ function createStyles(colors: ColorTokens) {
       alignItems: 'center',
       justifyContent: 'center',
       gap: spacing.xs,
+    },
+    // App-wide (2026-08-27): every button's label renders at this one size —
+    // matches the item-title size established in LineItemRow.tsx/
+    // BillListItem.tsx (13px/18 line height, the same as the `caption`
+    // variant). `variant="subheading"` above still carries its own 600
+    // weight, which is what keeps a button's label reading as a button
+    // rather than plain body text now that size no longer does that job.
+    // One change here covers every AppButton in the app, since this is the
+    // single component all of them render their label through.
+    label: {
+      fontSize: 14,
+      lineHeight: 19,
     },
     disabled: {
       opacity: 0.5,

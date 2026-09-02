@@ -39,7 +39,7 @@ export default function VerifyEmailScreen() {
           <AppButton
             label={copy.auth.verifyEmailGoToSignIn}
             onPress={() => router.replace('/sign-in')}
-            icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+            icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
             iconPosition="trailing"
           />
         ) : (

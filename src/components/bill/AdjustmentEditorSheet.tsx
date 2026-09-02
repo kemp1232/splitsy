@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+  Animated,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -14,6 +15,7 @@ import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
 import { InlineError } from '@/components/ui/InlineError';
+import { useSlideUpAnimation } from '@/components/ui/useSlideUpAnimation';
 import { copy } from '@/constants/copy';
 import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
 import type { Participant } from '@/db/repositories/participants.repository';
@@ -110,6 +112,7 @@ export function AdjustmentEditorSheet({
 }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const translateY = useSlideUpAnimation(visible);
   const [type, setType] = useState<AdjustmentType>(initial?.type ?? 'TAX');
   const [label, setLabel] = useState(initial?.label ?? '');
   // The field always holds a non-negative magnitude — DISCOUNT's negative
@@ -238,11 +241,15 @@ export function AdjustmentEditorSheet({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="none"
       onShow={handleShow}
       onRequestClose={onCancel}
     >
-      <View style={styles.backdrop}>
+      {/* Tapping the dimmed area outside the sheet dismisses it, same as
+          Cancel — see BillOverflowSheet's identical treatment for why the
+          inner Pressable needs its own no-op onPress and why the Modal's own
+          animation is off in favor of useSlideUpAnimation. */}
+      <Pressable style={styles.backdrop} onPress={onCancel}>
         {/* The highest-risk of the three editor sheets for this: it has its
             own internal ScrollView (custom per-participant amounts) with
             Save/Cancel/Delete pinned outside it, so without this the keyboard
@@ -254,10 +261,15 @@ export function AdjustmentEditorSheet({
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.avoidingView}
         >
-          <View style={styles.sheet}>
-            <AppText variant="subheading">
-              {initial ? copy.adjustmentEditor.editHeading : copy.adjustmentEditor.addHeading}
-            </AppText>
+          {/* `sheetMaxHeight` (not on `sheet` below) — see
+              ParticipantPickerSheet.tsx's identical note: a percentage
+              maxHeight needs to resolve against this Animated.View's real
+              parent size, not against `sheet`'s own content-based size. */}
+          <Animated.View style={[styles.sheetMaxHeight, { transform: [{ translateY }] }]}>
+            <Pressable style={styles.sheet} onPress={() => {}}>
+              <AppText variant="subheading">
+                {initial ? copy.adjustmentEditor.editHeading : copy.adjustmentEditor.addHeading}
+              </AppText>
 
             <ScrollView style={styles.scroll}>
               <View style={styles.scrollContent}>
@@ -343,9 +355,10 @@ export function AdjustmentEditorSheet({
               <AppButton variant="secondary" label={copy.global.cancelAction} onPress={onCancel} />
               <AppButton label={copy.adjustmentEditor.saveAction} onPress={handleSave} />
             </View>
-          </View>
+            </Pressable>
+          </Animated.View>
         </KeyboardAvoidingView>
-      </View>
+      </Pressable>
     </Modal>
   );
 }
@@ -424,13 +437,18 @@ function createStyles(colors: ColorTokens) {
     // justifyContent: 'flex-end' belongs here and not on `backdrop`: it's
     // what makes Android's "height" behavior shrink this view from the
     // bottom (where the keyboard appears) rather than leave it
-    // bottom-anchored behind the keyboard. It also keeps `sheet`'s
-    // maxHeight: '85%' below resolving against this view's full
-    // (screen-height) size, the same as it always resolved against
-    // `backdrop`'s size before this view existed.
+    // bottom-anchored behind the keyboard. It also keeps `sheetMaxHeight`
+    // below resolving against this view's full (screen-height) size, the
+    // same as it always resolved against `backdrop`'s size before this view
+    // existed.
     avoidingView: {
       flex: 1,
       justifyContent: 'flex-end',
+    },
+    // On the Animated.View wrapper, not `sheet` below — see this file's own
+    // render-side comment on why a percentage height has to resolve there.
+    sheetMaxHeight: {
+      maxHeight: '85%',
     },
     sheet: {
       backgroundColor: colors.surface,
@@ -438,7 +456,6 @@ function createStyles(colors: ColorTokens) {
       borderTopRightRadius: radius.lg,
       padding: spacing.lg,
       gap: spacing.md,
-      maxHeight: '85%',
     },
     scroll: {
       flexGrow: 0,

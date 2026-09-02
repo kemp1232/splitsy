@@ -67,7 +67,7 @@ export const PersonTotalCard = memo(function PersonTotalCard({
             avatar (see that component's own header note). */}
         <InitialsAvatar name={name} size={36} />
         <View style={styles.headerText}>
-          <AppText variant="subheading">
+          <AppText variant="subheading" style={styles.uniformText}>
             {copy.summary.participantOwes.replace('{name}', name)}
           </AppText>
           {/* accessibilityLabel is the spoken form (spec section 17's "520
@@ -76,6 +76,7 @@ export const PersonTotalCard = memo(function PersonTotalCard({
               out character-by-character (e.g. "peso sign five two zero"). */}
           <AppText
             variant="amount"
+            style={styles.totalAmount}
             accessibilityLabel={formatCentavosForSpeech(finalTotalCentavos)}
           >
             {formatCentavos(finalTotalCentavos)}
@@ -119,10 +120,16 @@ export const PersonTotalCard = memo(function PersonTotalCard({
               </AppText>
               {itemShares.map((share) => (
                 <View key={share.lineItemId} style={styles.row}>
-                  <AppText variant="body" numberOfLines={1} style={styles.rowLabel}>
+                  <AppText
+                    variant="body"
+                    numberOfLines={1}
+                    style={[styles.rowLabel, styles.uniformText]}
+                  >
                     {share.shared ? `${share.name} (${copy.summary.sharedSuffix})` : share.name}
                   </AppText>
-                  <AppText variant="body">{formatCentavos(share.amountCentavos)}</AppText>
+                  <AppText variant="body" style={styles.uniformText}>
+                    {formatCentavos(share.amountCentavos)}
+                  </AppText>
                 </View>
               ))}
             </View>
@@ -135,10 +142,16 @@ export const PersonTotalCard = memo(function PersonTotalCard({
               </AppText>
               {adjustmentShares.map((share) => (
                 <View key={share.adjustmentId} style={styles.row}>
-                  <AppText variant="body" numberOfLines={1} style={styles.rowLabel}>
+                  <AppText
+                    variant="body"
+                    numberOfLines={1}
+                    style={[styles.rowLabel, styles.uniformText]}
+                  >
                     {share.label}
                   </AppText>
-                  <AppText variant="body">{formatCentavos(share.amountCentavos)}</AppText>
+                  <AppText variant="body" style={styles.uniformText}>
+                    {formatCentavos(share.amountCentavos)}
+                  </AppText>
                 </View>
               ))}
             </View>
@@ -175,5 +188,20 @@ const styles = StyleSheet.create({
   },
   rowLabel: {
     flex: 1,
+  },
+  // Matches the app's usual uniform row size (see e.g. PaymentContributionRow.tsx/
+  // BillListItem.tsx's own uniform text) — the header name text and the
+  // expanded item/adjustment breakdown rows all read smaller than their
+  // default variant size (subheading 17/22, body 15/21).
+  uniformText: {
+    fontSize: 14,
+    lineHeight: 19,
+  },
+  // Smaller than the `amount` variant's own default (28/34) — the user found
+  // it too large next to the now-smaller name text beside it. Font weight and
+  // tabular-nums still come from the variant itself.
+  totalAmount: {
+    fontSize: 20,
+    lineHeight: 25,
   },
 });

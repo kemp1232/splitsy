@@ -144,7 +144,7 @@ export default function ResetPasswordScreen() {
             label={copy.auth.resetPasswordButton}
             onPress={handleResetPassword}
             loading={submitting}
-            icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+            icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
             iconPosition="trailing"
           />
         </View>

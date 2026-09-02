@@ -64,14 +64,14 @@ export function SettlementCard({
                 key={`${transaction.fromParticipantId}-${transaction.toParticipantId}-${index}`}
                 style={styles.row}
               >
-                <AppText variant="body" numberOfLines={1} style={styles.rowLabel}>
+                <AppText variant="subheading" numberOfLines={1} style={styles.rowLabel}>
                   {label}
                 </AppText>
                 {/* accessibilityLabel is the spoken form (spec section 17's
                     "520 pesos and 25 centavos" example), distinct from the
                     visible formatCentavos text. */}
                 <AppText
-                  variant="body"
+                  variant="subheading"
                   accessibilityLabel={formatCentavosForSpeech(transaction.amountCentavos)}
                 >
                   {formatCentavos(transaction.amountCentavos)}

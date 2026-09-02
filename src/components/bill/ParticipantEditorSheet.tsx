@@ -1,9 +1,18 @@
 import { useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, StyleSheet, View } from 'react-native';
+import {
+  Animated,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+} from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
+import { useSlideUpAnimation } from '@/components/ui/useSlideUpAnimation';
 import { copy } from '@/constants/copy';
 import {
   MAX_PARTICIPANT_NAME_LENGTH,
@@ -38,6 +47,7 @@ export function ParticipantEditorSheet({
 }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const translateY = useSlideUpAnimation(visible);
   const [name, setName] = useState(initial?.name ?? '');
   const [nameError, setNameError] = useState<string | null>(null);
 
@@ -73,11 +83,15 @@ export function ParticipantEditorSheet({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="none"
       onShow={handleShow}
       onRequestClose={onCancel}
     >
-      <View style={styles.backdrop}>
+      {/* Tapping the dimmed area outside the sheet dismisses it, same as
+          Cancel — see BillOverflowSheet's identical treatment for why the
+          inner Pressable needs its own no-op onPress and why the Modal's own
+          animation is off in favor of useSlideUpAnimation. */}
+      <Pressable style={styles.backdrop} onPress={onCancel}>
         {/* A Modal's content sits in its own native window on Android and
             isn't a descendant of any screen-level KeyboardAvoidingView
             (Screen.tsx), so the name field above this sheet's Save/Cancel
@@ -92,10 +106,11 @@ export function ParticipantEditorSheet({
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.avoidingView}
         >
-          <View style={styles.sheet}>
-            <AppText variant="subheading">
-              {initial ? copy.participantEditor.editHeading : copy.participantEditor.addHeading}
-            </AppText>
+          <Animated.View style={{ transform: [{ translateY }] }}>
+            <Pressable style={styles.sheet} onPress={() => {}}>
+              <AppText variant="subheading">
+                {initial ? copy.participantEditor.editHeading : copy.participantEditor.addHeading}
+              </AppText>
 
             <AppTextInput
               label={copy.participantEditor.nameLabel}
@@ -114,9 +129,10 @@ export function ParticipantEditorSheet({
               />
               <AppButton label={copy.participantEditor.saveAction} onPress={handleSave} />
             </View>
-          </View>
+            </Pressable>
+          </Animated.View>
         </KeyboardAvoidingView>
-      </View>
+      </Pressable>
     </Modal>
   );
 }

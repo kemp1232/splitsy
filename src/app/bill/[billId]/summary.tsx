@@ -319,6 +319,7 @@ export default function SummaryScreen() {
       participants: participants.map((participant) => ({
         participantId: participant.id,
         name: participant.name,
+        paidCentavos: hasAnyContribution ? participant.contributedCentavos : undefined,
       })),
       items: items.map((item) => ({ lineItemId: item.id, name: item.name })),
       adjustments: adjustments.map((adjustment) => ({
@@ -326,6 +327,10 @@ export default function SummaryScreen() {
         label: adjustment.label,
       })),
       splitResult,
+      // Same hasAnyContribution gate as the on-screen SettlementCard — a
+      // bill that never touched Payments shouldn't get a "Settle up" block
+      // (or "Paid" lines) in its shared text either.
+      settlementTransactions: hasAnyContribution ? settlement.transactions : undefined,
     });
   }
 
@@ -383,32 +388,46 @@ export default function SummaryScreen() {
   return (
     <Screen scroll padded={false}>
       <View style={styles.headerRow}>
-        <AppText variant="heading" style={styles.uniformText}>
-          {copy.summary.heading}
+        {/* Full-size heading (no uniformText override) + leading icon —
+            matches every other draft-wizard step's own header treatment. */}
+        <View style={styles.headingRow}>
+          <Feather name="share-2" size={24} color={colors.primary} />
+          <AppText variant="heading">{copy.summary.heading}</AppText>
+        </View>
+        <AppText variant="body" color="textSecondary">
+          {copy.summary.body}
         </AppText>
       </View>
 
       {/* Gradient hero card (reference UI's rounded-bottom-corner "hero
           panel", screenshot 2) — this screen's one genuinely single running
-          total. */}
+          total. roundTopCorners/sideInset: unlike the trip screens' own hero
+          cards, this one renders below the heading above it rather than
+          flush against the screen's actual edges, so it now matches
+          PersonTotalCard's own inset and corner treatment below it. */}
       <GradientHeroCard
         label={copy.summary.totalLabel}
         amountCentavos={splitResult.computedTotalCentavos}
         subtitle={title}
         meta={bill.receiptDate ? formatBillListDate(bill.receiptDate) : undefined}
-      />
-
-      <View style={styles.body}>
-        <View style={styles.statusBlock}>
-          {hasDetectedTotal ? (
+        icon={(color) => <Feather name="file-text" size={18} color={color} />}
+        roundTopCorners
+        sideInset
+        statusBadge={
+          hasDetectedTotal ? (
             <StatusBadge
               label={
                 reconciliation.matches ? copy.summary.matchSuccess : copy.summary.mismatchStatus
               }
               tone={reconciliation.matches ? 'success' : 'warning'}
+              solid
             />
-          ) : null}
+          ) : undefined
+        }
+      />
 
+      <View style={styles.body}>
+        <View style={styles.statusBlock}>
           {/* Deliberately obvious (secondary, full-width), not the quieter
               text-styled link used on the saved-bill-detail screen — finishing
               a bill is exactly the moment someone wants to jump back and scan
@@ -448,7 +467,7 @@ export default function SummaryScreen() {
             variant="text"
             label={copy.summary.editAction}
             onPress={handleEdit}
-            icon={(color) => <Feather name="edit-2" size={18} color={color} />}
+            icon={(color) => <Feather name="edit" size={18} color={color} />}
           />
         </View>
 
@@ -496,6 +515,7 @@ export default function SummaryScreen() {
             variant="text"
             label={copy.payments.editAction}
             onPress={() => router.push(`/bill/${billId}/payments`)}
+            icon={(color) => <Feather name="edit" size={18} color={color} />}
           />
 
           {/* Was a sticky BottomActionBar footer — moved inline, per the
@@ -549,7 +569,15 @@ function createStyles(colors: ColorTokens) {
     headerRow: {
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.lg,
-      paddingBottom: spacing.sm,
+      // Larger than the usual spacing.sm bottom padding — doubles as the
+      // margin above the hero card directly below this block.
+      paddingBottom: spacing.lg,
+      gap: spacing.sm,
+    },
+    headingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
     },
     statusBlock: {
       gap: spacing.sm,
@@ -592,8 +620,8 @@ function createStyles(colors: ColorTokens) {
     // titleText/totalText for the same treatment); each variant's own
     // font-weight is what still distinguishes the heading from body text.
     uniformText: {
-      fontSize: 13,
-      lineHeight: 18,
+      fontSize: 14,
+      lineHeight: 19,
     },
   });
 }

@@ -253,6 +253,126 @@ describe('buildShareText', () => {
     expect(text).not.toContain('Jamie — ₱0.00\n•');
   });
 
+  it('appends a "Settle up" block when settlementTransactions is provided and non-empty', () => {
+    const splitInput: SplitCalculationInput = {
+      participants: [{ participantId: 'a' }, { participantId: 'b' }],
+      items: [{ lineItemId: 'meal', lineTotalCentavos: 2000, assigneeParticipantIds: ['a', 'b'] }],
+      adjustments: [],
+    };
+    const splitResult = calculateSplit(splitInput);
+
+    const text = buildShareText({
+      billTitle: 'Coffee Run',
+      participants: [
+        { participantId: 'a', name: 'Ana' },
+        { participantId: 'b', name: 'Bea' },
+      ],
+      items: [{ lineItemId: 'meal', name: 'Meal' }],
+      adjustments: [],
+      splitResult,
+      settlementTransactions: [
+        { fromParticipantId: 'b', toParticipantId: 'a', amountCentavos: 1000 },
+      ],
+    });
+
+    expect(text).toBe(
+      [
+        'Splitsy — Coffee Run',
+        'Total: ₱20.00',
+        '',
+        'Ana — ₱10.00',
+        '• Meal — ₱10.00',
+        '',
+        'Bea — ₱10.00',
+        '• Meal — ₱10.00',
+        '',
+        'Settle up',
+        'Bea owes Ana — ₱10.00',
+        '',
+        'Calculated with Splitsy.',
+      ].join('\n'),
+    );
+  });
+
+  it('omits the "Settle up" block entirely when settlementTransactions is undefined or empty', () => {
+    const splitInput: SplitCalculationInput = {
+      participants: [{ participantId: 'solo' }],
+      items: [{ lineItemId: 'burger', lineTotalCentavos: 15000, assigneeParticipantIds: ['solo'] }],
+      adjustments: [],
+    };
+    const splitResult = calculateSplit(splitInput);
+    const baseInput: ShareTextInput = {
+      billTitle: 'Solo Lunch',
+      participants: [{ participantId: 'solo', name: 'Kemp' }],
+      items: [{ lineItemId: 'burger', name: 'Burger' }],
+      adjustments: [],
+      splitResult,
+    };
+
+    const withoutField = buildShareText(baseInput);
+    const withEmptyArray = buildShareText({ ...baseInput, settlementTransactions: [] });
+
+    expect(withoutField).not.toContain('Settle up');
+    expect(withEmptyArray).not.toContain('Settle up');
+    expect(withEmptyArray).toBe(withoutField);
+  });
+
+  it("appends each participant's own \"Paid\" line when paidCentavos is provided", () => {
+    const splitInput: SplitCalculationInput = {
+      participants: [{ participantId: 'a' }, { participantId: 'b' }],
+      items: [{ lineItemId: 'meal', lineTotalCentavos: 2000, assigneeParticipantIds: ['a', 'b'] }],
+      adjustments: [],
+    };
+    const splitResult = calculateSplit(splitInput);
+
+    const text = buildShareText({
+      billTitle: 'Coffee Run',
+      participants: [
+        { participantId: 'a', name: 'Ana', paidCentavos: 2000 },
+        { participantId: 'b', name: 'Bea', paidCentavos: 0 },
+      ],
+      items: [{ lineItemId: 'meal', name: 'Meal' }],
+      adjustments: [],
+      splitResult,
+    });
+
+    expect(text).toBe(
+      [
+        'Splitsy — Coffee Run',
+        'Total: ₱20.00',
+        '',
+        'Ana — ₱10.00',
+        '• Meal — ₱10.00',
+        'Paid: ₱20.00',
+        '',
+        'Bea — ₱10.00',
+        '• Meal — ₱10.00',
+        'Paid: ₱0.00',
+        '',
+        'Calculated with Splitsy.',
+      ].join('\n'),
+    );
+  });
+
+  it('omits every "Paid" line when paidCentavos is not provided', () => {
+    const splitInput: SplitCalculationInput = {
+      participants: [{ participantId: 'solo' }],
+      items: [{ lineItemId: 'burger', lineTotalCentavos: 15000, assigneeParticipantIds: ['solo'] }],
+      adjustments: [],
+    };
+    const splitResult = calculateSplit(splitInput);
+
+    const text = buildShareText({
+      billTitle: 'Solo Lunch',
+      participants: [{ participantId: 'solo', name: 'Kemp' }],
+      items: [{ lineItemId: 'burger', name: 'Burger' }],
+      adjustments: [],
+      splitResult,
+    });
+
+    expect(text).not.toContain('Paid:');
+  });
+
   it('throws when a participant display name is missing', () => {
     const splitResult = calculateSplit({
       participants: [{ participantId: 'ghost' }],

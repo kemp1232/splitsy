@@ -10,6 +10,9 @@ const config: ExpoConfig = {
   icon: './assets/images/icon.png',
   scheme: appInfo.scheme,
   userInterfaceStyle: 'automatic',
+  web: {
+    favicon: './assets/images/icon.png',
+  },
   android: {
     // Placeholder application ID — finalize before any real release build or store submission.
     package: 'com.splitsy.mvp',
@@ -21,7 +24,21 @@ const config: ExpoConfig = {
     },
   },
   plugins: [
-    'expo-router',
+    [
+      'expo-router',
+      {
+        // Cross-origin isolation, required by expo-sqlite's web driver
+        // (OPFS synchronous access handles + SharedArrayBuffer — see
+        // src/db/client.ts). This only takes effect when deployed via EAS
+        // Hosting; any other host (Vercel/Netlify/nginx/Cloudflare/etc.)
+        // must set these same two headers at that host's own config layer
+        // instead — this block alone is not sufficient there.
+        headers: {
+          'Cross-Origin-Embedder-Policy': 'credentialless',
+          'Cross-Origin-Opener-Policy': 'same-origin',
+        },
+      },
+    ],
     'expo-dev-client',
     'expo-sqlite',
     'expo-file-system',

@@ -126,7 +126,7 @@ export default function ProcessingScreen() {
               variant="secondary"
               label={copy.ocrFailure.manualButton}
               onPress={() => router.replace(`/bill/${billId}/receipt-review`)}
-              icon={(color) => <Feather name="edit-2" size={18} color={color} />}
+              icon={(color) => <Feather name="edit" size={18} color={color} />}
             />
             <AppButton
               variant="text"

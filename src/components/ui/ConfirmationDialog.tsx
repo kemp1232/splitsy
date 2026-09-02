@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Modal, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
 
 import type { ColorTokens } from '@/theme/tokens';
 import { radius, spacing } from '@/theme/tokens';
@@ -34,8 +34,11 @@ export function ConfirmationDialog({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={styles.backdrop}>
-        <View style={styles.dialog} accessibilityRole="alert">
+      {/* Tapping the dimmed area outside the dialog dismisses it, same as
+          Cancel — see BillOverflowSheet's identical treatment for why the
+          inner Pressable needs its own no-op onPress. */}
+      <Pressable style={styles.backdrop} onPress={onCancel}>
+        <Pressable style={styles.dialog} accessibilityRole="alert" onPress={() => {}}>
           <AppText variant="subheading">{heading}</AppText>
           <AppText variant="body" color="textSecondary">
             {body}
@@ -48,8 +51,8 @@ export function ConfirmationDialog({
               onPress={onConfirm}
             />
           </View>
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }

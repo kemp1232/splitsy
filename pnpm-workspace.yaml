@@ -12,7 +12,7 @@ minimumReleaseAgeExclude:
   - expo-constants@57.0.8 || 57.0.13
   - expo-modules-core@57.0.8 || 57.0.12
   - expo@57.0.9 || 57.0.15
-  - '@expo/metro-runtime@57.0.8 || 57.0.12'
+  - '@expo/metro-runtime@57.0.8 || 57.0.12 || 57.0.15'
   - '@expo/ui@57.0.8 || 57.0.12'
   - expo-dev-client@57.0.10 || 57.0.14
   - expo-dev-launcher@57.0.10 || 57.0.14

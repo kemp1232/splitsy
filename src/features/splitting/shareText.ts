@@ -8,8 +8,10 @@
 // repository row shapes) — it doesn't need a separate module, just plain
 // data passed in by whichever screen/hook already has the names loaded.
 
+import { copy } from '@/constants/copy';
 import { formatCentavos } from '@/lib/money';
 
+import type { SettlementTransaction } from './settlement.types';
 import type { SplitCalculationResult } from './split.types';
 
 // Display name for one participant, keyed by the same `participantId` used
@@ -17,6 +19,12 @@ import type { SplitCalculationResult } from './split.types';
 export type ShareTextParticipant = {
   participantId: string;
   name: string;
+  // Not from spec F-017 — post-MVP Payments data (same optional field
+  // PersonTotalCard's own `paidCentavos` prop takes). Omitted entirely skips
+  // this participant's "Paid" line; the caller is expected to omit it for
+  // every participant at once (never just some), matching
+  // PersonTotalCard's/SettlementCard's own hasAnyContribution gate.
+  paidCentavos?: number;
 };
 
 // Display name for one line item, keyed by `lineItemId`.
@@ -37,6 +45,13 @@ export type ShareTextInput = {
   items: ShareTextItem[];
   adjustments: ShareTextAdjustment[];
   splitResult: SplitCalculationResult;
+  // Not from spec F-017 — post-MVP settlement ("who owes whom", see
+  // settlement.ts's header comment) appended as its own block right before
+  // the footer line. Omitted (undefined or empty) entirely skips the block —
+  // a bill that never touched the Payments screen shouldn't get an empty or
+  // meaningless "Settle up" section in its shared text, matching
+  // SettlementCard's own on-screen hasAnyContribution gate.
+  settlementTransactions?: SettlementTransaction[];
 };
 
 const FOOTER_LINE = 'Calculated with Splitsy.';
@@ -52,11 +67,20 @@ const FOOTER_LINE = 'Calculated with Splitsy.';
  * {name} — ₱{their final total}
  * • {item name} — ₱{their share of that item}
  * • {adjustment label} — ₱{their share of that adjustment}
+ * Paid: ₱{amount they've actually paid}
  *
  * {next participant, same shape}
  *
+ * {debtor} owes {creditor} — ₱{amount}
+ * {next transaction, same shape}
+ *
  * Calculated with Splitsy.
  * ```
+ *
+ * The "who owes whom" block (not from spec F-017 — see `settlementTransactions`
+ * on `ShareTextInput`) is entirely optional and only ever appears when the
+ * caller actually has settlement data to show. Same for each participant's
+ * "Paid" line (see `ShareTextParticipant.paidCentavos`).
  *
  * Every amount is formatted with `formatCentavos` (spec 10.1: format at the
  * UI boundary only, never by hand) — this module never touches a floating
@@ -82,10 +106,16 @@ const FOOTER_LINE = 'Calculated with Splitsy.';
  * `calculateSplit`'s invariant assertion.
  */
 export function buildShareText(input: ShareTextInput): string {
-  const { billTitle, participants, items, adjustments, splitResult } = input;
+  const { billTitle, participants, items, adjustments, splitResult, settlementTransactions } =
+    input;
 
   const nameByParticipantId = new Map(
     participants.map((participant) => [participant.participantId, participant.name]),
+  );
+  const paidCentavosByParticipantId = new Map(
+    participants
+      .filter((participant) => participant.paidCentavos !== undefined)
+      .map((participant) => [participant.participantId, participant.paidCentavos as number]),
   );
   const nameByLineItemId = new Map(items.map((item) => [item.lineItemId, item.name]));
   const labelByAdjustmentId = new Map(
@@ -127,9 +157,39 @@ export function buildShareText(input: ShareTextInput): string {
       bulletLines.push(`• ${label} — ${formatCentavos(adjustmentShare.amountCentavos)}`);
     }
 
+    const paidCentavos = paidCentavosByParticipantId.get(share.participantId);
+    if (paidCentavos !== undefined) {
+      bulletLines.push(`${copy.tripSettlement.paidLabel}: ${formatCentavos(paidCentavos)}`);
+    }
+
     const headerLine = `${name} — ${formatCentavos(share.finalTotalCentavos)}`;
     return bulletLines.length > 0 ? [headerLine, ...bulletLines].join('\n') : headerLine;
   });
 
-  return [headerBlock, ...participantBlocks, FOOTER_LINE].join('\n\n');
+  const settlementBlock =
+    settlementTransactions && settlementTransactions.length > 0
+      ? [
+          copy.settlement.heading,
+          ...settlementTransactions.map((transaction) => {
+            const debtorName = nameByParticipantId.get(transaction.fromParticipantId);
+            const creditorName = nameByParticipantId.get(transaction.toParticipantId);
+            if (debtorName === undefined || creditorName === undefined) {
+              throw new Error(
+                'buildShareText: no display name provided for a settlement participant',
+              );
+            }
+            const label = copy.settlement.owesLabel
+              .replace('{debtor}', debtorName)
+              .replace('{creditor}', creditorName);
+            return `${label} — ${formatCentavos(transaction.amountCentavos)}`;
+          }),
+        ].join('\n')
+      : null;
+
+  return [
+    headerBlock,
+    ...participantBlocks,
+    ...(settlementBlock !== null ? [settlementBlock] : []),
+    FOOTER_LINE,
+  ].join('\n\n');
 }

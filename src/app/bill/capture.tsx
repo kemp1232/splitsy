@@ -94,7 +94,7 @@ export default function CaptureScreen() {
             variant="text"
             label={copy.cameraPermission.manualAlternative}
             onPress={startManual}
-            icon={(color) => <Feather name="edit-2" size={18} color={color} />}
+            icon={(color) => <Feather name="edit" size={18} color={color} />}
           />
         </View>
       </Screen>

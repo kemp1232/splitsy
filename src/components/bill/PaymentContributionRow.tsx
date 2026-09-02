@@ -1,3 +1,5 @@
+import { Feather } from '@expo/vector-icons';
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AmountInput } from '@/components/ui/AmountInput';
@@ -5,7 +7,9 @@ import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { copy } from '@/constants/copy';
+import type { ColorTokens } from '@/theme/tokens';
 import { spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 type Props = {
   name: string;
@@ -28,18 +32,26 @@ export function PaymentContributionRow({
   onChangeCentavos,
   onFullAmount,
 }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <SectionCard>
-      <AppText variant="subheading" numberOfLines={1}>
-        {name}
-      </AppText>
+      {/* Same circular person-icon treatment as participants.tsx's own
+          roster row — decorative here too, the name text already identifies
+          the person. */}
+      <View style={styles.nameRow}>
+        <View style={styles.avatarCircle} accessibilityElementsHidden>
+          <Feather name="user" size={18} color={colors.primary} />
+        </View>
+        <AppText variant="subheading" numberOfLines={1} style={styles.nameText}>
+          {name}
+        </AppText>
+      </View>
       <View style={styles.row}>
         <View style={styles.amountField}>
-          <AmountInput
-            label={name}
-            valueCentavos={valueCentavos}
-            onChangeCentavos={onChangeCentavos}
-          />
+          {/* No label here — the row's own name text above already
+              identifies this field; passing `name` too showed it twice. */}
+          <AmountInput valueCentavos={valueCentavos} onChangeCentavos={onChangeCentavos} />
         </View>
         <AppButton
           variant="secondary"
@@ -51,13 +63,39 @@ export function PaymentContributionRow({
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  amountField: {
-    flex: 1,
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    nameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    nameText: {
+      flex: 1,
+    },
+    // Same treatment as participants.tsx's own avatarCircle.
+    avatarCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      borderCurve: 'continuous',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surfaceMuted,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    row: {
+      flexDirection: 'row',
+      // The amount field has no label above it any more, but stays
+      // flex-end (rather than center) so the "Paid in full" button lines up
+      // with the bottom of the input even if the field ever grows taller
+      // (e.g. a validation error appearing beneath it).
+      alignItems: 'flex-end',
+      gap: spacing.sm,
+    },
+    amountField: {
+      flex: 1,
+    },
+  });
+}
