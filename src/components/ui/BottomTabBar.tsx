@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { type LayoutChangeEvent, Pressable, StyleSheet, View } from 'react-native';
+import { type LayoutChangeEvent, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
@@ -43,8 +43,11 @@ const ARC_TRIM_DEGREES = 25;
 // Horizontal run of each flat-to-arc transition blend.
 const TRANSITION_RUN = 20;
 // Bottom-left/bottom-right corner radius (the reference's own "generous"
-// rounded lower corners) — unrelated to the cutout.
-const BOTTOM_RADIUS = 32;
+// rounded lower corners) — unrelated to the cutout. Square on web: the bar
+// sits flush against the browser viewport's own bottom-left/bottom-right
+// corners there (no device bezel around it the way a rounded corner reads
+// against on a native screen), so a rounded corner just looks like a gap.
+const BOTTOM_RADIUS = Platform.OS === 'web' ? 0 : 32;
 // ----------------------------------------------------------------------------
 
 // Exported so every screen can pad its own scrollable content by roughly
