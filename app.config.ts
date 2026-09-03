@@ -27,14 +27,18 @@ const config: ExpoConfig = {
     [
       'expo-router',
       {
-        // Cross-origin isolation, required by expo-sqlite's web driver
-        // (OPFS synchronous access handles + SharedArrayBuffer — see
-        // src/db/client.ts). This only takes effect when deployed via EAS
+        // Cross-origin isolation, required by @sqlite.org/sqlite-wasm's
+        // worker+OPFS mode (SharedArrayBuffer — see src/db/client.web.ts).
+        // expo-sqlite's own web driver (wa-sqlite) was tried first but its
+        // worker died silently under Metro's web bundling (see
+        // WEB_PORT_STATUS.md) — this is the fallback library, which
+        // documents `require-corp` (not `credentialless`) as its own
+        // requirement. This only takes effect when deployed via EAS
         // Hosting; any other host (Vercel/Netlify/nginx/Cloudflare/etc.)
         // must set these same two headers at that host's own config layer
         // instead — this block alone is not sufficient there.
         headers: {
-          'Cross-Origin-Embedder-Policy': 'credentialless',
+          'Cross-Origin-Embedder-Policy': 'require-corp',
           'Cross-Origin-Opener-Policy': 'same-origin',
         },
       },

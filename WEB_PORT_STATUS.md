@@ -366,35 +366,121 @@ pattern — `expo export -p web`, `serve dist` with the `serve.json` headers
 file, then drive it with this script and check for `pageerror`/`worker`
 console output and `crossOriginIsolated`.
 
-## Immediate next step (exactly where we stopped)
+## Update 2 — Phase 1 is DONE (with a documented persistence limitation)
 
-**Implement the fallback path** (see "Fallback" under Phase 1 in the plan
-above), since Attempt 1 failed verification:
-1. Add `@sqlite.org/sqlite-wasm` dependency.
-2. Write a small worker wrapping it with an OPFS-backed database, exposed via
-   a `(sql, params, method) => Promise<{rows}>` callback shape.
-3. `src/db/client.ts`: platform-branch — native keeps `openDatabaseSync` +
-   `drizzle-orm/expo-sqlite` exactly as today; web calls
-   `drizzle(callback, { schema })` from `drizzle-orm/sqlite-proxy` wired to
-   that worker.
-4. `src/db/migrations.ts`: web branch uses `drizzle-orm/sqlite-proxy/migrator`'s
-   async `migrate()` instead of `drizzle-orm/expo-sqlite/migrator`'s
-   `useMigrations`.
-5. Update `src/db/repositories/adjustmentAllocations.repository.ts` and
-   `src/db/repositories/itemAssignments.repository.ts`'s sync
-   `db.transaction((tx) => { tx.x().run(); })` calls to the async proxy
-   driver's shape (`await db.transaction(async (tx) => { await tx.x(); })`).
-6. Re-verify with the same Playwright-over-system-Chrome + `serve dist`
-   pattern above: `crossOriginIsolated`, DB open, migrations, a write→read
-   round trip through one of the two just-updated repositories, reload
-   persistence.
-7. Separately (lower priority, not blocking): solve the dev-server
-   COOP/COEP gap from point 2 above, so `expo start --web` is usable for
-   day-to-day iteration and not just `export` + `serve`.
+The fallback above was implemented, then revised twice more as each attempt
+hit its own Metro-web-bundling-specific dead end — full history kept below
+since the exact failures are worth not re-discovering:
+
+1. **Fallback attempt 1 (worker + OPFS, per the plan above)**: wrote
+   `src/db/web/sqliteWorker.ts` (a real same-origin worker, not a blob URL —
+   sidestepping Attempt 1's specific failure) + `src/db/web/sqliteBridge.ts`
+   (postMessage bridge). Hit a *new* Metro bundling gap first:
+   `@sqlite.org/sqlite-wasm`'s own `index.mjs` contains
+   `new Worker(new URL('sqlite3-worker1.mjs', import.meta.url))` for a
+   convenience API this app never uses — Metro's static `new Worker(new
+   URL(...))` scanner still tries to resolve it regardless of reachability,
+   and fails because the string has no `./` prefix (Metro treats it as a
+   bare package specifier, not a same-directory relative file). **Fixed**
+   with a custom `config.resolver.resolveRequest` in `metro.config.js` that
+   special-cases that one specifier and points it at the real co-located
+   file.
+2. Next gap: `sqlite3.wasm` **itself never appeared in the exported bundle
+   at all** — the library fetches it via `new URL('sqlite3.wasm',
+   import.meta.url)` at *runtime* (an Emscripten-glue pattern), which Metro's
+   asset scanner (unlike its worker-URL scanner) doesn't trace as a
+   dependency. **Fixed** by copying the exact binary the package ships
+   (`node_modules/@sqlite.org/sqlite-wasm/dist/sqlite3.wasm`) into this
+   repo's new `public/` directory (Expo's web static-passthrough folder —
+   verified it lands at `dist/sqlite3.wasm` on export) and passing
+   `locateFile: () => '/sqlite3.wasm'` into `sqlite3InitModule()` (an
+   options param the runtime accepts but the package's own `.d.mts` doesn't
+   declare — required a type cast).
+3. With both of those fixed, hit a **third, harder failure**: this
+   library's OPFS support needs its own *nested* worker
+   (`sqlite3-opfs-async-proxy.js`), created via `new URL(...)` and `new
+   Worker(...)` split across two separate statements inside the library's
+   source — outside the single-expression pattern Metro's web-worker
+   bundling recognizes, so that file is never served where the library
+   expects it. The resulting failure isn't a clean rejection: it's an
+   uncaught `"Module scripts don't support importScripts()"` error firing
+   asynchronously from inside a `blob:`-sourced worker the library spawns
+   internally, which isn't catchable from application code (no promise to
+   `.catch()`, no request id to correlate). Tried the library's own
+   documented `globalThis.sqlite3ApiConfig = { disable: { vfs: { opfs: true,
+   'opfs-wl': true, 'opfs-sahpool': true } } }` pre-init escape hatch to skip
+   OPFS registration entirely before this crash path is ever reached — set
+   it inside the worker before calling `sqlite3InitModule()` — but the crash
+   **still occurred**, meaning either the disable flag doesn't cover every
+   OPFS variant this library attempts, or the library's internal bootstrap
+   already runs before the flag can take effect. Not fully root-caused;
+   not worth further time given point 4.
+4. **Final, working shape**: since every path to *persistent* web storage
+   specifically requires a worker (OPFS only works inside one), and every
+   worker-based attempt hit its own distinct Metro-bundling dead end,
+   stepped back and asked whether a worker is needed *at all* given
+   persistence was already going to be sacrificed. It isn't:
+   `@sqlite.org/sqlite-wasm` has a documented **main-thread, no-OPFS mode**
+   (`new sqlite3.oo1.DB(...)`, directly, no `Worker` involved). Deleted both
+   `src/db/web/sqliteWorker.ts` and `sqliteBridge.ts`, and rewrote
+   `src/db/client.web.ts` to call this directly on the main thread. This
+   entirely sidesteps every worker/blob-URL/nested-worker failure mode
+   above, at the cost of the already-accepted persistence trade-off. Only
+   the `sqlite3.wasm` fix (point 2) and the resolver fix (point 1, since
+   `index.mjs` still contains that reference regardless of whether it's
+   used) still apply.
+5. **Verified working end-to-end** via the same Playwright-over-system-Chrome
+   + `expo export -p web` + `serve dist` pattern: the app now boots, runs
+   **every single migration successfully** (watched all `CREATE TABLE`/
+   `CREATE INDEX` statements for every table — `adjustment_allocations`,
+   `adjustments`, `bills`, `item_assignments`, `line_items`, etc. — execute
+   in the console's SQL trace log), and proceeds past the database gate
+   entirely to the *next* gate (`SessionGate`, auth) — which then correctly
+   failed to reach the backend auth server, an expected Phase 2 concern
+   (the backend isn't reachable from this test environment), not a Phase 1
+   defect.
+6. `pnpm typecheck && pnpm lint && pnpm test` all clean throughout (364/364
+   tests, 0 new lint errors) — native is provably unaffected by any of this.
+
+**KNOWN LIMITATION, clearly documented in `src/db/client.web.ts` itself**:
+the web build has **no persistent storage** right now — every reload starts
+a fresh, empty, in-memory database. This is a deliberate, scoped trade-off
+given how much Metro-bundling-specific friction persistent OPFS storage hit
+on every attempt, not an oversight. Revisiting it is a well-defined follow-up
+(fix the nested-worker serving path, or wait for library/bundler
+compatibility to improve) that doesn't block anything else in this plan —
+swapping `client.web.ts` for a worker-backed persistent version later
+requires no changes anywhere else, since `drizzle-orm/sqlite-proxy`'s
+callback shape is what every other file talks to.
+
+**New/changed files for the final working shape**:
+- `public/sqlite3.wasm` (new — copied binary, see point 2)
+- `src/db/client.web.ts` (rewritten — main-thread, no worker)
+- `src/db/migrations.web.ts` (new — see its own header comment: reimplements
+  `drizzle-orm/expo-sqlite/migrator`'s in-memory journal-parsing logic, since
+  `drizzle-orm/sqlite-proxy/migrator`'s own `migrate()` needs filesystem
+  access that doesn't exist on web, then runs it through
+  `db.dialect.migrate()` directly — driver-agnostic, undocumented-but-real
+  API also relied on by the expo-sqlite migrator itself)
+- `src/db/repositories/itemAssignments.repository.web.ts` and
+  `adjustmentAllocations.repository.web.ts` (new, full duplicates not
+  partial re-exports — see their own header comments for why: the sync vs.
+  async `db.transaction()` callback shapes aren't source-compatible between
+  drivers, and Metro's platform-extension resolution would turn a relative
+  self-import into an infinite loop)
+- `metro.config.js` (custom `resolveRequest`, see point 1; headers switched
+  from `credentialless` to `require-corp` per this library's own documented
+  requirement)
+- `app.config.ts` (same header value change, for the EAS Hosting production
+  config)
 
 ## What's NOT started yet
 
-- The Phase 1 fallback implementation itself (previous section).
+- Solving the dev-server COOP/COEP gap so `expo start --web` reflects
+  reality for day-to-day iteration (not blocking — `export` + `serve` is the
+  reliable way to test locally for now, and production hosting goes through
+  the `app.config.ts` header config regardless, not the dev server).
+- Revisiting persistent web storage (see "KNOWN LIMITATION" above).
 - Phases 2–7 entirely: auth on web, receipt capture/image storage on web,
   Share API fallback, the sequential fade-through transition
   (`src/navigation/` module), loading-screen audit, responsive desktop
