@@ -1,5 +1,4 @@
 import { Feather } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { FlatList, Modal, StyleSheet, View } from 'react-native';
@@ -19,6 +18,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { InlineError } from '@/components/ui/InlineError';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
 import { copy } from '@/constants/copy';
 import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
@@ -533,8 +533,8 @@ export default function AdjustmentsScreen() {
             onPress={() => setShowReceiptImage(false)}
           />
           {bill.receiptImageUri ? (
-            <Image
-              source={{ uri: bill.receiptImageUri }}
+            <ReceiptImage
+              uri={bill.receiptImageUri}
               style={styles.receiptImage}
               contentFit="contain"
               accessibilityLabel={copy.receiptReview.receiptAction}

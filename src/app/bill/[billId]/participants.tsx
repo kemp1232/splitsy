@@ -122,7 +122,7 @@ export default function ParticipantsScreen() {
       // Not a plain participantsRepository.remove() — this also repairs any
       // CUSTOM adjustment that referenced the removed participant so it can't
       // be left permanently unbalanced (spec 10.7 invariant, see bill.service.ts).
-      removeParticipant(billId, removingParticipant.id);
+      await removeParticipant(billId, removingParticipant.id);
       await refreshParticipants();
     } catch {
       setActionError(copy.global.storageFailure);

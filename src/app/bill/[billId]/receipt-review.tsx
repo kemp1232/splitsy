@@ -1,5 +1,4 @@
 import { Feather } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Modal, ScrollView, StyleSheet, View } from 'react-native';
@@ -15,6 +14,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { InlineError } from '@/components/ui/InlineError';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { copy } from '@/constants/copy';
@@ -455,8 +455,8 @@ export default function ReceiptReviewScreen() {
             onPress={() => setShowReceiptImage(false)}
           />
           {bill.receiptImageUri ? (
-            <Image
-              source={{ uri: bill.receiptImageUri }}
+            <ReceiptImage
+              uri={bill.receiptImageUri}
               style={styles.receiptImage}
               contentFit="contain"
               accessibilityLabel={copy.receiptReview.receiptAction}

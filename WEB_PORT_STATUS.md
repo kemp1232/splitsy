@@ -630,13 +630,128 @@ and the POST to succeed, but the session didn't stick:
   live: the web build now reaches the real sign-in screen with zero
   network/CORS errors.
 
+## Update 6 — Phase 3 (receipt capture/image storage) + Phase 4 (Share) done, plus a critical transaction bug caught and fixed
+
+Triggered by the user's explicit ask after a batch of console-warning
+reports: "test all our functionality, fix them all" — a full audit pass
+across the app, verified live in a real browser (Playwright + system
+Chrome), not just by reasoning about the code.
+
+**Phase 3 — receipt capture & image storage on web:**
+
+- `src/features/receipt-capture/receiptImage.service.web.ts` (new): web
+  counterpart to the native file's `expo-file-system` `Directory`/`File`
+  API. Stores raw image `Blob`s in IndexedDB
+  (`src/features/receipt-capture/web/imageStore.ts`, new — DB
+  `splitsy-web-images`, store `images`) rather than a real filesystem, and
+  identifies a stored image with a custom `splitsy-idb-image:<id>` URI
+  instead of a file path (`bills.receiptImageUri` stores that string
+  directly). A plain `blob:` object URL doesn't survive a page reload (the
+  browser revokes every outstanding one on navigation), so this only stores
+  the id — `resolveImageUri(uri)` mints a *fresh* `blob:` URL from the
+  stored bytes on demand.
+- `src/components/ui/ReceiptImage.tsx` (new): every screen that displays a
+  *stored* receipt image now goes through this instead of handing
+  `bill.receiptImageUri` straight to `expo-image`'s `<Image>` — it resolves
+  the platform-specific URI (no-op passthrough on native, IndexedDB→`blob:`
+  on web) before rendering. Updated 5 display call sites (receipt-review,
+  assignments, adjustments, bill index, processing).
+  `receiptImage.service.ts` (native) gained a matching no-op
+  `resolveImageUri` passthrough so the shared component only needs one
+  import name regardless of platform.
+- `src/features/receipt-ocr/buildImageFormDataPart.ts`/`.web.ts` (new):
+  `BackendReceiptOcrService.ts`'s OCR upload used to build its `FormData`
+  part directly via `new File(imageUri)` (`expo-file-system`) — extracted
+  behind this platform-split helper (native: same `File` call; web:
+  `fetch(imageUri).blob()`), removing `BackendReceiptOcrService.ts`'s direct
+  `expo-file-system` import entirely.
+- `processing.tsx`: OCR composition is now platform-branched —
+  `@react-native-ml-kit/text-recognition` (the offline on-device fallback)
+  has no web implementation at all, so web goes straight to
+  `BackendReceiptOcrService` only, instead of native's
+  `FallbackReceiptOcrService(backend, mlKit)`.
+- Verified live end-to-end: gallery upload (Playwright
+  `filechooser`/`setFiles`) → `copyImageToAppStorage` → processing screen →
+  real backend OCR call → 3 items + merchant/date/total correctly extracted
+  → receipt-review renders them, "current total matches receipt" → tapping
+  "Receipt" shows the actual stored image full-size via a live `blob:` URL
+  (`naturalWidth` confirmed non-zero, not a broken image).
+
+**Phase 4 — Share API fallback:**
+
+- `src/lib/share.ts`/`.web.ts` (new): wraps RN's `Share.share` (native,
+  unchanged behavior) vs. web's `navigator.share` with a
+  `Clipboard.setStringAsync` fallback when unavailable (most desktop
+  browsers) — treats a user-dismissed native share sheet (`AbortError`) as
+  silent success, not a failed copy. New `copy.global.sharedTextCopiedToast`
+  string. Updated all 5 `Share.share` call sites (bill summary, bill index,
+  trip settlement, trip index, home).
+- Verified live: clicking "Share summary" in a browser with no
+  `navigator.share` (this headless Chrome config) correctly showed
+  "Breakdown copied." instead of erroring or silently doing nothing.
+
+**Critical bug found and fixed — `db.transaction()` called directly,
+outside a repository:** the original Phase 1 fix only converted the 2
+repositories using the sync `db.transaction((tx) => { tx.x().run() })`
+shape. Re-reading `bill.service.ts` and `trip.service.ts` while chasing an
+unrelated warning found they *also* call `db.transaction()` directly (not
+through a repository) with that same sync shape — missed because the
+original audit only grepped repositories. On the web async-proxy driver
+this is a real correctness bug, not just a lint nit: an un-awaited `.run()`
+inside a sync callback lets the transaction wrapper's own `COMMIT` race
+ahead of the statements it's supposed to wrap, risking silent partial
+writes. Fixed via full `bill.service.web.ts` / `trip.service.web.ts`
+rewrites (async `db.transaction(async (tx) => { await tx.x() })`
+throughout) and updated 6 call sites to `await` them — two enclosing
+functions had to become `async` themselves (`settings.tsx`'s
+`handleConfirmDeleteAll`, `bill/[billId]/index.tsx`'s
+`handleConfirmDelete`). Verified live: quick-split full flow, manual-entry
+line-item add, and adding-then-removing a participant (exercises
+`removeParticipant`'s multi-step transaction) all round-tripped correctly
+and persisted through a reload.
+
+**A second, non-code bug — Metro's file watcher missed several new
+files:** after all of the above landed, live testing kept hitting
+`expo-file-system is not supported on web` at the exact moment
+`preview.tsx`'s "Use this photo" was clicked, even though
+`receiptImage.service.web.ts` (with no `expo-file-system` import at all)
+clearly existed on disk right next to the native file. A debug marker
+proved the *native* `receiptImage.service.ts` was the one actually
+executing in the web bundle — Metro's platform-extension resolution
+(`.web.ts` over `.ts`) was correctly resolving `bill.service.web.ts` and
+`trip.service.web.ts` elsewhere in this same session, so this wasn't a
+resolution-logic bug. Root cause: the dev server (`expo start`) had been
+running continuously since before this batch of `.web.ts` files was
+created, and Metro only crawls the filesystem fresh at boot — its
+incremental file watcher appears to have missed this particular batch, so
+its resolver still didn't know these newer files existed. **Fix: no code
+change — restarting the dev server** (a plain restart, no cache clear
+needed) made Metro re-crawl and pick up every new `.web.ts` file
+correctly; re-running the exact same test afterward passed with zero
+warnings. Worth remembering on future resumes: **after creating a new
+`.web.ts`/`.web.tsx` sibling file while a long-running `expo start` is
+already up, restart it before trusting a "not resolving" symptom to be a
+real code bug.**
+
+- Full verification re-run after the restart: `pnpm typecheck && pnpm lint
+  && pnpm test` (client: 0 type errors, 0 lint errors — 2 pre-existing
+  `import/first` warnings in a test file, unrelated to this work — 364/364
+  tests) and the server's own `npm run typecheck`/`test` (30/30), both
+  clean.
+- Live browser regression covered in this pass (Playwright + system
+  Chrome, signed in as a temporary `claude-webtest@example.com` account,
+  since deleted from `server/data/auth.db` after testing): sign-in,
+  quick-split flow end-to-end through save + share + persistence-after-
+  reload, manual-entry line-item add, add/remove participant, and the full
+  gallery-upload → OCR → receipt-review → image-display pipeline described
+  above.
+
 ## What's NOT started yet
 
 - True OPFS persistence (see "Update 3" — IndexedDB whole-blob persistence
   is in place as a stopgap, not the final answer).
-- Phases 3–7: receipt capture/image storage on web, Share API fallback, the
-  sequential fade-through transition (`src/navigation/` module),
-  loading-screen audit, responsive desktop widening.
+- Phases 5–7: the sequential fade-through transition (`src/navigation/`
+  module), loading-screen audit, responsive desktop widening.
 
 ## Key facts worth not re-deriving on resume
 
@@ -674,11 +789,17 @@ and the POST to succeed, but the session didn't stick:
 
 ## Git status
 
-Everything through this point (including the `metro.config.js`
-`enhanceMiddleware` fix) is already committed and pushed to `origin/main` on
-GitHub (`kemp1232/splitsy`), commit `3230c7b "finalize design, started web
-app"`. On a different machine, `git pull` (or a fresh clone) gets the exact
-same state — no manual file copying needed.
+Everything through Update 5 (including the `metro.config.js`
+`enhanceMiddleware` fix) was committed and pushed to `origin/main` on
+GitHub (`kemp1232/splitsy`) as of commit `3230c7b "finalize design, started
+web app"`.
+
+Update 6's batch (Phase 3 + Phase 4 + the `db.transaction()` fix) is
+committed locally on top of that but **not yet pushed** — this dev
+environment can't authenticate to GitHub (`git push` fails with "could not
+read Username"), so pushing `main` needs to happen from the user's own
+machine/terminal. On a different machine, `git pull` after that push gets
+the exact same state — no manual file copying needed.
 
 The Claude Code plan file itself
 (`~/.claude/plans/keen-imagining-lake.md`) is local to the original machine

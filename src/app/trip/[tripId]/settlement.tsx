@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Share, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { SettlementCard } from '@/components/bill/SettlementCard';
 import { TripPersonBalanceCard } from '@/components/trip/TripPersonBalanceCard';
@@ -45,6 +45,7 @@ import {
   type TripSettlementResult,
 } from '@/features/trips/computeTripSettlement';
 import { nowIso } from '@/lib/date';
+import { shareText } from '@/lib/share';
 import { spacing } from '@/theme/tokens';
 
 type LoadState = 'loading' | 'ready' | 'error';
@@ -312,7 +313,11 @@ export default function TripSettlementScreen() {
   async function handleShare() {
     setShareError(null);
     try {
-      await Share.share({ message: buildShareTextForTrip() });
+      const result = await shareText(buildShareTextForTrip());
+      // Web-only: no native share sheet on this browser, silently fell back
+      // to the clipboard instead (src/lib/share.web.ts) — same confirmation
+      // handleCopy below already shows for its own explicit copy action.
+      if (result === 'copied') setToastMessage(copy.summary.copiedToast);
     } catch {
       setShareError(copy.summary.shareFailure);
     }

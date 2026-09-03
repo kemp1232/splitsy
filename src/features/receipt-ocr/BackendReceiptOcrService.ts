@@ -1,10 +1,10 @@
-import { File } from 'expo-file-system';
 import { z } from 'zod';
 
 import { OCR_BACKEND_URL } from '@/constants/config';
 import { defaultAllocationMethodForType } from '@/features/adjustments/defaultAllocationMethod';
 import type { ParsedReceipt } from '@/features/receipt-parser/receiptParser.types';
 
+import { buildImageFormDataPart } from './buildImageFormDataPart';
 import {
   OcrRateLimitedError,
   type OcrRecognitionResult,
@@ -135,12 +135,7 @@ export class BackendReceiptOcrService implements ReceiptOcrService {
     if (__DEV__) console.log(`[BackendReceiptOcrService] requesting ${OCR_BACKEND_URL}/api/ocr`);
 
     const formData = new FormData();
-    // Expo SDK 57's fetch/FormData implementation only accepts a real Blob
-    // (or Blob-like object exposing `bytes()`) for file parts — the classic
-    // React Native `{uri, name, type}` object idiom throws "Unsupported
-    // FormDataPart implementation" here. expo-file-system's `File` implements
-    // the Blob interface and satisfies this directly.
-    formData.append('image', new File(imageUri));
+    formData.append('image', await buildImageFormDataPart(imageUri));
 
     const response = await fetch(`${OCR_BACKEND_URL}/api/ocr`, { method: 'POST', body: formData });
 

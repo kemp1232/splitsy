@@ -35,6 +35,15 @@ export function deleteReceiptsDirectory(): void {
   }
 }
 
+// Identity passthrough on native — a native file:// URI is already directly
+// loadable, unlike web's own `splitsy-idb-image:` reference scheme (see
+// receiptImage.service.web.ts). Exists here purely so shared display code
+// (src/components/ui/ReceiptImage.tsx) can import one name regardless of
+// platform.
+export async function resolveImageUri(uri: string): Promise<string> {
+  return uri;
+}
+
 export async function copyImageToAppStorage(sourceUri: string): Promise<string> {
   const sourceFile = new File(sourceUri);
   const extension = sourceFile.extension || '.jpg';

@@ -49,7 +49,7 @@ export default function QuickSplitScreen() {
       // usual untitled-bill copy when the trimmed title is empty, so an
       // empty/whitespace-only title here is a perfectly valid submission,
       // not a validation error.
-      const bill = createQuickSplitBill({ title, totalCentavos });
+      const bill = await createQuickSplitBill({ title, totalCentavos });
       router.replace(`/bill/${bill.id}/participants`);
     } catch {
       setActionError(copy.global.storageFailure);

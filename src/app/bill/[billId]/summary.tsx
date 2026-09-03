@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Share, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { PersonTotalCard } from '@/components/bill/PersonTotalCard';
 import { SettlementCard } from '@/components/bill/SettlementCard';
@@ -55,6 +55,7 @@ import type {
   SplitCalculationResult,
 } from '@/features/splitting/split.types';
 import { formatBillListDate, nowIso } from '@/lib/date';
+import { shareText } from '@/lib/share';
 import type { ColorTokens } from '@/theme/tokens';
 import { radius, spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -361,7 +362,11 @@ export default function SummaryScreen() {
   async function handleShare() {
     setShareError(null);
     try {
-      await Share.share({ message: buildShareTextForBill() });
+      const result = await shareText(buildShareTextForBill());
+      // Web-only: no native share sheet on this browser, silently fell back
+      // to the clipboard instead (src/lib/share.web.ts) — same confirmation
+      // handleCopy below already shows for its own explicit copy action.
+      if (result === 'copied') showToast(copy.summary.copiedToast);
     } catch {
       setShareError(copy.summary.shareFailure);
     }

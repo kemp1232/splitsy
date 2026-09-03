@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, RefreshControl, Share, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { BillListItem } from '@/components/bill/BillListItem';
 import { BillOverflowSheet } from '@/components/bill/BillOverflowSheet';
@@ -42,6 +42,7 @@ import { buildShareText } from '@/features/splitting/shareText';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import { authClient } from '@/lib/authClient';
 import { nowIso } from '@/lib/date';
+import { shareText } from '@/lib/share';
 import type { ColorTokens } from '@/theme/tokens';
 import { spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -393,7 +394,11 @@ export default function HomeScreen() {
 
     try {
       const text = await buildShareTextForBill(bill);
-      await Share.share({ message: text });
+      const result = await shareText(text);
+      // Web-only: no native share sheet on this browser, silently fell back
+      // to the clipboard instead (src/lib/share.web.ts) — this quick overflow
+      // action has no toast mechanism of its own to reuse.
+      if (result === 'copied') Alert.alert(copy.global.sharedTextCopiedToast);
     } catch {
       Alert.alert(copy.global.genericErrorHeading, copy.home.shareUnavailable);
     }
@@ -413,7 +418,7 @@ export default function HomeScreen() {
     if (!deletingBill) return;
     setDeletingBill(null);
     try {
-      deleteBill(deletingBill);
+      await deleteBill(deletingBill);
     } catch {
       // This screen has no inline-error slot of its own (unlike
       // handleOverflowShare's copy.home.shareUnavailable, there's no fixed

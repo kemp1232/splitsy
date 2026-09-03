@@ -1,8 +1,7 @@
 import { Feather } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Alert, Modal, ScrollView, StyleSheet, View } from 'react-native';
 
 import { PersonTotalCard } from '@/components/bill/PersonTotalCard';
 import { SettlementCard } from '@/components/bill/SettlementCard';
@@ -14,6 +13,7 @@ import { Divider } from '@/components/ui/Divider';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { InlineError } from '@/components/ui/InlineError';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { copy } from '@/constants/copy';
@@ -53,6 +53,7 @@ import {
 } from '@/features/summary/buildParticipantShareDisplay';
 import { nowIso } from '@/lib/date';
 import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
+import { shareText } from '@/lib/share';
 import type { ColorTokens } from '@/theme/tokens';
 import { spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -278,7 +279,11 @@ export default function SavedBillDetailScreen() {
         // (or "Paid" lines) in its shared text either.
         settlementTransactions: hasAnyContribution ? settlement.transactions : undefined,
       });
-      await Share.share({ message: text });
+      const result = await shareText(text);
+      // Web-only: no native share sheet on this browser, silently fell back
+      // to the clipboard instead (src/lib/share.web.ts) — this screen has no
+      // toast mechanism of its own to reuse, unlike summary.tsx's.
+      if (result === 'copied') Alert.alert(copy.global.sharedTextCopiedToast);
     } catch {
       // No spec-mandated share-failure copy for this screen (13.19 doesn't
       // define one of its own) — reused verbatim from the summary screen's
@@ -307,12 +312,12 @@ export default function SavedBillDetailScreen() {
     router.replace(`/bill/${billId}/receipt-review`);
   }
 
-  function handleConfirmDelete() {
+  async function handleConfirmDelete() {
     // Same closure-narrowing note as handleShare above.
     if (!bill) return;
     setConfirmingDelete(false);
     try {
-      deleteBill(bill);
+      await deleteBill(bill);
     } catch {
       setDeleteError(copy.global.deleteFailure);
       return;
@@ -475,8 +480,8 @@ export default function SavedBillDetailScreen() {
             icon={(color) => <Feather name="x" size={18} color={color} />}
           />
           {bill.receiptImageUri ? (
-            <Image
-              source={{ uri: bill.receiptImageUri }}
+            <ReceiptImage
+              uri={bill.receiptImageUri}
               style={styles.receiptImage}
               contentFit="contain"
               accessibilityLabel={copy.savedBillDetail.receiptAction}

@@ -1,5 +1,4 @@
 import { Feather } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, StyleSheet, Switch, View } from 'react-native';
@@ -13,6 +12,7 @@ import { Divider } from '@/components/ui/Divider';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { InlineError } from '@/components/ui/InlineError';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
 import { copy } from '@/constants/copy';
 import type { Bill } from '@/db/repositories/bills.repository';
@@ -434,8 +434,8 @@ export default function AssignmentsScreen() {
             onPress={() => setShowReceiptImage(false)}
           />
           {bill.receiptImageUri ? (
-            <Image
-              source={{ uri: bill.receiptImageUri }}
+            <ReceiptImage
+              uri={bill.receiptImageUri}
               style={styles.receiptImage}
               contentFit="contain"
               accessibilityLabel={copy.receiptReview.receiptAction}

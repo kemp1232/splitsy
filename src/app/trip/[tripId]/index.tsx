@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Share, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, StyleSheet, View } from 'react-native';
 
 import { BillListItem } from '@/components/bill/BillListItem';
 import { BillOverflowSheet } from '@/components/bill/BillOverflowSheet';
@@ -52,6 +52,7 @@ import { calculateSplit } from '@/features/splitting/splitCalculator';
 import { deleteTrip } from '@/features/trips/trip.service';
 import { nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
+import { shareText } from '@/lib/share';
 import type { ColorTokens } from '@/theme/tokens';
 import { spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -432,7 +433,11 @@ export default function TripHubScreen() {
     if (!bill) return;
     try {
       const text = await buildShareTextForBill(bill);
-      await Share.share({ message: text });
+      const result = await shareText(text);
+      // Web-only: no native share sheet on this browser, silently fell back
+      // to the clipboard instead (src/lib/share.web.ts) — this quick overflow
+      // action has no toast mechanism of its own to reuse.
+      if (result === 'copied') Alert.alert(copy.global.sharedTextCopiedToast);
     } catch {
       Alert.alert(copy.global.genericErrorHeading, copy.home.shareUnavailable);
     }
@@ -449,7 +454,7 @@ export default function TripHubScreen() {
     if (!deletingBill) return;
     setDeletingBill(null);
     try {
-      deleteBill(deletingBill);
+      await deleteBill(deletingBill);
     } catch {
       Alert.alert(copy.global.genericErrorHeading, copy.global.deleteFailure);
       return;

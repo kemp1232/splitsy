@@ -676,5 +676,9 @@ export const copy = {
       "Receipt scanning isn't available on this device right now. You can still enter the bill manually.",
     storageFailure: "We couldn't save your changes. Check your available storage and try again.",
     deleteFailure: "We couldn't delete this bill. Try again.",
+    // Web-only fallback (src/lib/share.web.ts): shown wherever a screen's own
+    // Share action fell back to copying to the clipboard instead, on a
+    // browser with no native share sheet of its own (most desktop browsers).
+    sharedTextCopiedToast: 'Copied — paste it anywhere.',
   },
 };

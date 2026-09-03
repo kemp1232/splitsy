@@ -61,10 +61,10 @@ export default function SettingsScreen() {
     }
   }
 
-  function handleConfirmDeleteAll() {
+  async function handleConfirmDeleteAll() {
     setShowDeleteAllConfirm(false);
     try {
-      resetAllLocalData();
+      await resetAllLocalData();
     } catch {
       // No exact spec 14 copy for "delete all local data" specifically
       // ("Delete failure" is worded around a single bill, "Storage failure"

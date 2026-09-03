@@ -1,11 +1,11 @@
 import { Feather } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
+import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
 import { copy } from '@/constants/copy';
 import { billsRepository } from '@/db/repositories/bills.repository';
@@ -14,6 +14,7 @@ import { createOcrDerivative } from '@/features/receipt-capture/receiptImage.ser
 import { BackendReceiptOcrService } from '@/features/receipt-ocr/BackendReceiptOcrService';
 import { FallbackReceiptOcrService } from '@/features/receipt-ocr/FallbackReceiptOcrService';
 import { MlKitReceiptOcrService } from '@/features/receipt-ocr/MlKitReceiptOcrService';
+import type { ReceiptOcrService } from '@/features/receipt-ocr/ReceiptOcrService';
 import { radius, spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -23,11 +24,17 @@ type Stage = 'preparing' | 'reading' | 'organizing' | 'error';
 // handwritten receipts), falls back to on-device ML Kit on any error, timeout,
 // or when the backend isn't configured — see PLAN.md's VLM-backed OCR entry.
 // This is the one mandatory offline guarantee (spec Amendment/§4): scanning
-// must keep working with no network at all.
-const ocrService = new FallbackReceiptOcrService(
-  new BackendReceiptOcrService(),
-  new MlKitReceiptOcrService(),
-);
+// must keep working with no network at all — but that guarantee only applies
+// natively. @react-native-ml-kit/text-recognition has no web implementation
+// at all (bundles fine, since Metro doesn't complain about an import that's
+// merely present, but throws if actually called), so on web this is
+// backend-only: a network hiccup surfaces as a real error there instead of
+// silently degrading to an on-device pass, since there is no on-device path
+// to degrade to.
+const ocrService: ReceiptOcrService =
+  Platform.OS === 'web'
+    ? new BackendReceiptOcrService()
+    : new FallbackReceiptOcrService(new BackendReceiptOcrService(), new MlKitReceiptOcrService());
 
 export default function ProcessingScreen() {
   const router = useRouter();
@@ -58,7 +65,7 @@ export default function ProcessingScreen() {
         setRawText(receipt.rawText);
 
         setStage('organizing');
-        saveParsedReceiptDraft(billId, receipt);
+        await saveParsedReceiptDraft(billId, receipt);
 
         // ocrSource/fallbackReason are one-time UI hints for the review
         // screen ("read online" vs "read on-device", and why), not persisted
@@ -159,7 +166,7 @@ export default function ProcessingScreen() {
             part of the OCR pipeline itself. */}
         {receiptImageUri ? (
           <View style={styles.imageCard}>
-            <Image source={{ uri: receiptImageUri }} style={styles.image} contentFit="cover" />
+            <ReceiptImage uri={receiptImageUri} style={styles.image} contentFit="cover" />
             <View style={[StyleSheet.absoluteFill, styles.imageScrim]} pointerEvents="none" />
           </View>
         ) : null}
