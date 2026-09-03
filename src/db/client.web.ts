@@ -2,6 +2,7 @@ import { drizzle } from 'drizzle-orm/sqlite-proxy';
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
 
 import * as schema from './schema';
+import { loadPersistedDatabase, savePersistedDatabase } from './web/idbPersistence';
 
 // Web counterpart to client.ts.
 //
@@ -20,19 +21,29 @@ import * as schema from './schema';
 // "Module scripts don't support importScripts()" error that isn't
 // recoverable from application code.
 //
-// KNOWN LIMITATION: since persistence requires OPFS, and OPFS requires a
-// worker, and every worker-based path hit a Metro-bundling-specific dead
-// end, this runs @sqlite.org/sqlite-wasm directly on the main thread instead
-// (its own documented "without OPFS" mode — see that package's README) —
-// no worker, no COOP/COEP requirement, no SharedArrayBuffer, and no
-// persistence: the database resets on every page reload. Revisit once
-// there's a working path to serve sqlite3-opfs-async-proxy.js correctly (or
-// Metro/Expo's web-worker bundling recognizes the two-statement form) —
-// nothing else in this file would need to change beyond swapping this
-// module for a worker-backed one again, since drizzle-orm/sqlite-proxy's
-// callback shape is unaffected either way.
-let dbReady: Promise<InstanceType<Awaited<ReturnType<typeof sqlite3InitModule>>['oo1']['DB']>> | null =
-  null;
+// Since real OPFS persistence hit a Metro-bundling-specific dead end on
+// every attempt, this runs @sqlite.org/sqlite-wasm directly on the main
+// thread instead (its own documented "without OPFS" mode — see that
+// package's README) — no worker, no COOP/COEP requirement, no
+// SharedArrayBuffer. STOPGAP PERSISTENCE: the whole database is exported to
+// a single binary blob (`sqlite3_js_db_export`) and saved to IndexedDB
+// (`./web/idbPersistence.ts`) shortly after every write, then restored
+// (`sqlite3_deserialize`) on the next load — not `localStorage`, which only
+// stores strings (a ~33% size-inflating base64 round trip for binary data)
+// and has a much lower per-origin size ceiling than IndexedDB. This is a
+// whole-file save, not incremental — fine for this app's size, but revisit
+// if the database grows large enough for that to matter. True OPFS
+// persistence remains the better long-term fix (revisit once there's a
+// working path to serve sqlite3-opfs-async-proxy.js correctly, or
+// Metro/Expo's web-worker bundling recognizes the two-statement
+// `new URL()` + `new Worker()` form) — nothing else in this file would need
+// to change beyond swapping the save/restore calls below for OPFS's own
+// automatic persistence, since drizzle-orm/sqlite-proxy's callback shape is
+// unaffected either way.
+type Sqlite3 = Awaited<ReturnType<typeof sqlite3InitModule>>;
+type Sqlite3Db = InstanceType<Sqlite3['oo1']['DB']>;
+
+let dbReady: Promise<{ sqlite3: Sqlite3; sqliteDb: Sqlite3Db }> | null = null;
 
 // @sqlite.org/sqlite-wasm's default WASM-file lookup is
 // `new URL('sqlite3.wasm', import.meta.url)` — relative to wherever Metro
@@ -52,17 +63,75 @@ const initSqlite3 = sqlite3InitModule as unknown as (opts: {
   locateFile: (file: string) => string;
 }) => ReturnType<typeof sqlite3InitModule>;
 
+// SQLite's own C API for loading a serialized database image into an
+// already-open (empty) connection — the counterpart to
+// `sqlite3_js_db_export` used in `schedulePersist` below. `allocFromTypedArray`
+// copies `bytes` into WASM linear memory first, since `sqlite3_deserialize`
+// takes a raw pointer, not a JS array; `FREEONCLOSE` tells SQLite to free
+// that memory itself when the connection closes, `RESIZEABLE` lets the
+// in-memory database grow past the restored snapshot's original size as the
+// app keeps writing to it.
+function restoreDatabase(sqlite3: Sqlite3, sqliteDb: Sqlite3Db, bytes: Uint8Array) {
+  const pData = sqlite3.wasm.allocFromTypedArray(bytes);
+  sqlite3.capi.sqlite3_deserialize(
+    sqliteDb.pointer!,
+    'main',
+    pData,
+    bytes.length,
+    bytes.length,
+    sqlite3.capi.SQLITE_DESERIALIZE_FREEONCLOSE | sqlite3.capi.SQLITE_DESERIALIZE_RESIZEABLE,
+  );
+}
+
 function getDb() {
   if (!dbReady) {
-    dbReady = initSqlite3({ locateFile: () => '/sqlite3.wasm' }).then((sqlite3) => {
+    dbReady = initSqlite3({ locateFile: () => '/sqlite3.wasm' }).then(async (sqlite3) => {
       const sqliteDb = new sqlite3.oo1.DB('/splitsy.sqlite3', 'ct');
+      const savedBytes = await loadPersistedDatabase();
+      if (savedBytes && savedBytes.length > 0) {
+        restoreDatabase(sqlite3, sqliteDb, savedBytes);
+      }
       // Cascade deletes declared in schema.ts are only enforced when this
       // pragma is on for the connection — same as client.ts's native setup.
+      // Set after restoring, not before: PRAGMA foreign_keys is a
+      // per-connection setting, not something stored in the database file
+      // itself, so it has to be (re-)applied regardless of which branch above
+      // ran.
       sqliteDb.exec('PRAGMA foreign_keys = ON;');
-      return sqliteDb;
+      return { sqlite3, sqliteDb };
     });
   }
   return dbReady;
+}
+
+// Debounced so a burst of writes (e.g. a transaction inserting many item
+// assignments, or the migration run's many CREATE TABLE statements) produces
+// one save shortly after the burst settles rather than one per statement.
+// Best-effort on tab close: `beforeunload` can't reliably await async work
+// before the page terminates, so this just fires the save immediately
+// (skipping the debounce) rather than guaranteeing it completes.
+const PERSIST_DEBOUNCE_MS = 500;
+let persistTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function schedulePersist(sqlite3: Sqlite3, sqliteDb: Sqlite3Db) {
+  if (persistTimeout) clearTimeout(persistTimeout);
+  persistTimeout = setTimeout(() => {
+    persistTimeout = null;
+    void savePersistedDatabase(sqlite3.capi.sqlite3_js_db_export(sqliteDb.pointer!));
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    if (!persistTimeout || !dbReady) return;
+    clearTimeout(persistTimeout);
+    // Only fires if getDb() already resolved by now — a reasonable
+    // assumption, since reaching this point means the app already ran at
+    // least one write against an open connection.
+    void dbReady.then(({ sqlite3, sqliteDb }) => {
+      void savePersistedDatabase(sqlite3.capi.sqlite3_js_db_export(sqliteDb.pointer!));
+    });
+  });
 }
 
 // drizzle-orm/sqlite-proxy's own `AsyncRemoteCallback` type declares
@@ -81,9 +150,17 @@ async function queryWebSqlite(
   params: any[],
   method: 'run' | 'all' | 'get' | 'values',
 ): Promise<{ rows: any }> {
-  const sqliteDb = await getDb();
+  const { sqlite3, sqliteDb } = await getDb();
+  // `.returning()` inserts execute via 'all', not 'run' — a plain method
+  // check would miss those — so this instead checks the statement itself:
+  // anything that isn't a SELECT is treated as a write worth persisting
+  // (covers INSERT/UPDATE/DELETE, migrations' CREATE TABLE/INDEX, and
+  // BEGIN/COMMIT — a harmless over-trigger on the rare non-mutating
+  // statement, like a bare PRAGMA, is fine).
+  const isWrite = !/^\s*select/i.test(sql);
   if (method === 'run') {
     sqliteDb.exec({ sql, bind: params });
+    if (isWrite) schedulePersist(sqlite3, sqliteDb);
     return { rows: [] };
   }
   const resultRows = sqliteDb.exec({
@@ -92,6 +169,7 @@ async function queryWebSqlite(
     returnValue: 'resultRows',
     rowMode: 'array',
   });
+  if (isWrite) schedulePersist(sqlite3, sqliteDb);
   return { rows: method === 'get' ? (resultRows[0] ?? undefined) : resultRows };
 }
 

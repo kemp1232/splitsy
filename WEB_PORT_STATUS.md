@@ -366,7 +366,7 @@ pattern — `expo export -p web`, `serve dist` with the `serve.json` headers
 file, then drive it with this script and check for `pageerror`/`worker`
 console output and `crossOriginIsolated`.
 
-## Update 2 — Phase 1 is DONE (with a documented persistence limitation)
+## Update 2 — Phase 1 is DONE (persistence added as a stopgap since — see Update 3)
 
 The fallback above was implemented, then revised twice more as each attempt
 hit its own Metro-web-bundling-specific dead end — full history kept below
@@ -442,16 +442,11 @@ since the exact failures are worth not re-discovering:
 6. `pnpm typecheck && pnpm lint && pnpm test` all clean throughout (364/364
    tests, 0 new lint errors) — native is provably unaffected by any of this.
 
-**KNOWN LIMITATION, clearly documented in `src/db/client.web.ts` itself**:
-the web build has **no persistent storage** right now — every reload starts
-a fresh, empty, in-memory database. This is a deliberate, scoped trade-off
+At this point the web build had **no persistent storage** — every reload
+started a fresh, empty, in-memory database — a deliberate, scoped trade-off
 given how much Metro-bundling-specific friction persistent OPFS storage hit
-on every attempt, not an oversight. Revisiting it is a well-defined follow-up
-(fix the nested-worker serving path, or wait for library/bundler
-compatibility to improve) that doesn't block anything else in this plan —
-swapping `client.web.ts` for a worker-backed persistent version later
-requires no changes anywhere else, since `drizzle-orm/sqlite-proxy`'s
-callback shape is what every other file talks to.
+on every attempt, not an oversight. See "Update 3" below — this was then
+closed with a stopgap.
 
 **New/changed files for the final working shape**:
 - `public/sqlite3.wasm` (new — copied binary, see point 2)
@@ -474,13 +469,77 @@ callback shape is what every other file talks to.
 - `app.config.ts` (same header value change, for the EAS Hosting production
   config)
 
+## Update 3 — Stopgap persistence added via IndexedDB (whole-database blob)
+
+User asked: since the web has local storage, can that be used for now? Went
+with **IndexedDB, not literal `localStorage`** — `localStorage` only stores
+strings (a ~33% size-inflating base64 round trip would be needed for the
+binary database file) and has a much lower per-origin size ceiling (usually
+5-10MB) than IndexedDB. The approach: serialize the *entire* SQLite database
+to a single binary blob and save/restore that whole blob, rather than
+anything more granular — simple, and the natural fit since sqlite-wasm
+already exposes exactly this pair of primitives:
+
+- `sqlite3.capi.sqlite3_js_db_export(dbPointer)` — returns the live database
+  as a `Uint8Array` (documented, typed).
+- `sqlite3.capi.sqlite3_deserialize(dbPointer, 'main', dataPtr, size, size,
+  flags)` — the C-level counterpart for loading a serialized image into an
+  already-open (empty) connection. Lower-level than the export side: needs
+  `sqlite3.wasm.allocFromTypedArray(bytes)` first to copy the JS bytes into
+  WASM linear memory (the function takes a raw pointer, not a JS array), and
+  the right flag combination
+  (`SQLITE_DESERIALIZE_FREEONCLOSE | SQLITE_DESERIALIZE_RESIZEABLE` — lets
+  SQLite own/free that memory itself, and lets the DB grow past the restored
+  snapshot's original size as the app keeps writing).
+
+New file `src/db/web/idbPersistence.ts` — a minimal plain-`indexedDB`
+wrapper (`loadPersistedDatabase()` / `savePersistedDatabase(bytes)`, one
+object store, one fixed record key, both directions best-effort/fail-open to
+"start fresh" on any error). Wired into `src/db/client.web.ts`:
+- On first `getDb()` call: create the (empty) `oo1.DB`, try to load a saved
+  blob, and `sqlite3_deserialize` it in if one exists, **before** setting
+  `PRAGMA foreign_keys = ON` (a per-connection setting, not stored in the
+  file itself, so it has to be reapplied regardless of which branch ran).
+- After every query classified as a write: schedule a debounced (500ms) save
+  of the whole database. `.returning()` inserts execute via drizzle-proxy's
+  `'all'` method, not `'run'`, so write-detection checks the SQL text itself
+  (anything not starting with `SELECT`) rather than trusting `method`.
+- A `beforeunload` listener does a best-effort immediate (non-debounced)
+  save on tab close — `beforeunload` can't reliably await async work before
+  the page terminates, so this narrows the loss window rather than
+  guaranteeing zero loss.
+
+**Verified working end-to-end** with the same Playwright-over-system-Chrome
++ `expo export -p web` + `serve dist` pattern, this time reloading the same
+page twice in one browser context: first load ran all 9 `CREATE TABLE`
+statements and saved a 229KB blob to IndexedDB (confirmed by reading it back
+directly via `indexedDB.open(...)` in the test script); **on reload, zero
+`CREATE TABLE` statements ran** — the migration runner correctly recognized
+the restored database already had them applied and skipped straight past,
+proving the full export -> IndexedDB -> reload -> deserialize round trip
+works correctly. `pnpm typecheck && pnpm lint && pnpm test` stayed clean
+throughout (364/364 tests).
+
+This remains an explicitly-labeled stopgap (see `client.web.ts`'s own header
+comment) — a whole-file save on every write debounce window is fine at this
+app's current size but doesn't scale indefinitely, and true OPFS persistence
+(no export/import round trip needed at all) is still the better long-term
+answer once the nested-worker serving gap from Update 2 is solved. Swapping
+it in later needs no changes anywhere else, since every other file only ever
+talks to `drizzle-orm/sqlite-proxy`'s callback shape.
+
+**New/changed files**:
+- `src/db/web/idbPersistence.ts` (new)
+- `src/db/client.web.ts` (restore-on-load + debounced save-on-write added)
+
 ## What's NOT started yet
 
 - Solving the dev-server COOP/COEP gap so `expo start --web` reflects
   reality for day-to-day iteration (not blocking — `export` + `serve` is the
   reliable way to test locally for now, and production hosting goes through
   the `app.config.ts` header config regardless, not the dev server).
-- Revisiting persistent web storage (see "KNOWN LIMITATION" above).
+- True OPFS persistence (see "Update 3" — IndexedDB whole-blob persistence
+  is in place as a stopgap, not the final answer).
 - Phases 2–7 entirely: auth on web, receipt capture/image storage on web,
   Share API fallback, the sequential fade-through transition
   (`src/navigation/` module), loading-screen audit, responsive desktop
