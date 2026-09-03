@@ -577,14 +577,42 @@ optional closer-to-production sanity check.
   useful for a final check before shipping, not required for normal
   development.
 
+## Update 5 — Phase 2 (auth on web) done
+
+Triggered by a real CORS error hit live (`get-session` blocked cross-origin)
+— native `fetch` is never subject to browser CORS, so this had simply never
+come up before the web port.
+
+- `server/src/index.ts`: added `hono/cors` on `/api/*` (covers both
+  `/api/auth/*` and `/api/ocr`), `credentials: true` (required for a
+  cookie-based session) with an explicit origin allowlist — browsers reject
+  a wildcard `origin` alongside `Allow-Credentials: true`. Configurable via
+  a new `WEB_APP_ORIGINS` env var (comma-separated), defaulting to this
+  repo's two local web origins (`http://localhost:8081` /
+  `http://localhost:3000`, matching `pnpm web` / `pnpm web:preview`).
+  Verified live against the actual running dev backend (`tsx watch` picked
+  the change up automatically) — a real `OPTIONS` preflight now returns
+  `access-control-allow-origin`/`-credentials` correctly.
+- `src/lib/authClient.web.ts` (new): drops the native-only `expoClient`
+  plugin (bridges the session into `expo-secure-store`, handles the
+  scheme-based deep-link callback) — a browser already has its own cookie
+  jar, so the plain client just needs `fetchOptions.credentials: 'include'`
+  so the cross-origin request actually sends/accepts the session cookie.
+- `Linking.createURL(...)` (used by the 3 screens building email
+  verification/password-reset callback URLs) needed **no changes** —
+  checked `expo-linking`'s own `createURL.web.ts` directly: it already
+  ignores the native-only `scheme` option and builds a plain
+  `window.location.origin`-relative URL on web.
+- `pnpm typecheck/lint/test` (client) and the server's own
+  `npm run typecheck`/`test` (30/30) all clean.
+
 ## What's NOT started yet
 
 - True OPFS persistence (see "Update 3" — IndexedDB whole-blob persistence
   is in place as a stopgap, not the final answer).
-- Phases 2–7 entirely: auth on web, receipt capture/image storage on web,
-  Share API fallback, the sequential fade-through transition
-  (`src/navigation/` module), loading-screen audit, responsive desktop
-  widening.
+- Phases 3–7: receipt capture/image storage on web, Share API fallback, the
+  sequential fade-through transition (`src/navigation/` module),
+  loading-screen audit, responsive desktop widening.
 
 ## Key facts worth not re-deriving on resume
 
