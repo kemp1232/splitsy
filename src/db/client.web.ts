@@ -86,7 +86,12 @@ function restoreDatabase(sqlite3: Sqlite3, sqliteDb: Sqlite3Db, bytes: Uint8Arra
 function getDb() {
   if (!dbReady) {
     dbReady = initSqlite3({ locateFile: () => '/sqlite3.wasm' }).then(async (sqlite3) => {
-      const sqliteDb = new sqlite3.oo1.DB('/splitsy.sqlite3', 'ct');
+      // 'c' = create the file if it doesn't exist yet. Not 'ct' — the 't'
+      // flag enables sqlite3-wasm's own verbose per-statement SQL_TRACE
+      // console logging (confirmed by reading its source), which isn't
+      // something this app wants on by default; it was left in by mistake,
+      // copied verbatim from the package's own README example.
+      const sqliteDb = new sqlite3.oo1.DB('/splitsy.sqlite3', 'c');
       const savedBytes = await loadPersistedDatabase();
       if (savedBytes && savedBytes.length > 0) {
         restoreDatabase(sqlite3, sqliteDb, savedBytes);

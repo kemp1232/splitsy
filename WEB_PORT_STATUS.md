@@ -532,12 +532,53 @@ talks to `drizzle-orm/sqlite-proxy`'s callback shape.
 - `src/db/web/idbPersistence.ts` (new)
 - `src/db/client.web.ts` (restore-on-load + debounced save-on-write added)
 
+## Update 4 — Running locally, and the dev-server COOP/COEP gap is now moot
+
+User ran `pnpm web` (`expo start --web`) directly and reported what looked
+like errors in the terminal's forwarded browser console. Neither was an
+actual failure:
+
+1. **All that "SQL TRACE #N ..." log spam** was sqlite3-wasm's own built-in
+   verbose per-statement tracing — accidentally left on. Root cause: `new
+   sqlite3.oo1.DB('/splitsy.sqlite3', 'ct')`'s `'t'` flag character
+   specifically enables it (confirmed by reading the source:
+   `if (flagsStr.indexOf("t") >= 0) capi.sqlite3_trace_v2(...)`) — copied
+   verbatim from the package's own README example without noticing 't' means
+   "trace", not part of "create". **Fixed**: flags are just `'c'` now.
+2. **The migrations appearing to run twice**, the second time against a
+   connection with no filename (`sqlite3_db_filename` returning empty) — this
+   is Metro's Fast Refresh doing an initial resync in dev mode, re-executing
+   `client.web.ts`'s top-level module code (including the `let dbReady =
+   null` singleton) from scratch shortly after first load. This is dev-server
+   dev-mode-only behavior (`expo start --web`'s Fast Refresh runtime) — a
+   real static build (`expo export -p web`, what actually ships) only
+   executes a module's top-level code once, since there's no HMR runtime at
+   all. Not a bug worth chasing further given that.
+
+**More importantly, this run also settles the dev-server COOP/COEP gap from
+Update 2**: that gap only ever mattered for `SharedArrayBuffer`, which only
+ever mattered for the worker+OPFS approaches that were abandoned in Update 2
+in favor of main-thread-only sqlite3-wasm (no worker at all). Since nothing
+in the current implementation needs cross-origin isolation any more, `pnpm
+web` (`expo start --web`) is now a perfectly fine way to run this app
+locally day to day — the earlier advice to prefer `expo export -p web` +
+`serve` for local testing is no longer necessary for correctness, just an
+optional closer-to-production sanity check.
+
+**Two ways to run the web app locally, going forward**:
+- `pnpm web` — live dev server (Metro/Expo Router), Fast Refresh, simplest
+  for day-to-day iteration. (Ignore one initial "double init" log burst on
+  first load — see point 2 above.)
+- `pnpm web:preview` — `expo export -p web` (a real static production-shaped
+  build) + `serve dist` with `web-serve-headers.json` copied in as
+  `dist/serve.json` (the COOP/COEP headers, kept for whenever OPFS
+  persistence is revisited — harmless no-ops for the current main-thread-only
+  setup) on `http://localhost:3000`. Closer to what a real deploy looks like;
+  useful for a final check before shipping, not required for normal
+  development.
+
 ## What's NOT started yet
 
-- Solving the dev-server COOP/COEP gap so `expo start --web` reflects
-  reality for day-to-day iteration (not blocking — `export` + `serve` is the
-  reliable way to test locally for now, and production hosting goes through
-  the `app.config.ts` header config regardless, not the dev server).
 - True OPFS persistence (see "Update 3" — IndexedDB whole-blob persistence
   is in place as a stopgap, not the final answer).
 - Phases 2–7 entirely: auth on web, receipt capture/image storage on web,
