@@ -40,6 +40,21 @@ if (missing.length > 0) {
 const resend = new Resend(RESEND_API_KEY);
 const fromEmail = process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev';
 
+// Origins the web build of the app may run from — shared with index.ts's
+// CORS config (a single source of truth, since both need to agree on what
+// "the web app" is allowed to be). CORS controls what the *browser* lets the
+// page read back; this `trustedOrigins` list is Better Auth's own separate
+// server-side check (CSRF-style) of what `Origin` header it accepts as
+// legitimate on a state-changing auth request — a request can pass CORS and
+// still be rejected here, which is exactly the "Invalid origin" error this
+// list fixes. See server/.env.example for the env var itself.
+export const webAppOrigins = (
+  process.env.WEB_APP_ORIGINS ?? 'http://localhost:8081,http://localhost:3000'
+)
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 // Better Auth's Expo plugin redirects back into the app via its custom URL
 // scheme (see app.config.ts / src/constants/appInfo.json), so that scheme
 // must be a trusted origin. The exp:// entries are only reachable in
@@ -50,6 +65,7 @@ const trustedOrigins = [
   ...(process.env.NODE_ENV !== 'production'
     ? ['exp://', 'exp://**', 'exp://192.168.*.*:*/**']
     : []),
+  ...webAppOrigins,
 ];
 
 // Vitest sets NODE_ENV=test automatically, so test runs are routed to an

@@ -5,7 +5,7 @@ import { getMigrations } from 'better-auth/db/migration';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 
-import { auth } from './auth.js';
+import { auth, webAppOrigins } from './auth.js';
 import { ocrRoute } from './routes/ocr.js';
 
 // Better Auth doesn't auto-create its tables — run its migrations against
@@ -14,23 +14,17 @@ import { ocrRoute } from './routes/ocr.js';
 const { runMigrations } = await getMigrations(auth.options);
 await runMigrations();
 
+const app = new Hono();
+
 // Only the web build needs this — native `fetch` calls are never subject to
 // browser CORS/cookie-origin rules, so this has never come up before the web
 // port. `credentials: true` (required for Better Auth's cookie-based web
 // session — see src/lib/authClient.web.ts's `fetchOptions.credentials`)
 // means `origin` must be an explicit allowlist, never `'*'` — the browser
-// rejects a wildcard origin alongside `Allow-Credentials: true`. Defaults
-// cover this repo's two documented ways to run the web app locally
-// (`pnpm web`'s dev server on 8081, `pnpm web:preview`'s static-export
-// preview on 3000); override for any other origin (a deployed web app,
-// primarily) via a comma-separated `WEB_APP_ORIGINS`.
-const webAppOrigins = (process.env.WEB_APP_ORIGINS ?? 'http://localhost:8081,http://localhost:3000')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-
-const app = new Hono();
-
+// rejects a wildcard origin alongside `Allow-Credentials: true`. Same
+// `webAppOrigins` list auth.ts's own `trustedOrigins` uses — CORS alone
+// isn't enough, since that's a browser-side check; Better Auth does its own
+// separate server-side origin check too.
 app.use(
   '/api/*',
   cors({
