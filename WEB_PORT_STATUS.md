@@ -300,30 +300,101 @@ below):
    };
    ```
 
+## Update — Phase 1 spike result: Attempt 1 FAILED verification (empirically reproduced)
+
+Since the earlier version of this doc, the following was verified with a
+real headless-Chrome session (Playwright driving `google-chrome`, not just
+inspection/reasoning):
+
+1. `npx expo export -p web` — **succeeds cleanly**, bundles 1405 modules,
+   correctly pulls in expo-sqlite's `wa-sqlite.wasm` (621KB) and a dedicated
+   worker bundle. No import/bundling errors from any native-only module
+   (`expo-secure-store`, `expo-file-system`, ML Kit, `Share`, `expo-linking`
+   all bundle fine — Phase 2–4 concerns are runtime-behavior risks, not
+   bundling risks).
+2. `npx expo start --web`'s **dev server does not apply the `metro.config.js`
+   COOP/COEP `enhanceMiddleware` headers to the root HTML document** —
+   confirmed via direct source inspection of `@expo/cli`'s
+   `instantiateMetro.js`: the dev server serves a route's HTML through a
+   separate SSR-style handler (`MetroBundlerDevServer.getStaticPageAsync`)
+   that never passes through the `enhanceMiddleware`-wrapped bundler
+   middleware. The headers DO correctly appear on JS-bundle/asset requests
+   (verified via curl), just not on `/` itself, so `self.crossOriginIsolated`
+   stayed `false` under `expo start --web`. **This is a dev-server-only gap**
+   — needs either a reverse-proxy-in-front-of-Metro for local dev, or more
+   Expo-CLI-specific research into its SSR page-serving path; not yet solved,
+   not blocking further work since the actual SQLite behavior was verified
+   via the exported build instead (see next point).
+3. Verified against the **production export** (`expo export -p web` +
+   `npx serve dist` with a `serve.json` applying the same 2 headers to every
+   response — this mirrors what `app.config.ts`'s `expo-router` plugin
+   `headers` config does for EAS Hosting): `self.crossOriginIsolated` came
+   back `true` and `SharedArrayBuffer` was defined — the header/isolation
+   piece works correctly in production-shaped serving.
+4. **But then `openDatabaseSync` throws `Error: Sync operation timeout`** in
+   `invokeWorkerSync` — this is the exact known failure mode the earlier
+   research flagged (`expo/expo#36392`), reproduced fresh on SDK 57. Deeper
+   trace: the SQLite worker (`worker-*.js`) loads successfully over HTTP
+   (200, correct `application/javascript`), the `wa-sqlite.wasm` file loads
+   successfully too (200, correct `application/wasm`), but the actual Worker
+   object Chrome creates is instantiated from a **`blob:` URL** (Metro/Expo's
+   web-worker bundling wraps the real worker script in a Blob), and that
+   worker closes almost immediately with **zero console output** — it dies
+   before logging anything, strongly suggesting it crashes on a very early
+   line. The likely mechanism: a `Worker` created from a `blob:` URL does not
+   always inherit the creating document's cross-origin-isolation state
+   correctly in Chromium (a known class of browser quirk) — if so, the
+   worker's own `self.crossOriginIsolated`/`SharedArrayBuffer` would be
+   unavailable *inside* the worker even though the main page's is `true`,
+   causing whatever OPFS/wa-sqlite init step needs it to fail silently, and
+   the main thread's `Atomics`-based wait to eventually time out. **Not
+   fully root-caused** — this is the leading hypothesis, not a confirmed
+   fix.
+
+**Conclusion: Attempt 1 (near-zero-code-change, trusting expo-sqlite's own
+web driver) does not work out of the box in this exact setup.** Per the
+plan's own decision tree, this means moving to the **fallback path**
+(`drizzle-orm/sqlite-proxy` + `@sqlite.org/sqlite-wasm` in a
+hand-written worker) — fully scoped in the plan above, not yet started.
+
+Diagnostic scripts used for this (kept for reference, not part of the app):
+`/tmp/claude-1000/.../scratchpad/verify-web/check.mjs` and `check2.mjs` — a
+small Playwright-over-system-Chrome driver (`playwright-core` +
+`executablePath: '/usr/bin/google-chrome'`, no Playwright browser download
+needed). Re-usable for verifying the fallback once implemented: same
+pattern — `expo export -p web`, `serve dist` with the `serve.json` headers
+file, then drive it with this script and check for `pageerror`/`worker`
+console output and `crossOriginIsolated`.
+
 ## Immediate next step (exactly where we stopped)
 
-We had just re-run `npx expo export -p web` to confirm the `metro.config.js`
-fix resolves that crash and to see what the **next** error is — native-only
-imports (`expo-secure-store`, `expo-file-system`'s `Directory`/`File`/
-`Paths`, ML Kit, RN's `Share`, `expo-linking`) will very likely surface next,
-per Phase 1 step 6 and Phases 2–4 of the plan. This command was interrupted
-by the user leaving mid-run, **not because it failed** — the fix had not yet
-been re-verified.
-
-**First action on resume**: run `npx expo export -p web` (a one-shot export,
-good for quickly surfacing every bundling/import error without a live
-browser) or `npx expo start --web` (a live dev server, needed for the actual
-runtime verification checklist below). Work through whatever errors appear
-one at a time — this is expected and exactly what Phase 1 anticipates.
+**Implement the fallback path** (see "Fallback" under Phase 1 in the plan
+above), since Attempt 1 failed verification:
+1. Add `@sqlite.org/sqlite-wasm` dependency.
+2. Write a small worker wrapping it with an OPFS-backed database, exposed via
+   a `(sql, params, method) => Promise<{rows}>` callback shape.
+3. `src/db/client.ts`: platform-branch — native keeps `openDatabaseSync` +
+   `drizzle-orm/expo-sqlite` exactly as today; web calls
+   `drizzle(callback, { schema })` from `drizzle-orm/sqlite-proxy` wired to
+   that worker.
+4. `src/db/migrations.ts`: web branch uses `drizzle-orm/sqlite-proxy/migrator`'s
+   async `migrate()` instead of `drizzle-orm/expo-sqlite/migrator`'s
+   `useMigrations`.
+5. Update `src/db/repositories/adjustmentAllocations.repository.ts` and
+   `src/db/repositories/itemAssignments.repository.ts`'s sync
+   `db.transaction((tx) => { tx.x().run(); })` calls to the async proxy
+   driver's shape (`await db.transaction(async (tx) => { await tx.x(); })`).
+6. Re-verify with the same Playwright-over-system-Chrome + `serve dist`
+   pattern above: `crossOriginIsolated`, DB open, migrations, a write→read
+   round trip through one of the two just-updated repositories, reload
+   persistence.
+7. Separately (lower priority, not blocking): solve the dev-server
+   COOP/COEP gap from point 2 above, so `expo start --web` is usable for
+   day-to-day iteration and not just `export` + `serve`.
 
 ## What's NOT started yet
 
-- Phase 1's actual runtime verification checklist (crossOriginIsolated,
-  `openDatabaseSync`, migrations round-trip, the two sync-transaction
-  repositories, persistence across reload, cross-browser check) — needs a
-  real or headless browser; not yet attempted at all.
-- Phase 1's fallback path (`drizzle-orm/sqlite-proxy` +
-  `@sqlite.org/sqlite-wasm`) — only needed if the above verification fails.
+- The Phase 1 fallback implementation itself (previous section).
 - Phases 2–7 entirely: auth on web, receipt capture/image storage on web,
   Share API fallback, the sequential fade-through transition
   (`src/navigation/` module), loading-screen audit, responsive desktop
