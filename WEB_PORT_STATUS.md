@@ -746,12 +746,107 @@ real code bug.**
   gallery-upload → OCR → receipt-review → image-display pipeline described
   above.
 
+## Update 7 — Performance pass: asset loading, page-load speed, loading screens
+
+Triggered by the user's own ask: "optimize our react native app and web...
+proper asset loading, proper loading screens, how can we load a page
+faster." Concrete, measured changes only — every number below is from
+actually running `expo export -p web` and diffing the output, not an
+estimate. Verified live in a browser (Playwright + system Chrome +
+`npx serve dist` for a real production-mode check, not just the dev
+server) after each change.
+
+**Icon fonts: barrel import → per-family subpath import.** Every file
+imported icons via `import { Feather } from '@expo/vector-icons'`. That
+barrel (`@expo/vector-icons`'s own `Icons.js`) statically re-exports all 15
+bundled icon families — Metro has to evaluate the whole barrel module to
+satisfy one named import, so every family's font file + glyph-map JSON
+became part of the web export regardless of which ones the app actually
+uses (confirmed: this app only uses `Feather`, everywhere, plus `Ionicons`
+in one component, `FoodIconBadge.tsx`, with an existing code comment
+explaining why — Feather has no food glyphs). Changed every import site
+(30 files) to the direct subpath form instead:
+`import Feather from '@expo/vector-icons/Feather'` — this is
+`@expo/vector-icons`'s own documented pattern for exactly this (a plain
+re-export shim at the package root, bypassing the barrel entirely).
+**Measured: web export's font assets dropped from 15 families/~4.0MB
+down to just Feather + Ionicons/446KB, and the main JS bundle shrank
+~400KB too** (the removed families' glyph-map JSON was inlined in JS, not
+just referenced as an asset). Native gets the same win (smaller bundled
+asset payload), not just web. `pnpm typecheck`/`lint`/`test` all stayed
+clean — this is a pure import-path change, no behavior change.
+
+**Oversized decorative images recompressed.** `assets/images/logo.png`
+(1254×1254, 779KB) is displayed at 28×28pt (≤84px even at 3x) in the Home
+header; `assets/images/greeting.png` (1774×528, 577KB) is Home's full-width
+mascot banner. Both were shipped at their original, uncompressed-PNG
+export size with no resizing or recompression step in this app's own build
+(Expo's asset pipeline only auto-optimizes the dedicated
+icon/favicon/splash slots, not arbitrary `require()`'d images referenced
+from screen code). Reprocessed with `sharp` (already present in
+`node_modules` transitively, no new dependency added):
+- `logo.png` → resized to 256×256 (still ~3x more than the 84px @3x actually
+  needed, generous headroom) + palette-quantized PNG: **779KB → 23KB**.
+- `greeting.png` → same exact 1774×528 dimensions (the layout code
+  explicitly depends on that exact aspect ratio — resizing this one was
+  out of scope) + palette-quantized PNG only: **577KB → 258KB**.
+Both re-verified pixel-for-pixel visually at their real render size (a
+Home-screen screenshot) — no visible banding or quality loss from the
+palette quantization.
+
+**Web: route-based code splitting (`asyncRoutes`).** The entire app was
+one monolithic web JS bundle — **2.9MB** pre-icon-fix, measured — because
+`expo-router`'s default `EXPO_ROUTER_IMPORT_MODE` is `'sync'` (every route
+eagerly bundled into one file, confirmed by reading
+`expo-router/build/import-mode/index.js`). Added
+`asyncRoutes: 'production'` to `app.config.ts`'s `expo-router` plugin
+config — the officially-supported, documented option for exactly this;
+explicitly web-only in production (native release builds are unaffected by
+design), and this repo's own dev server keeps today's synchronous
+behavior too (only the `production` web export switches to lazy
+per-route chunks), so local Fast Refresh isn't affected. **Measured
+result: 1 entry bundle (1.1MB) + 1 shared vendor chunk (1.2MB) + ~26
+per-route chunks (1.4–45KB each)**, fetched on demand as each route is
+first visited, instead of one 2.5MB (post-icon-fix) bundle for the entire
+route tree upfront. Verified live against the actual production export
+(`expo export -p web` + `npx serve dist`, not the dev server) —
+navigated sign-in → register → home → new-bill → settings, each triggering
+a real lazy chunk fetch, zero console errors.
+- Considered a `+html.tsx` custom document (to add a `preconnect` hint for
+  the backend origin, shaving latency off the app's first `get-session`
+  call) but confirmed by reading `@expo/cli`'s own export source
+  (`exportApp.js`) that `+html.tsx` is only honored when
+  `web.output` is `'static'`/`'server'` — this app builds in the default
+  SPA/`'single'` mode, where `+html.tsx` is silently never invoked.
+  Switching `web.output` just to unlock one preconnect hint would be a
+  much bigger architectural change (SSG/SSR semantics, build-time
+  rendering) than its marginal benefit justified, so this was written,
+  confirmed dead, and removed rather than left as misleading unused code.
+
+**Loading-screen audit.** Spot-checked every screen doing async work
+without an obvious `LoadingState`/inline spinner (`bill/new.tsx` — no
+async work, a static chooser, needs none; `trip/new.tsx` — uses a
+button-level `loading` prop for its own submit action, the same pattern
+`bill/preview.tsx`'s "Use this photo" already uses, correct as-is) —
+existing coverage across the other ~12 screens was already solid, nothing
+else needed changing. One real addition: `_layout.tsx`'s DB-migration gate
+(the very first thing every screen waits behind) showed a bare, unlabeled
+spinner. On web specifically, that gate's first-ever run also means
+fetching + compiling a ~1MB SQLite WASM binary (`public/sqlite3.wasm`,
+864KB) — a real, one-time delay with nothing on screen explaining it.
+Added `copy.global.settingUpDatabase` ("Setting up your database…") as
+that `LoadingState`'s message — harmless on native too, where the
+synchronous db open is fast enough the message barely has time to appear.
+
+- `pnpm typecheck && pnpm lint && pnpm test` (364/364) clean after every
+  change in this pass, plus a final full re-verification at the end.
+
 ## What's NOT started yet
 
 - True OPFS persistence (see "Update 3" — IndexedDB whole-blob persistence
   is in place as a stopgap, not the final answer).
 - Phases 5–7: the sequential fade-through transition (`src/navigation/`
-  module), loading-screen audit, responsive desktop widening.
+  module), responsive desktop widening.
 
 ## Key facts worth not re-deriving on resume
 

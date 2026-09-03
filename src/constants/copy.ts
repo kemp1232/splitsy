@@ -668,6 +668,14 @@ export const copy = {
     cancelAction: 'Cancel',
     closeAccessibilityLabel: 'Close',
     loadingBills: 'Loading bills…',
+    // _layout.tsx's migration gate, shown before any screen can render. Worth
+    // its own message (not a bare spinner) specifically because of web: the
+    // first visit there also means fetching + compiling a ~1MB SQLite WASM
+    // binary (see WEB_PORT_STATUS.md's optimization pass), a genuinely
+    // noticeable one-time cost with nothing to show for it on screen yet —
+    // native's own synchronous db open is fast enough that this message
+    // barely has time to appear, so showing it there too is harmless.
+    settingUpDatabase: 'Setting up your database…',
     databaseStartupFailure: "Splitsy couldn't open its local data. Restart the app and try again.",
     imageCopyFailure:
       "We couldn't save this receipt image. Choose it again or enter the bill manually.",

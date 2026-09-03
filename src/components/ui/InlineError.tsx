@@ -1,4 +1,4 @@
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { StyleSheet, View } from 'react-native';
 
 import { useTheme } from '@/theme/ThemeProvider';

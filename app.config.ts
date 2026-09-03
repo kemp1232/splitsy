@@ -27,6 +27,16 @@ const config: ExpoConfig = {
     [
       'expo-router',
       {
+        // Splits each route into its own lazily-fetched JS chunk in web
+        // production builds instead of one monolithic entry bundle (measured
+        // ~2.5MB for this app's entire route tree pre-split — see
+        // WEB_PORT_STATUS.md's optimization pass). `'production'` is the
+        // documented web-only value: native release builds are unaffected
+        // (async routes there would mean a runtime fetch for a chunk that
+        // should just be in the app bundle already), and this repo's own dev
+        // server keeps today's synchronous behavior too, so Fast Refresh
+        // during local development isn't affected either.
+        asyncRoutes: 'production',
         // Cross-origin isolation, required by @sqlite.org/sqlite-wasm's
         // worker+OPFS mode (SharedArrayBuffer — see src/db/client.web.ts).
         // expo-sqlite's own web driver (wa-sqlite) was tried first but its

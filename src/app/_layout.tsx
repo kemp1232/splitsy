@@ -94,7 +94,7 @@ function RootNavigator() {
   if (!success) {
     return (
       <Screen>
-        <LoadingState />
+        <LoadingState message={copy.global.settingUpDatabase} />
       </Screen>
     );
   }
