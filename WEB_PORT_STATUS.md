@@ -606,6 +606,30 @@ come up before the web port.
 - `pnpm typecheck/lint/test` (client) and the server's own
   `npm run typecheck`/`test` (30/30) all clean.
 
+**Two follow-up fixes found by actually signing in, not just reaching the
+form** — CORS and `trustedOrigins` alone got the sign-in screen to render
+and the POST to succeed, but the session didn't stick:
+
+- Better Auth's own server-side origin check (`trustedOrigins`) is separate
+  from CORS — a request can pass CORS and still get rejected with `Invalid
+  origin`. Fixed by moving the `WEB_APP_ORIGINS` parsing into
+  `server/src/auth.ts` (now the single source of truth) and adding it to
+  `trustedOrigins` too; `index.ts`'s CORS config imports the same list.
+- Sign-in appeared to succeed but every following `get-session` came back
+  with no session — root cause confirmed by reading Better Auth's own
+  source (`sameSite: "lax"` is its hardcoded cookie default): the LAN-IP
+  backend URL (`http://192.168.1.10:8787`, needed for a *physical device*
+  to reach a dev machine that doesn't resolve `localhost` for it) is a
+  different **site** from the web app's own `http://localhost:8081`/`:3000`
+  origin, and a `Lax` cookie set by one is never sent back on a fetch from
+  the other. `src/constants/config.ts` now resolves the backend URL
+  differently per platform — web defaults to `http://localhost:8787` (same
+  site as the web app, since the backend runs on the same machine during
+  local dev) via new `EXPO_PUBLIC_WEB_OCR_BACKEND_URL`/
+  `EXPO_PUBLIC_WEB_AUTH_BACKEND_URL` env vars; native is untouched. Verified
+  live: the web build now reaches the real sign-in screen with zero
+  network/CORS errors.
+
 ## What's NOT started yet
 
 - True OPFS persistence (see "Update 3" — IndexedDB whole-blob persistence
