@@ -1,13 +1,7 @@
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import { expo } from '@better-auth/expo';
+import { Pool } from '@neondatabase/serverless';
 import { betterAuth } from 'better-auth';
-import Database from 'better-sqlite3';
 import { Resend } from 'resend';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // The Expo app's custom URL scheme, from src/constants/appInfo.json's
 // "scheme" field (read via app.config.ts). Hardcoded rather than imported
@@ -23,11 +17,15 @@ const EXPO_SCHEME = 'splitsy';
 const BETTER_AUTH_SECRET = process.env.BETTER_AUTH_SECRET;
 const BETTER_AUTH_URL = process.env.BETTER_AUTH_URL;
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
+// Not required in tests — see the in-memory-SQLite branch below, which
+// never reads this at all. Vitest sets NODE_ENV=test automatically.
+const DATABASE_URL = process.env.DATABASE_URL;
 
 const missing: string[] = [];
 if (!BETTER_AUTH_SECRET) missing.push('BETTER_AUTH_SECRET');
 if (!BETTER_AUTH_URL) missing.push('BETTER_AUTH_URL');
 if (!RESEND_API_KEY) missing.push('RESEND_API_KEY');
+if (!DATABASE_URL && process.env.NODE_ENV !== 'test') missing.push('DATABASE_URL');
 
 if (missing.length > 0) {
   console.error(
@@ -68,21 +66,30 @@ const trustedOrigins = [
   ...webAppOrigins,
 ];
 
-// Vitest sets NODE_ENV=test automatically, so test runs are routed to an
-// in-memory SQLite database rather than the real server/data/auth.db file —
-// tests never create, migrate, or write to that file.
-const dbPath =
-  process.env.NODE_ENV === 'test' ? ':memory:' : path.join(__dirname, '../data/auth.db');
-
-// A fresh checkout has no server/data/ directory (it's git-ignored — see
-// .gitignore — because it holds real user data). better-sqlite3 will not
-// create missing parent directories itself, so ensure it exists up front.
-if (dbPath !== ':memory:') {
-  mkdirSync(path.dirname(dbPath), { recursive: true });
-}
+// Vitest sets NODE_ENV=test automatically, so test runs get a fresh
+// in-memory SQLite database (via better-sqlite3, a devDependency — never
+// installed/required outside test runs) instead of a real network
+// connection to Postgres. Better Auth's Kysely adapter auto-detects the
+// dialect from the object shape: something with `.connect()` (a `pg`-
+// compatible Pool, which `@neondatabase/serverless`'s Pool is) reads as
+// Postgres; a better-sqlite3 Database instance reads as SQLite — see
+// node_modules/@better-auth/kysely-adapter's own dialect-detection.
+//
+// Real deploys (Fly.io/Docker or Vercel) both talk to the same Postgres
+// database via DATABASE_URL — `@neondatabase/serverless`'s Pool works as a
+// plain `pg`-compatible driver against Neon *or* any standard Postgres
+// server (not Neon-exclusive), and its HTTP/WebSocket-based connection
+// mode (rather than a long-lived raw TCP socket) is what makes it safe to
+// construct in a serverless function that may get a fresh container on any
+// given invocation — unlike better-sqlite3's file, which needs a real disk
+// no serverless platform provides.
+const database =
+  process.env.NODE_ENV === 'test'
+    ? new (await import('better-sqlite3')).default(':memory:')
+    : new Pool({ connectionString: DATABASE_URL });
 
 export const auth = betterAuth({
-  database: new Database(dbPath),
+  database,
   secret: BETTER_AUTH_SECRET,
   baseURL: BETTER_AUTH_URL,
   trustedOrigins,

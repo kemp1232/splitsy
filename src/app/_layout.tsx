@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useState } from 'react';
 
 import { BottomTabBar } from '@/components/ui/BottomTabBar';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -21,8 +22,30 @@ import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
 function SessionGate() {
   const { scheme } = useTheme();
   const { data: session, isPending, error, refetch } = authClient.useSession();
+  // Not just the *first* render's `isPending` — Better Auth's client
+  // silently refetches this session query after *any* successful auth
+  // mutation (sign-up, forget-password, ...), not only ones that actually
+  // change the session (see better-auth's client/proxy.ts: every route with
+  // a matching atom listener flips a signal that re-triggers this hook).
+  // Sign-up while `requireEmailVerification` is on is exactly that case —
+  // it succeeds with no session created, but still re-triggers this. Gating
+  // the whole Stack behind `isPending` unconditionally (the previous
+  // behavior) would tear the entire authenticated/unauthenticated tree down
+  // to a bare spinner on *every* one of those refetches, not just the real
+  // initial load — which silently discarded whatever screen/local state was
+  // showing at the time (e.g. register.tsx's own "check your email"
+  // confirmation, shown from local state right after that exact sign-up
+  // call) and rebuilt the Stack from scratch, landing on the (auth) group's
+  // default route instead. Set via the "adjust state while rendering"
+  // pattern (react.dev's own documented exception to "don't call setState
+  // during render") rather than an effect — this needs to take effect
+  // *before* this same render decides what to return below, not one frame
+  // later, and React bails out of a second render here once the state
+  // already matches, so this never loops.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  if (!isPending && !hasLoadedOnce) setHasLoadedOnce(true);
 
-  if (isPending) {
+  if (isPending && !hasLoadedOnce) {
     return (
       <Screen>
         <LoadingState />
