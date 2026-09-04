@@ -43,7 +43,7 @@ ocrRoute.post('/api/ocr', async (c) => {
     );
   }
 
-  const engine = process.env.OCR_ENGINE ?? 'qwen3.6-27b';
+  const engine = process.env.OCR_ENGINE ?? 'qwen3.8-27b';
   const maxWidth = process.env.OCR_IMAGE_MAX_WIDTH
     ? Number(process.env.OCR_IMAGE_MAX_WIDTH)
     : undefined;

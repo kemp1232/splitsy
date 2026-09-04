@@ -59,16 +59,15 @@ export async function requestReceiptExtraction({
         ],
         // Extraction, not creative writing — keep it deterministic.
         temperature: 0,
-        // qwen3.6-27b "thinks" by default (a <think>...</think> reasoning
-        // block prepended to content) — harmless for chat, but it would
-        // land inside the JSON string this call expects back, breaking
-        // JSON.parse entirely. Confirmed via a direct API test that this
-        // fully suppresses it (content came back as exactly "OK" for a
-        // "reply with exactly: OK" prompt, vs. a 112-token <think> block
-        // without it).
+        // qwen3.8-27b (like its predecessor qwen3.6-27b, which Groq
+        // deprecated 2026-09) "thinks" by default (a <think>...</think>
+        // reasoning block prepended to content) — harmless for chat, but it
+        // would land inside the JSON string this call expects back,
+        // breaking JSON.parse entirely. Confirmed via a direct API test
+        // against qwen/qwen3.8-27b that this still fully suppresses it.
         reasoning_effort: 'none',
         // Guarantees syntactically valid JSON back (confirmed working for
-        // qwen/qwen3.6-27b via a direct API test against a real receipt) —
+        // qwen/qwen3.8-27b via a direct API test against a real receipt) —
         // does not by itself guarantee the JSON matches our schema, which is
         // why ocr.ts still validates the parsed result.
         response_format: { type: 'json_object' },

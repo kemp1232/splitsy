@@ -26,7 +26,7 @@
 
 > ## ⚠ Amendment — 2026-08-11
 >
-> **The OCR backend now calls Groq's cloud API instead of a self-hosted model.** `server/` sends the receipt photo to Groq's hosted `qwen/qwen3.6-27b` vision-language model (via Groq's OpenAI-compatible chat completions API) rather than a locally-hosted Ollama model. This is a further, explicit deviation from the previous amendment's own stated boundary:
+> **The OCR backend now calls Groq's cloud API instead of a self-hosted model.** `server/` sends the receipt photo to Groq's hosted `qwen/qwen3.8-27b` vision-language model (via Groq's OpenAI-compatible chat completions API) rather than a locally-hosted Ollama model. This is a further, explicit deviation from the previous amendment's own stated boundary:
 >
 > - The 2026-07-31 amendment justified crossing §5.5's "No LLM" specifically because the model was "neither cloud nor paid (self-hosted, open-weight)." That is no longer true: Groq is a third-party cloud inference provider, and while it currently has a free tier, it is a commercial AI service, not a self-hosted one. This also revisits the MVP principle's "free of per-receipt AI or OCR charges" (line 9 above) and §2.2's "any paid AI service" exclusion — this backend is still optional and free to use today, but it depends on a paid vendor's free tier rather than infrastructure the user fully controls.
 > - The receipt image now leaves the developer's own network and is sent to Groq's servers for each transcription request, in addition to the existing client → local backend hop.
