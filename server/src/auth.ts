@@ -139,4 +139,26 @@ export const auth = betterAuth({
     },
   },
   plugins: [expo()],
+  // Only in production: the deployed frontend and this backend are two
+  // separate hosts on two different registrable domains (e.g. a Netlify
+  // frontend + this Vercel backend) — a genuinely cross-*site* request, not
+  // just cross-origin. Better Auth's own cookie default (`SameSite=Lax`) is
+  // never sent back by the browser on a cross-site fetch/XHR (only on a
+  // top-level navigation), which is exactly why sign-in itself succeeded
+  // but every following `get-session` came back with no session — confirmed
+  // live by reading the actual Set-Cookie header off the deployed backend.
+  // `SameSite=None` fixes that for any two HTTPS origins regardless of
+  // domain, but browsers silently drop a `None` cookie that isn't also
+  // `Secure` — harmless here since production is always served over https,
+  // but exactly the reason this is conditional: local dev's own
+  // `http://localhost:8787` would silently lose its session cookie entirely
+  // under `None` (no `Secure` in play there). Local dev's frontend+backend
+  // are already same-site (`localhost:8081`/`:3000` + `localhost:8787` —
+  // different ports, same site), where the existing `Lax` default already
+  // works correctly, so it's left untouched there instead of also forcing
+  // `None` unconditionally.
+  advanced:
+    process.env.NODE_ENV === 'production'
+      ? { defaultCookieAttributes: { sameSite: 'none', secure: true } }
+      : undefined,
 });
