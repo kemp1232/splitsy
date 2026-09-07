@@ -56,8 +56,8 @@
   "scripts": {
     "start": "expo start",
     "web": "expo start --web",
-    "build:web": "expo export -p web",
-    "web:preview": "expo export -p web && cp web-serve-headers.json dist/serve.json && npx serve dist -l 3000",
+    "build:web": "expo export -p web && node scripts/sanitize-web-export.mjs",
+    "web:preview": "pnpm build:web && cp web-serve-headers.json dist/serve.json && npx serve dist -l 3000",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "lint": "expo lint",

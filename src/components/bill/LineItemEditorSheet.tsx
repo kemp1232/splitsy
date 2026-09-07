@@ -17,7 +17,7 @@ import { NumberStepper } from '@/components/ui/NumberStepper';
 import { useSlideUpAnimation } from '@/components/ui/useSlideUpAnimation';
 import { copy } from '@/constants/copy';
 import type { ColorTokens } from '@/theme/tokens';
-import { radius, spacing } from '@/theme/tokens';
+import { CONTENT_MAX_WIDTH, radius, spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 export type LineItemDraft = {
@@ -176,6 +176,13 @@ function createStyles(colors: ColorTokens) {
       borderTopRightRadius: radius.lg,
       padding: spacing.lg,
       gap: spacing.md,
+      // Web desktop widening (theme/tokens.ts's own CONTENT_MAX_WIDTH
+      // comment) — `alignSelf` centers this against its parent's default
+      // 'stretch' cross-axis, regardless of which of the wrapping
+      // Animated.View/KeyboardAvoidingView layers is its immediate parent.
+      width: '100%',
+      maxWidth: Platform.OS === 'web' ? CONTENT_MAX_WIDTH : undefined,
+      alignSelf: 'center',
     },
     row: {
       flexDirection: 'row',

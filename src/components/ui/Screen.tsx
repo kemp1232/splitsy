@@ -4,7 +4,7 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 're
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { ColorTokens } from '@/theme/tokens';
-import { spacing } from '@/theme/tokens';
+import { CONTENT_MAX_WIDTH, spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 type Props = PropsWithChildren<{
@@ -25,29 +25,40 @@ export function Screen({ scroll = false, padded = true, children }: Props) {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        // Keeps focused form fields reachable above the keyboard instead of
-        // letting it cover them (spec section 17). iOS never resizes the
-        // window for the keyboard, so the content has to be pushed up by its
-        // height ("padding"). Android is deliberately left alone
-        // (`undefined`, i.e. no extra behavior): this is an Expo-managed app,
-        // and Expo's generated AndroidManifest sets
-        // `android:windowSoftInputMode="adjustResize"` by default, which
-        // already resizes this screen's own window for the keyboard — adding
-        // a second, JS-driven resize on top of that (behavior="height") would
-        // double-compensate and produce janky, over-shrunk layouts instead of
-        // fixing anything.
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        {scroll ? (
-          <ScrollView contentContainerStyle={[styles.grow, padded && styles.padded]}>
-            {children}
-          </ScrollView>
-        ) : (
-          <View style={[styles.flex, padded && styles.padded]}>{children}</View>
-        )}
-      </KeyboardAvoidingView>
+      {/* Web desktop widening (see theme/tokens.ts's own CONTENT_MAX_WIDTH
+          comment) — a plain flex child of `safeArea`, centered via
+          `alignSelf` rather than any absolute-positioning trick, so it's
+          ordinary, unambiguous RN flexbox with no CSS-specific escape
+          hatch needed. `safeArea`'s own background keeps filling the full
+          browser width behind it, letterboxing the sides once this caps
+          out. Inert everywhere else (every native screen, and any web
+          viewport narrower than the cap) — this wrapper's width already
+          equals 100% of its parent there, same as before this existed. */}
+      <View style={styles.desktopCenterWrap}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          // Keeps focused form fields reachable above the keyboard instead of
+          // letting it cover them (spec section 17). iOS never resizes the
+          // window for the keyboard, so the content has to be pushed up by its
+          // height ("padding"). Android is deliberately left alone
+          // (`undefined`, i.e. no extra behavior): this is an Expo-managed app,
+          // and Expo's generated AndroidManifest sets
+          // `android:windowSoftInputMode="adjustResize"` by default, which
+          // already resizes this screen's own window for the keyboard — adding
+          // a second, JS-driven resize on top of that (behavior="height") would
+          // double-compensate and produce janky, over-shrunk layouts instead of
+          // fixing anything.
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          {scroll ? (
+            <ScrollView contentContainerStyle={[styles.grow, padded && styles.padded]}>
+              {children}
+            </ScrollView>
+          ) : (
+            <View style={[styles.flex, padded && styles.padded]}>{children}</View>
+          )}
+        </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -55,6 +66,12 @@ export function Screen({ scroll = false, padded = true, children }: Props) {
 function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: colors.background },
+    desktopCenterWrap: {
+      flex: 1,
+      width: '100%',
+      maxWidth: Platform.OS === 'web' ? CONTENT_MAX_WIDTH : undefined,
+      alignSelf: 'center',
+    },
     flex: { flex: 1 },
     grow: { flexGrow: 1 },
     padded: { padding: spacing.lg },

@@ -8,7 +8,7 @@ import Svg, { Path } from 'react-native-svg';
 import { AppText } from '@/components/ui/AppText';
 import { copy } from '@/constants/copy';
 import type { ColorTokens } from '@/theme/tokens';
-import { radius, spacing, touchTarget } from '@/theme/tokens';
+import { CONTENT_MAX_WIDTH, radius, spacing, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 // ---- Tunable constants -----------------------------------------------------
@@ -210,81 +210,92 @@ export function BottomTabBar() {
   }
 
   return (
-    <View style={styles.wrapper} onLayout={handleLayout}>
-      {barWidth > 0 ? (
-        <Svg
-          width={barWidth}
-          height={BAR_HEIGHT + insets.bottom}
-          viewBox={`0 0 ${barWidth} ${BAR_HEIGHT + insets.bottom}`}
-          style={styles.svg}
-        >
-          <Path
-            // The path itself is built for the flat-bar height only; the
-            // extra `insets.bottom` is added as a plain rectangle underneath
-            // by extending `height` here without changing buildBarPath's own
-            // math, so the safe-area padding at the very bottom is still
-            // covered by the same fill/border without needing the curve or
-            // corner-radius logic to know about insets at all.
-            d={buildBarPath(barWidth, BAR_HEIGHT + insets.bottom)}
-            fill={colors.surface}
-            stroke={colors.border}
-            strokeWidth={1}
-          />
-        </Svg>
-      ) : null}
+    <View style={styles.wrapper}>
+      {/* Web desktop widening (theme/tokens.ts's own CONTENT_MAX_WIDTH
+          comment) — `wrapper` stays the true full-width absolute-
+          positioning context (unchanged), while this plain flex child gets
+          capped and centered by `wrapper`'s own `alignItems: 'center'`.
+          Every measurement/positioning below (`onLayout`, the SVG's own
+          viewBox, the "+" button's `left: 50%`) already reads off *this*
+          view's own rendered width, not the screen's, so they all
+          automatically track the narrower width once it's capped — no
+          separate desktop-specific math needed anywhere else in this file. */}
+      <View style={styles.innerBar} onLayout={handleLayout}>
+        {barWidth > 0 ? (
+          <Svg
+            width={barWidth}
+            height={BAR_HEIGHT + insets.bottom}
+            viewBox={`0 0 ${barWidth} ${BAR_HEIGHT + insets.bottom}`}
+            style={styles.svg}
+          >
+            <Path
+              // The path itself is built for the flat-bar height only; the
+              // extra `insets.bottom` is added as a plain rectangle underneath
+              // by extending `height` here without changing buildBarPath's own
+              // math, so the safe-area padding at the very bottom is still
+              // covered by the same fill/border without needing the curve or
+              // corner-radius logic to know about insets at all.
+              d={buildBarPath(barWidth, BAR_HEIGHT + insets.bottom)}
+              fill={colors.surface}
+              stroke={colors.border}
+              strokeWidth={1}
+            />
+          </Svg>
+        ) : null}
 
-      <View style={[styles.content, { paddingBottom: insets.bottom }]}>
-        {TABS.map((tab) => {
-          const isFocused = pathname === tab.path;
-          const tint = isFocused ? colors.primary : colors.textSecondary;
+        <View style={[styles.content, { paddingBottom: insets.bottom }]}>
+          {TABS.map((tab) => {
+            const isFocused = pathname === tab.path;
+            const tint = isFocused ? colors.primary : colors.textSecondary;
 
-          function handlePress() {
-            // `navigate` (not `push`): reconciles against the existing stack
-            // instead of piling on another Home/Settings screen every time
-            // it's tapped from deep inside a bill/trip flow.
-            if (!isFocused) router.navigate(tab.path);
-          }
+            function handlePress() {
+              // `navigate` (not `push`): reconciles against the existing stack
+              // instead of piling on another Home/Settings screen every time
+              // it's tapped from deep inside a bill/trip flow.
+              if (!isFocused) router.navigate(tab.path);
+            }
 
-          return (
-            <Pressable
-              key={tab.path}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: isFocused }}
-              accessibilityLabel={tab.label}
-              onPress={handlePress}
-              style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]}
-            >
-              <Feather name={tab.icon} size={22} color={tint} />
-              <AppText
-                variant="caption"
-                style={[styles.label, { color: tint }, isFocused && styles.labelActive]}
+            return (
+              <Pressable
+                key={tab.path}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: isFocused }}
+                accessibilityLabel={tab.label}
+                onPress={handlePress}
+                style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]}
               >
-                {tab.label}
-              </AppText>
-            </Pressable>
-          );
-        })}
-      </View>
+                <Feather name={tab.icon} size={22} color={tint} />
+                <AppText
+                  variant="caption"
+                  style={[styles.label, { color: tint }, isFocused && styles.labelActive]}
+                >
+                  {tab.label}
+                </AppText>
+              </Pressable>
+            );
+          })}
+        </View>
 
-      {/* Centered via `left: '50%'` + a `translateX` of half its own width,
-          not a pixel value derived from `barWidth` — percentage positioning
-          is already exactly 50% of this wrapper's real rendered width on any
-          device, so the button needs no measurement of its own (only the SVG
-          path's control points need `barWidth` as a concrete number). */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={copy.home.primaryAction}
-        hitSlop={10}
-        onPress={() => router.push('/bill/new')}
-        style={({ pressed }) => [styles.centerButton, pressed && styles.centerButtonPressed]}
-      >
-        {/* LOCKED — `plus-square`, specifically, per the user's own explicit
-            standing instruction: keep this exact icon on this exact button
-            even through future "change all icons/all plus icons" sweeps
-            elsewhere in the app, unless a future request calls this button
-            out by name again. */}
-        <Feather name="plus-square" size={26} color={colors.onPrimary} />
-      </Pressable>
+        {/* Centered via `left: '50%'` + a `translateX` of half its own width,
+            not a pixel value derived from `barWidth` — percentage positioning
+            is already exactly 50% of `innerBar`'s real rendered width on any
+            device, so the button needs no measurement of its own (only the
+            SVG path's control points need `barWidth` as a concrete number). */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={copy.home.primaryAction}
+          hitSlop={10}
+          onPress={() => router.push('/bill/new')}
+          style={({ pressed }) => [styles.centerButton, pressed && styles.centerButtonPressed]}
+        >
+          {/* LOCKED — `plus-square`, specifically, per the user's own explicit
+              standing instruction: keep this exact icon on this exact button
+              even through future "change all icons/all plus icons" sweeps
+              elsewhere in the app, unless a future request calls this button
+              out by name again. */}
+          <Feather name="plus-square" size={26} color={colors.onPrimary} />
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -292,13 +303,24 @@ export function BottomTabBar() {
 function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     // Flush with both edges and the screen's bottom — no floating side/
-    // bottom margins.
+    // bottom margins. Stays full-width always (even on desktop web) — this
+    // is only the absolute-positioning context now; `innerBar` below is
+    // what actually gets capped, and `alignItems: 'center'` here is what
+    // centers it once it is.
     wrapper: {
       position: 'absolute',
       left: 0,
       right: 0,
       bottom: 0,
       alignItems: 'center',
+    },
+    // The one thing capped for web desktop widening — see this file's own
+    // render-side comment above for why every other measurement/
+    // positioning in this file needs no separate desktop-specific logic of
+    // its own once this alone is capped.
+    innerBar: {
+      width: '100%',
+      maxWidth: Platform.OS === 'web' ? CONTENT_MAX_WIDTH : undefined,
     },
     svg: {
       position: 'absolute',

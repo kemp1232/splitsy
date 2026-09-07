@@ -841,6 +841,162 @@ synchronous db open is fast enough the message barely has time to appear.
 - `pnpm typecheck && pnpm lint && pnpm test` (364/364) clean after every
   change in this pass, plus a final full re-verification at the end.
 
+## Update 8 — Netlify deploy: every icon 404'd (two separate Netlify exclusion rules, not one)
+
+The user deployed the web export to Netlify (`splitsyapp.netlify.app`), not
+Vercel — first surfaced as one 404'd Feather font, then confirmed as *every*
+icon in the app once traced further. Root cause investigated via web search
+(no local Netlify account to test a real deploy against directly, so each
+fix round-tripped through the user's own live redeploy) — turned out to be
+**two independent Netlify deploy-pipeline exclusion rules**, not one; fixing
+only the first still 404'd on a real Netlify deploy even though it looked
+fully fixed locally:
+
+1. Netlify silently drops any file or directory anywhere in a deploy whose
+   name starts with a dot, on every deploy method (CLI/API/zip), with no
+   documented override — [netlify/cli#11](https://github.com/netlify/cli/issues/11),
+   [Netlify Support thread](https://answers.netlify.com/t/files-and-folders-whose-name-starts-with-a-dot-are-not-deployed-when-using-netlfiy-deploy/112159).
+   pnpm's own virtual store directory is always named `.pnpm`
+   (`node_modules/.pnpm/<pkg>@<version>/node_modules/<pkg>/...`), and
+   Metro's web export preserves that literal resolved path as the served
+   URL for third-party package assets (vendor icon fonts, expo-router's own
+   nav icons) — unlike first-party assets (`assets/images/*`), which get
+   short content-hashed names instead.
+2. **Separately**, Netlify's CLI deploy also drops any directory literally
+   named `node_modules`, anywhere in the tree, regardless of dots — its own
+   stated reasoning is "safe to delete after compile, already packed into
+   the app," which isn't true here since Metro serves some third-party
+   assets straight from their real resolved path instead of copying them
+   out — [netlify/cli#205](https://github.com/netlify/cli/issues/205),
+   [Netlify Support thread](https://answers.netlify.com/t/netlify-cli-deploy-ignoring-node-modules-in-dist-folder/20563).
+   The pnpm store's own layout re-nests a *second* real `node_modules`
+   inside every package folder, so this path tripped rule 2 at more than
+   one level even after rule 1's fix removed its `.pnpm` segment.
+
+- **`scripts/sanitize-web-export.mjs`** (new): post-processes `dist/` after
+  export — renames every directory named `.pnpm` (→ `pnpm`) or
+  `node_modules` (→ `vendor`) anywhere under `dist/`, deepest path first,
+  then rewrites those literal path strings everywhere they're referenced
+  across every exported `.js`/`.html` file. Wired into `package.json`'s
+  `build:web` (`expo export -p web && node scripts/sanitize-web-export.mjs`);
+  `web:preview` now calls `pnpm build:web` instead of duplicating the
+  export command.
+- **A real limitation of local verification here, worth remembering**: a
+  local `serve dist` round-trip (200 status, a real Playwright screenshot
+  showing the icons rendering, `node --check` confirming the rewritten
+  bundles are still syntactically valid JS) only proves the *renamed paths
+  resolve correctly* — it can't reproduce Netlify's own deploy-time
+  exclusion rules at all, since those are enforced during upload, not by
+  anything about the files' own content. The first (dot-only) fix passed
+  every one of those local checks and still 404'd on the user's real
+  Netlify deploy, because rule 2 was still silently deleting the
+  `node_modules` directories that fix's renamed path still passed through.
+  This second fix is verified the same way (locally) as the first one was
+  — genuinely confirming it requires the user to rebuild and redeploy to
+  the real Netlify site again, the same way the first fix's local-only
+  "all clear" turned out not to be the full picture.
+
+**Round 3 — the second fix also still 404'd on the real Netlify deploy.**
+Confirmed the redeploy wasn't stale first (fetched the live bundle directly
+— it genuinely referenced the new `assets/vendor/pnpm/...` path from round
+2's fix), and confirmed the deploy's *other* assets work fine (the logo, a
+first-party image never touched by any of this, returned 200) — narrowing
+it specifically to this one renamed subtree, still missing entirely
+(`assets/vendor/` itself 404s). Asked the user how `dist/` actually reaches
+Netlify: **manual dashboard drag-and-drop upload**, not the `netlify
+deploy` CLI the two documented rules above are specifically about — a
+different code path, with no equivalent documentation found for it.
+Rather than keep guessing at Netlify's own undocumented upload behavior
+one character at a time through slow rebuild-redeploy-report round trips,
+`scripts/sanitize-web-export.mjs` now also slugifies every remaining
+directory *and file* name under the renamed vendor tree — replacing any
+character outside `[A-Za-z0-9._-]` (catches pnpm's `@`/`+`-laden store
+names, e.g. `@expo+vector-icons@15.1.1_expo-font@57.0.1_...`, the real
+scoped-package `@expo/vector-icons` folder one level deeper, and
+retina-density asset filenames like `close-icon...@2x.png`) — eliminating
+every plausible special-character culprit in one pass instead of
+continuing to isolate a single exact one. Re-verified the same way as
+before (0 unsafe characters left anywhere under `dist/assets/vendor`, both
+rewritten bundles still parse as valid JS, the renamed font resolves `200`
+locally, a real screenshot shows the icons rendering) — **still not
+confirmed against the real Netlify deploy** as of this entry; that
+requires the user's own next rebuild+redeploy+report, same caveat as
+round 2.
+
+**Round 4 — round 3 (every special character removed) *also* still 404'd**,
+confirmed against the exact request URL from the user's own browser
+network tab, matching the exact path the build log produced — ruling out
+a stale deploy or a path mismatch as the explanation. Also checked path
+depth (11 segments) and length (253 chars) directly — neither looks
+abnormal enough to be a plausible culprit either. At this point every
+"path shape" theory reachable without direct Netlify dashboard/API access
+had been tried and individually falsified — continuing to guess a fourth,
+fifth, arbitrarily-specific variant one slow round-trip at a time stopped
+being a reasonable use of the user's redeploys.
+
+Changed strategy entirely instead of continuing to narrow the theory:
+`scripts/sanitize-web-export.mjs` now **flattens** every file under the
+vendor tree out to `dist/vendor-assets/<original-basename>` (a collision
+guard appends `-2`/`-3`/etc. if two files ever share a basename, though
+none do today — everything is already content-hash-suffixed by Metro) and
+rewrites every bundle reference to the new flat path — then **deletes**
+the original deep tree outright, not just leaves it unreferenced, on the
+chance that its mere presence (not selective exclusion of it) is what was
+actually derailing the upload, which would explain why every narrower
+fix so far made no observable difference. The flattened path is now as
+shallow and plainly-named as the already-confirmed-working first-party
+images (`vendor-assets/Feather.ca4b48e04dc1ce10bfbddb262c8b835f.ttf` vs.
+`assets/assets/images/logo.1f7bd5b2da8a84ef5210f736e5ddd6f2.png` — same
+shape, same character set, comparable depth).
+- Re-verified the same way as every round before it (0 `node_modules`
+  directories anywhere in `dist/`, 0 stale references to the deleted deep
+  tree, both bundles still parse as valid JS, both flattened font files
+  resolve `200` locally, a real screenshot shows the icons rendering).
+  **Still not confirmed against the real Netlify deploy** as of this
+  entry — same standing caveat as every round before it. If this *also*
+  fails, the two font files (`.ttf`) and the icon PNGs living side-by-side
+  in the same flat directory will tell us something new either way: if
+  the PNGs succeed but the fonts still don't, that would newly implicate
+  the `.ttf` extension/MIME type specifically, not path shape at all — a
+  real, different next theory that this round's test setup would already
+  be positioned to confirm or rule out from the user's very next report,
+  without needing yet another code change first.
+
+## Update 9 — Netlify deploy: refresh on any non-root route 404'd (SPA fallback)
+
+A separate, much more mundane bug than the Update 8 saga: this app's web
+build is a client-side-routed SPA (`web.output` unset — see Update 8's own
+framework-detection note) with exactly one `index.html` and no per-route
+HTML, so any host serving `dist/` as plain static files 404s on a direct
+deep-link or a refresh of any non-root route (`/settings`, `/bill/123`,
+...) — the server has no file at that literal path. `web-serve-headers.json`
+already carries the equivalent fallback rewrite for local
+`pnpm web:preview`, and a real Vercel deploy gets it from `vercel.json`'s
+own `rewrites` — but neither of those reaches the user's actual deploy
+target, Netlify via manual dashboard upload of `dist/`, which only reads a
+`_redirects` file (Netlify's own config format, unrelated to Vercel's)
+placed *inside* the uploaded folder itself; a repo-root `netlify.toml` is
+only read by Netlify's own git-connected CI builds, never a drag-and-drop
+upload.
+
+- `scripts/sanitize-web-export.mjs` now also writes `dist/_redirects`
+  (`/*    /index.html   200`, Netlify's documented catch-all SPA syntax)
+  unconditionally, alongside its existing vendor-asset flattening —
+  independent concerns, kept in the same post-export hook since that's
+  already the "make dist/ deploy-ready" step wired into `build:web`.
+- **Verified with Netlify's own local dev tooling this time**, not just
+  the well-documented syntax trusted blind — installed `netlify-cli` and
+  ran `netlify dev -d dist --framework "#static"`, which genuinely
+  respects `_redirects` the same way a real deploy does. Confirmed
+  `/settings` and `/bill/new` both return `200` serving `index.html`
+  (`curl`), that real assets (the flattened Feather font, favicon.ico)
+  still resolve normally rather than getting swallowed by the catch-all,
+  and — the definitive test — a real Playwright browser hard-navigating
+  directly to `/settings` (exactly what a refresh does) rendered the
+  actual app shell and its real Expo Router state, not a browser 404 page.
+  (`.netlify/` and `deno.lock`, both local artifacts `netlify dev` created
+  for this test, cleaned up afterward — not committed.)
+
 ## What's NOT started yet
 
 - True OPFS persistence (see "Update 3" — IndexedDB whole-blob persistence

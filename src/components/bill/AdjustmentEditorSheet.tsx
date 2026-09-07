@@ -28,7 +28,7 @@ import { isValidAdjustmentAmount } from '@/features/adjustments/validateAdjustme
 import { validateCustomAllocation } from '@/features/splitting/allocation';
 import { formatCentavos } from '@/lib/money';
 import type { ColorTokens } from '@/theme/tokens';
-import { radius, spacing, touchTarget } from '@/theme/tokens';
+import { CONTENT_MAX_WIDTH, radius, spacing, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 export type AdjustmentDraft = {
@@ -456,6 +456,12 @@ function createStyles(colors: ColorTokens) {
       borderTopRightRadius: radius.lg,
       padding: spacing.lg,
       gap: spacing.md,
+      // Web desktop widening (theme/tokens.ts's own CONTENT_MAX_WIDTH
+      // comment) — `alignSelf` centers this against `sheetMaxHeight`'s own
+      // default 'stretch' cross-axis.
+      width: '100%',
+      maxWidth: Platform.OS === 'web' ? CONTENT_MAX_WIDTH : undefined,
+      alignSelf: 'center',
     },
     scroll: {
       flexGrow: 0,

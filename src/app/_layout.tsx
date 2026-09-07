@@ -10,7 +10,13 @@ import { AUTH_BACKEND_URL } from '@/constants/config';
 import { copy } from '@/constants/copy';
 import { useDatabaseMigrations } from '@/db/migrations';
 import { authClient } from '@/lib/authClient';
+import { fixWebViewportHeight } from '@/lib/fixWebViewportHeight';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
+
+// Module-scope, not inside a component/effect — a one-time page-load side
+// effect (no-op on native), same convention src/db/client.web.ts already
+// uses for its own beforeunload listener.
+fixWebViewportHeight();
 
 // Gates every screen except the (auth) group behind an active session
 // (2026-08-25 spec Amendment — sign-in is required to use the app). Reads

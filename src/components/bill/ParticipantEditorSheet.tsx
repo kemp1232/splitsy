@@ -19,7 +19,7 @@ import {
   validateParticipantName,
 } from '@/features/participants/validateParticipantName';
 import type { ColorTokens } from '@/theme/tokens';
-import { radius, spacing } from '@/theme/tokens';
+import { CONTENT_MAX_WIDTH, radius, spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 export type ParticipantDraft = {
@@ -164,6 +164,13 @@ function createStyles(colors: ColorTokens) {
       borderTopRightRadius: radius.lg,
       padding: spacing.lg,
       gap: spacing.md,
+      // Web desktop widening (theme/tokens.ts's own CONTENT_MAX_WIDTH
+      // comment) — `alignSelf` centers this against its parent's default
+      // 'stretch' cross-axis, regardless of which of the wrapping
+      // Animated.View/KeyboardAvoidingView layers is its immediate parent.
+      width: '100%',
+      maxWidth: Platform.OS === 'web' ? CONTENT_MAX_WIDTH : undefined,
+      alignSelf: 'center',
     },
     actions: {
       gap: spacing.sm,

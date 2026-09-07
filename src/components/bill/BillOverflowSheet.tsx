@@ -1,13 +1,13 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useMemo } from 'react';
-import { Animated, Modal, Pressable, StyleSheet } from 'react-native';
+import { Animated, Modal, Platform, Pressable, StyleSheet } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { Divider } from '@/components/ui/Divider';
 import { useSlideUpAnimation } from '@/components/ui/useSlideUpAnimation';
 import { copy } from '@/constants/copy';
 import type { ColorTokens } from '@/theme/tokens';
-import { radius, spacing } from '@/theme/tokens';
+import { CONTENT_MAX_WIDTH, radius, spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 type Props = {
@@ -82,6 +82,12 @@ function createStyles(colors: ColorTokens) {
       borderTopRightRadius: radius.lg,
       padding: spacing.lg,
       gap: spacing.sm,
+      // Web desktop widening (theme/tokens.ts's own CONTENT_MAX_WIDTH
+      // comment) — `alignSelf` centers this against the wrapping
+      // Animated.View's own default 'stretch' cross-axis.
+      width: '100%',
+      maxWidth: Platform.OS === 'web' ? CONTENT_MAX_WIDTH : undefined,
+      alignSelf: 'center',
     },
   });
 }

@@ -111,3 +111,19 @@ export const touchTarget = {
   min: 44,
   preferred: 48,
 } as const;
+
+// Web desktop-browser widening (Phase 7 of the web port — see
+// WEB_PORT_STATUS.md): this app's whole UI is designed mobile-first and
+// stays that way — this is the one shared number that keeps every screen,
+// the bottom nav bar, and every bottom sheet capped to a phone-width
+// column instead of stretching edge-to-edge across a wide browser window,
+// so they all line up with each other rather than each picking its own
+// width independently. Applied via `Platform.OS === 'web' ? CONTENT_MAX_WIDTH
+// : undefined` at each call site — plain `maxWidth`, so it's already an
+// inert no-op below this value (every native screen, and any web viewport
+// narrower than this) with no separate breakpoint/measurement needed.
+// `ConfirmationDialog.tsx`'s own smaller, independently-chosen dialog width
+// is deliberately not tied to this — a confirm/cancel prompt reads fine
+// narrower than the main content column, unlike a bottom sheet or a
+// screen's own content, which visually need to line up with each other.
+export const CONTENT_MAX_WIDTH = 480;
