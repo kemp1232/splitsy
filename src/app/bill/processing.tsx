@@ -1,7 +1,7 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Modal, Platform, StyleSheet, View } from 'react-native';
+import { Modal, Platform, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
@@ -129,17 +129,30 @@ export default function ProcessingScreen() {
   }, [stage, queuedSecondsLeft]);
 
   const isQueued = stage === 'queued';
-  // Each panel (scanning vs. queued) mounts the instant it becomes current
-  // (its own fade-in handles bringing it visually in — see the "adjust
-  // state while rendering" calls right below) but stays mounted at
-  // `visible={false}` until its own fade-out finishes, so switching between
-  // them crossfades instead of one instantly popping out from under the
-  // other. Exactly the same `showX`/`onFadeOutComplete` pattern
-  // _layout.tsx's SessionGate already uses for the splash screen itself.
-  const [showScanningPanel, setShowScanningPanel] = useState(true);
-  const [showQueuedPanel, setShowQueuedPanel] = useState(false);
-  if (isQueued && !showQueuedPanel) setShowQueuedPanel(true);
-  if (!isQueued && !showScanningPanel) setShowScanningPanel(true);
+  // Both panels are always mounted (only `visible`/opacity toggles which one
+  // is showing) and absolutely positioned on top of each other, so switching
+  // between them is a true crossfade — one fades out while the other fades
+  // in, in place, rather than the outgoing one shrinking away above/below
+  // the incoming one in normal document flow. That absolute positioning
+  // needs a real height to anchor to, which content-sized panels don't have
+  // on their own; `panelHeight` supplies it, measured from each panel's own
+  // natural (non-absolute) size the first time it lays out, then held at the
+  // larger of the two (Math.max, never shrinks) so it comfortably fits
+  // whichever panel is tallest — the scanning panel, with its extra
+  // stage-label/privacy-note/button rows — without a hardcoded magic number
+  // that would either clip at large system font sizes (spec §17) or leave
+  // excess empty space at the default one. Before the first layout pass
+  // (panelHeight still null) both panels briefly render in normal flow
+  // instead — invisible-but-still-affects-layout for whichever isn't
+  // current, since FadeImageStatus starts its own opacity at 0 for
+  // `visible={false}` from its very first render — but that resolves within
+  // the first frame or two, well before this screen shows anything the user
+  // would register as a "real" transition, unlike a mid-transition glitch.
+  const [panelHeight, setPanelHeight] = useState<number | null>(null);
+  function handlePanelLayout(event: LayoutChangeEvent) {
+    const height = event.nativeEvent.layout.height;
+    setPanelHeight((current) => (current === null ? height : Math.max(current, height)));
+  }
 
   if (stage === 'error') {
     return (
@@ -217,58 +230,57 @@ export default function ProcessingScreen() {
     <Screen>
       <View style={styles.centered}>
         {/* Both panels share this positioned area and crossfade over each
-            other (see FadeImageStatus/showScanningPanel/showQueuedPanel
-            above) rather than being laid out one after another —
-            content-sized (not flex:1) and grouped with the Cancel button
-            below inside `centered`'s own justifyContent:'center', so the
-            whole thing sits together in the middle of the screen instead of
-            Cancel getting pushed all the way to the bottom edge (where it
-            can end up crowded against the home indicator/browser chrome). */}
-        <View style={styles.panelStack}>
-          {showScanningPanel ? (
-            <View style={styles.panelLayer}>
-              <FadeImageStatus
-                visible={!isQueued}
-                image={require('../../../assets/images/scanning.png')}
-                heading={copy.processing.heading}
-                body={copy.processing.body}
-                onFadeOutComplete={() => setShowScanningPanel(false)}
-              >
-                {stageLabel ? (
-                  <AppText variant="subheading" style={styles.centerText}>
-                    {stageLabel}
-                  </AppText>
-                ) : null}
-                <AppText variant="caption" color="textSecondary" style={styles.centerText}>
-                  {copy.processing.privacyNote}
+            other (see panelHeight's own comment above for why) — grouped
+            with the Cancel button below inside `centered`'s own
+            justifyContent:'center', so the whole thing sits together in the
+            middle of the screen instead of Cancel getting pushed all the
+            way to the bottom edge (where it can end up crowded against the
+            home indicator/browser chrome). */}
+        <View style={[styles.panelStack, panelHeight !== null && { height: panelHeight }]}>
+          <View
+            style={[styles.panelLayer, panelHeight !== null && styles.panelLayerAbsolute]}
+            onLayout={handlePanelLayout}
+          >
+            <FadeImageStatus
+              visible={!isQueued}
+              image={require('../../../assets/images/scanning.png')}
+              heading={copy.processing.heading}
+              body={copy.processing.body}
+            >
+              {stageLabel ? (
+                <AppText variant="subheading" style={styles.centerText}>
+                  {stageLabel}
                 </AppText>
-                {/* Lets the user glance at the actual photo being scanned —
-                    this screen no longer shows it as an always-visible
-                    backdrop the way it used to (that slot is now the
-                    scanning.png illustration), so this is the way to see it
-                    on request instead. */}
-                {receiptImageUri ? (
-                  <AppButton
-                    variant="secondary"
-                    label={copy.processing.checkReceiptAction}
-                    onPress={() => setShowReceiptImage(true)}
-                    icon={(color) => <Feather name="image" size={18} color={color} />}
-                  />
-                ) : null}
-              </FadeImageStatus>
-            </View>
-          ) : null}
-          {showQueuedPanel ? (
-            <View style={styles.panelLayer}>
-              <FadeImageStatus
-                visible={isQueued}
-                image={require('../../../assets/images/queueing.png')}
-                heading={copy.processing.queuedHeading}
-                body={copy.processing.queuedBody.replace('{seconds}', String(queuedSecondsLeft ?? 0))}
-                onFadeOutComplete={() => setShowQueuedPanel(false)}
-              />
-            </View>
-          ) : null}
+              ) : null}
+              <AppText variant="caption" color="textSecondary" style={styles.centerText}>
+                {copy.processing.privacyNote}
+              </AppText>
+              {/* Lets the user glance at the actual photo being scanned —
+                  this screen no longer shows it as an always-visible
+                  backdrop the way it used to (that slot is now the
+                  scanning.png illustration), so this is the way to see it
+                  on request instead. */}
+              {receiptImageUri ? (
+                <AppButton
+                  variant="secondary"
+                  label={copy.processing.checkReceiptAction}
+                  onPress={() => setShowReceiptImage(true)}
+                  icon={(color) => <Feather name="image" size={18} color={color} />}
+                />
+              ) : null}
+            </FadeImageStatus>
+          </View>
+          <View
+            style={[styles.panelLayer, panelHeight !== null && styles.panelLayerAbsolute]}
+            onLayout={handlePanelLayout}
+          >
+            <FadeImageStatus
+              visible={isQueued}
+              image={require('../../../assets/images/queueing.png')}
+              heading={copy.processing.queuedHeading}
+              body={copy.processing.queuedBody.replace('{seconds}', String(queuedSecondsLeft ?? 0))}
+            />
+          </View>
         </View>
         <AppButton
           variant="text"
@@ -314,18 +326,28 @@ const styles = StyleSheet.create({
   headingGroup: { gap: spacing.sm },
   rawText: { marginTop: spacing.md },
   actions: { gap: spacing.sm },
-  // Shared area the scanning/queued panels crossfade in — deliberately
-  // content-sized rather than flex:1 (an earlier version of this screen
-  // used flex:1 + absolute-positioned panels, which pinned the Cancel
-  // button to the very bottom of the screen, crowded against the home
-  // indicator/browser chrome; see 2026-09-08 fix). Content-sized also means
-  // it grows correctly at larger system font sizes instead of clipping
-  // (spec §17) — the trade-off is that both panels briefly share normal
-  // flow (rather than perfectly overlapping) during the ~350ms crossfade
-  // itself, since neither is absolutely positioned anymore; that's a minor,
-  // rare-transition-only cost worth paying to fix the everyday layout.
+  // Shared area the scanning/queued panels crossfade in — sized to
+  // `panelHeight` (measured content height, see its own comment above)
+  // rather than flex:1, so it doesn't consume the full remaining screen
+  // height and push the Cancel button below it down to the very bottom
+  // edge, crowded against the home indicator/browser chrome (2026-09-08
+  // fix). Falls back to auto-height (undefined) only for the first,
+  // pre-measurement frame.
   panelStack: { width: '100%', alignItems: 'center' },
   panelLayer: { width: '100%', alignItems: 'center' },
+  // No StyleSheet.absoluteFillObject in this project's RN type version (see
+  // SplashLoadingScreen.tsx's identical note) — written out explicitly.
+  // Applied only once panelStack has a real measured height to fill (see
+  // panelHeight) — before that, panelLayer stays in normal flow so its
+  // onLayout can measure its natural, un-constrained size.
+  panelLayerAbsolute: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
   receiptImage: {
     flex: 1,
   },
