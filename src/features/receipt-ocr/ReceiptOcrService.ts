@@ -13,6 +13,27 @@ export class OcrRateLimitedError extends Error {
   }
 }
 
+// Thrown specifically when the backend's own global scan queue (see
+// server/src/ocr/scanQueue.ts) turned this request away before it ever
+// reached Groq — Groq's free-tier output-tokens-per-minute budget is shared
+// across every user of the backend, not per-caller, so at most one scan can
+// run per cooldown window regardless of who's asking. Deliberately a
+// separate class from OcrRateLimitedError even though both are HTTP 429s:
+// FallbackReceiptOcrService treats them differently (see its own comment) —
+// a *queued* caller should wait and retry the same, better-accuracy backend
+// path, not get silently downgraded to on-device OCR, which is the right
+// call for a genuine, unexpected rate limit but would defeat the point of a
+// queue (nobody would ever actually wait their turn).
+export class OcrQueuedError extends Error {
+  constructor(
+    message: string,
+    readonly retryAfterSeconds: number,
+  ) {
+    super(message);
+    this.name = 'OcrQueuedError';
+  }
+}
+
 // Which implementation actually produced this result — lets the UI show
 // whether a scan used the Groq backend or fell back to on-device OCR (see
 // FallbackReceiptOcrService). A UI hint only, never treated as bill data

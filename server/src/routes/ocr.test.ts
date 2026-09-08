@@ -9,7 +9,18 @@ vi.mock('../ocr/groqClient.js', async (importOriginal) => {
   return { ...actual, requestReceiptExtraction: vi.fn() };
 });
 
+// scanQueue.ts talks to real Postgres (see its own header comment on why —
+// serverless instances share no memory) — mocked here so these route tests
+// don't need a real DATABASE_URL, defaulting every test to "slot available"
+// so the existing tests below exercise the same behavior as before this
+// queue existed. The one test that cares about the queued-429 path
+// overrides this per-test.
+vi.mock('../ocr/scanQueue.js', () => ({
+  claimScanSlot: vi.fn().mockResolvedValue({ claimed: true }),
+}));
+
 import { GroqRequestError, requestReceiptExtraction } from '../ocr/groqClient.js';
+import { claimScanSlot } from '../ocr/scanQueue.js';
 import { ocrRoute } from './ocr.js';
 
 // A real, minimal decodable image — sharp (used by preprocessReceiptImage)
@@ -45,6 +56,7 @@ describe('POST /api/ocr', () => {
 
   beforeEach(() => {
     vi.mocked(requestReceiptExtraction).mockReset();
+    vi.mocked(claimScanSlot).mockReset().mockResolvedValue({ claimed: true });
     process.env.GROQ_API_KEY = 'test-key';
   });
 
@@ -141,6 +153,22 @@ describe('POST /api/ocr', () => {
     const res = await ocrRoute.fetch(buildRequest(file));
 
     expect(res.status).toBe(502);
+    expect(requestReceiptExtraction).not.toHaveBeenCalled();
+  });
+
+  it('returns a queued 429 (not calling Groq at all) when the shared scan slot is busy', async () => {
+    vi.mocked(claimScanSlot).mockResolvedValue({ claimed: false, retryAfterSeconds: 42 });
+    const file = new File([new Uint8Array(tinyPng)], 'receipt.jpg', { type: 'image/jpeg' });
+
+    const res = await ocrRoute.fetch(buildRequest(file));
+
+    expect(res.status).toBe(429);
+    const body = await res.json();
+    expect(body.reason).toBe('queued');
+    expect(body.retryAfterSeconds).toBe(42);
+    // The whole point of checking the queue first is never spending any of
+    // the shared Groq token budget on a request that's just going to be
+    // turned away.
     expect(requestReceiptExtraction).not.toHaveBeenCalled();
   });
 });

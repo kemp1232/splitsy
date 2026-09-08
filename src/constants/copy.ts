@@ -174,6 +174,19 @@ export const copy = {
     stageReading: 'Finding text',
     stageOrganizing: 'Organizing items and totals',
     cancelAction: 'Cancel',
+    // Shown while the backend's shared scan queue is busy (see
+    // OcrQueuedError/scanQueue.ts) — the free-tier backend can only read one
+    // receipt at a time across every user, so this is expected under normal
+    // use, not a failure; {seconds} is replaced with a live countdown that
+    // reaches 0 right as the screen automatically retries.
+    queuedHeading: 'Getting your turn…',
+    queuedBody: 'Another scan is in progress. Yours will start in {seconds}s.',
+    // Opens the same full-screen receipt-photo modal as
+    // copy.receiptReview.receiptAction — its own key since this button's
+    // context (still waiting for OCR, not yet reviewing extracted data) is
+    // different enough to warrant separate copy if either ever needs to
+    // change independently.
+    checkReceiptAction: 'Check receipt',
   },
 
   // Section 13.8 — OCR failure
@@ -543,9 +556,16 @@ export const copy = {
   // (sign-in/register/forgot-password/reset-password), the root layout's
   // session-gating states, and the Settings screen's new "Log out" action.
   auth: {
-    // Sign in — src/app/(auth)/sign-in.tsx
-    signInHeading: 'Sign in to Splitsy',
-    signInBody: 'Sign in to continue splitting bills.',
+    // Sign in — src/app/(auth)/sign-in.tsx. The brand name itself already
+    // shows in the logo row above this, so the heading doesn't repeat it —
+    // "Welcome back" instead, with the app's own slogan as the subtitle
+    // (the same three real actions this app's own copy already names
+    // elsewhere: "Scan" the receipt (scanReceiptAction/camera flow),
+    // "Split" it, "Settle up" (settleUpAction, trip settlement's own
+    // heading) — not a new tagline invented independently of what the app
+    // actually does).
+    signInHeading: 'Welcome back',
+    signInBody: 'Scan. Split. Settle up.',
     signInButton: 'Sign in',
     signInNoAccountPrompt: "Don't have an account?",
     signInRegisterLink: 'Create one',
@@ -563,6 +583,11 @@ export const copy = {
     signInEmailNotVerified: "You'll need to verify your email before signing in.",
     resendVerificationAction: 'Resend verification email',
     resendVerificationSentToast: "We've sent another verification email.",
+    // The password field's own show/hide toggle (sign-in only, for now —
+    // see this file's own header comment on why this pass didn't extend to
+    // register.tsx/reset-password.tsx too).
+    showPasswordLabel: 'Show password',
+    hidePasswordLabel: 'Hide password',
 
     // Register — src/app/(auth)/register.tsx
     registerHeading: 'Create your account',
@@ -668,14 +693,19 @@ export const copy = {
     cancelAction: 'Cancel',
     closeAccessibilityLabel: 'Close',
     loadingBills: 'Loading bills…',
-    // _layout.tsx's migration gate, shown before any screen can render. Worth
-    // its own message (not a bare spinner) specifically because of web: the
-    // first visit there also means fetching + compiling a ~1MB SQLite WASM
-    // binary (see WEB_PORT_STATUS.md's optimization pass), a genuinely
-    // noticeable one-time cost with nothing to show for it on screen yet —
-    // native's own synchronous db open is fast enough that this message
-    // barely has time to appear, so showing it there too is harmless.
-    settingUpDatabase: 'Setting up your database…',
+    // _layout.tsx's boot splash (SplashLoadingScreen), shown across the
+    // whole startup sequence — DB migrations, then the initial session
+    // check — before any real screen can render. Plain, friendly wording
+    // rather than exposing what's actually happening technically (a
+    // database migration, a session fetch): neither means anything to
+    // someone just trying to open the app. Worth a real message (not a
+    // bare spinner) specifically because of web: the first visit there
+    // also means fetching + compiling a ~1MB SQLite WASM binary (see
+    // WEB_PORT_STATUS.md's optimization pass), a genuinely noticeable
+    // one-time cost with nothing to show for it on screen yet — native's
+    // own synchronous db open is fast enough that this message barely has
+    // time to appear, so showing it there too is harmless.
+    settingUpDatabase: 'Getting everything ready…',
     databaseStartupFailure: "Splitsy couldn't open its local data. Restart the app and try again.",
     imageCopyFailure:
       "We couldn't save this receipt image. Choose it again or enter the bill manually.",

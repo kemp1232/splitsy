@@ -6,6 +6,7 @@ import type { ParsedReceipt } from '@/features/receipt-parser/receiptParser.type
 
 import { buildImageFormDataPart } from './buildImageFormDataPart';
 import {
+  OcrQueuedError,
   OcrRateLimitedError,
   type OcrRecognitionResult,
   type ReceiptOcrService,
@@ -146,6 +147,26 @@ export class BackendReceiptOcrService implements ReceiptOcrService {
       // possible — everything else stays a generic failure that
       // FallbackReceiptOcrService already handles silently.
       if (response.status === 429) {
+        // Two different 429 shapes share this status: the backend's own
+        // scan-queue gate (`reason: "queued"`, always carries
+        // retryAfterSeconds — see scanQueue.ts) turned this request away
+        // before ever calling Groq, vs. Groq's own rate limit slipping
+        // through unexpectedly. Only the former gets the queued treatment;
+        // parsing failure (non-JSON body, missing fields) falls back to the
+        // generic rate-limited case rather than throwing a worse error.
+        const parsed = (() => {
+          try {
+            return JSON.parse(detail) as { reason?: string; retryAfterSeconds?: number };
+          } catch {
+            return null;
+          }
+        })();
+        if (parsed?.reason === 'queued' && typeof parsed.retryAfterSeconds === 'number') {
+          throw new OcrQueuedError(
+            `OCR backend is queued: retry in ${parsed.retryAfterSeconds}s`,
+            parsed.retryAfterSeconds,
+          );
+        }
         throw new OcrRateLimitedError(`OCR backend rate-limited (429): ${detail}`);
       }
       throw new Error(`OCR backend request failed (${response.status}): ${detail}`);

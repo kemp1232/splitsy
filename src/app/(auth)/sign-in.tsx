@@ -1,8 +1,9 @@
 import Feather from '@expo/vector-icons/Feather';
+import { Image } from 'expo-image';
 import * as Linking from 'expo-linking';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
@@ -22,6 +23,18 @@ import { spacing } from '@/theme/tokens';
 // naturally reveals the authenticated app (Home, plus the global
 // BottomTabBar) without this screen needing to know where "the rest of the
 // app" even is.
+//
+// Redesigned per the user's own reference screenshot (a logo+name row above
+// a bold heading/slogan, icon-decorated fields, a password show/hide
+// toggle) — adapted to this app's own branding (assets/images/logo.png,
+// copy.auth.signInBody as this app's own real slogan, not the reference's)
+// rather than copied verbatim: the reference's "Remember for 30 days"
+// checkbox has no backing functionality here (Better Auth's session here
+// always runs the same fixed duration — see server/src/auth.ts), so adding
+// a checkbox that doesn't actually do anything would be a dishonest control,
+// not a faithful adaptation of it. Only this screen got the icon/toggle
+// treatment for now — register.tsx/reset-password.tsx's own password
+// fields are a natural next candidate if this direction sticks.
 export default function SignInScreen() {
   const router = useRouter();
   // Set by reset-password.tsx's `router.replace({ pathname: '/sign-in',
@@ -31,6 +44,7 @@ export default function SignInScreen() {
   const { justReset } = useLocalSearchParams<{ justReset?: string }>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -105,6 +119,21 @@ export default function SignInScreen() {
   return (
     <Screen scroll>
       <View style={styles.body}>
+        <View style={styles.brandRow}>
+          {/* The "Splitsy" text right next to it already names the app, so
+              this is hidden from screen readers rather than announced on
+              its own — same treatment as every other decorative-icon use of
+              this same logo (e.g. index.tsx's own header row). */}
+          <Image
+            source={require('../../../assets/images/logo.png')}
+            style={styles.logo}
+            contentFit="contain"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          />
+          <AppText variant="subheading">{appInfo.name}</AppText>
+        </View>
+
         <View style={styles.headerGroup}>
           <AppText variant="heading">{copy.auth.signInHeading}</AppText>
           <AppText variant="body" color="textSecondary">
@@ -133,6 +162,7 @@ export default function SignInScreen() {
             keyboardType="email-address"
             textContentType="emailAddress"
             autoComplete="email"
+            leadingIcon={(color) => <Feather name="mail" size={18} color={color} />}
           />
 
           <AppTextInput
@@ -143,9 +173,22 @@ export default function SignInScreen() {
               if (passwordError) setPasswordError(null);
             }}
             error={passwordError ?? undefined}
-            secureTextEntry
+            secureTextEntry={!showPassword}
             textContentType="password"
             autoComplete="current-password"
+            leadingIcon={(color) => <Feather name="lock" size={18} color={color} />}
+            trailingIcon={(color) => (
+              <Pressable
+                onPress={() => setShowPassword((value) => !value)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  showPassword ? copy.auth.hidePasswordLabel : copy.auth.showPasswordLabel
+                }
+              >
+                <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color={color} />
+              </Pressable>
+            )}
           />
         </View>
 
@@ -199,6 +242,15 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   body: {
     gap: spacing.xl,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  logo: {
+    width: 40,
+    height: 40,
   },
   headerGroup: {
     gap: spacing.sm,

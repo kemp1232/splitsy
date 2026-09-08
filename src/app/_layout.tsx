@@ -4,8 +4,8 @@ import { useState } from 'react';
 
 import { BottomTabBar } from '@/components/ui/BottomTabBar';
 import { ErrorState } from '@/components/ui/ErrorState';
-import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
+import { SplashLoadingScreen } from '@/components/ui/SplashLoadingScreen';
 import { AUTH_BACKEND_URL } from '@/constants/config';
 import { copy } from '@/constants/copy';
 import { useDatabaseMigrations } from '@/db/migrations';
@@ -25,7 +25,14 @@ fixWebViewportHeight();
 // the hard rule about route params means, and there is nothing else in this
 // codebase that already owns "is there a session" for this to read from
 // instead.
-function SessionGate() {
+//
+// Also owns the one splash overlay covering the *whole* startup sequence —
+// DB migrations (see RootNavigator below, which hands this `migrationsReady`
+// rather than rendering its own separate loading state) and then this
+// component's own initial session check — so the user sees one continuous
+// "starting up" moment instead of two differently-styled loading screens
+// handed off between each other.
+function SessionGate({ migrationsReady }: { migrationsReady: boolean }) {
   const { scheme } = useTheme();
   const { data: session, isPending, error, refetch } = authClient.useSession();
   // Not just the *first* render's `isPending` — Better Auth's client
@@ -35,73 +42,87 @@ function SessionGate() {
   // a matching atom listener flips a signal that re-triggers this hook).
   // Sign-up while `requireEmailVerification` is on is exactly that case —
   // it succeeds with no session created, but still re-triggers this. Gating
-  // the whole Stack behind `isPending` unconditionally (the previous
-  // behavior) would tear the entire authenticated/unauthenticated tree down
-  // to a bare spinner on *every* one of those refetches, not just the real
-  // initial load — which silently discarded whatever screen/local state was
-  // showing at the time (e.g. register.tsx's own "check your email"
-  // confirmation, shown from local state right after that exact sign-up
-  // call) and rebuilt the Stack from scratch, landing on the (auth) group's
-  // default route instead. Set via the "adjust state while rendering"
-  // pattern (react.dev's own documented exception to "don't call setState
-  // during render") rather than an effect — this needs to take effect
-  // *before* this same render decides what to return below, not one frame
-  // later, and React bails out of a second render here once the state
-  // already matches, so this never loops.
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  if (!isPending && !hasLoadedOnce) setHasLoadedOnce(true);
+  // the whole Stack behind `isPending` unconditionally would tear the
+  // entire authenticated/unauthenticated tree down on *every* one of those
+  // refetches, not just the real initial load — which would silently
+  // discard whatever screen/local state was showing at the time (e.g.
+  // register.tsx's own "check your email" confirmation, shown from local
+  // state right after that exact sign-up call) and rebuild the Stack from
+  // scratch, landing on the (auth) group's default route instead. Set via
+  // the "adjust state while rendering" pattern (react.dev's own documented
+  // exception to "don't call setState during render") rather than an
+  // effect — this needs to take effect *before* this same render decides
+  // what to return below, not one frame later, and React bails out of a
+  // second render here once the state already matches, so this never loops.
+  const [hasCheckedSessionOnce, setHasCheckedSessionOnce] = useState(false);
+  if (!isPending && !hasCheckedSessionOnce) setHasCheckedSessionOnce(true);
 
-  if (isPending && !hasLoadedOnce) {
-    return (
-      <Screen>
-        <LoadingState />
-      </Screen>
-    );
-  }
+  // True for the rest of the session once both this and migrationsReady
+  // have ever been true together — never flips back false afterward (a
+  // later `refetch()` from the error state's own retry button re-pends
+  // this query, but hasCheckedSessionOnce already latched true by then, so
+  // the splash never reappears for that — same reasoning as the comment
+  // above on why isPending alone can't gate this).
+  const bootReady = migrationsReady && hasCheckedSessionOnce;
 
-  if (error) {
-    return (
-      <Screen>
-        <ErrorState
-          heading={copy.auth.sessionCheckFailedHeading}
-          body={copy.auth.sessionCheckFailedBody}
-          retryLabel={copy.global.retryAction}
-          onRetry={() => refetch()}
-        />
-      </Screen>
-    );
-  }
+  // Separate from `bootReady` — this is what actually keeps
+  // SplashLoadingScreen mounted. Flips false (permanently) only once its
+  // own fade-*out* animation finishes, so the overlay stays long enough to
+  // animate away instead of vanishing the instant real content is ready.
+  const [showSplash, setShowSplash] = useState(true);
 
   const hasSession = Boolean(session);
 
   return (
     <>
-      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-      {/* Stack.Protected (Expo Router SDK 52+, available here on SDK 57) is
-          the officially-recommended way to gate a whole route group behind a
-          condition: it shows/hides the wrapped Stack.Screen entries and
-          automatically redirects to whichever protected group is currently
-          visible, rather than requiring this component to hand-navigate on
-          every session change. sign-in.tsx/register.tsx and the Settings
-          "Log out" action both rely on exactly that — they never navigate
-          themselves, this is the one place that reacts to the session
-          changing. */}
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Protected guard={hasSession}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="settings" />
-        </Stack.Protected>
-        <Stack.Protected guard={!hasSession}>
-          <Stack.Screen name="(auth)" />
-        </Stack.Protected>
-      </Stack>
-      {/* Persistent overlay above whichever screen the Stack above is
-          currently showing — every `bill/**`/`trip/**` route included, not
-          just Home/Settings (those two are just this bar's own highlighted
-          destinations, see BottomTabBar.tsx). Rendered here rather than
-          inside the Stack.Screen for "index"/"settings" so it survives
-          across pushes to other routes instead of unmounting/remounting. */}
-      {hasSession ? <BottomTabBar /> : null}
+      {bootReady ? (
+        error ? (
+          <Screen>
+            <ErrorState
+              heading={copy.auth.sessionCheckFailedHeading}
+              body={copy.auth.sessionCheckFailedBody}
+              retryLabel={copy.global.retryAction}
+              onRetry={() => refetch()}
+            />
+          </Screen>
+        ) : (
+          <>
+            <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+            {/* Stack.Protected (Expo Router SDK 52+, available here on SDK 57)
+                is the officially-recommended way to gate a whole route group
+                behind a condition: it shows/hides the wrapped Stack.Screen
+                entries and automatically redirects to whichever protected
+                group is currently visible, rather than requiring this
+                component to hand-navigate on every session change.
+                sign-in.tsx/register.tsx and the Settings "Log out" action
+                both rely on exactly that — they never navigate themselves,
+                this is the one place that reacts to the session changing. */}
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Protected guard={hasSession}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="settings" />
+              </Stack.Protected>
+              <Stack.Protected guard={!hasSession}>
+                <Stack.Screen name="(auth)" />
+              </Stack.Protected>
+            </Stack>
+            {/* Persistent overlay above whichever screen the Stack above is
+                currently showing — every `bill/**`/`trip/**` route included,
+                not just Home/Settings (those two are just this bar's own
+                highlighted destinations, see BottomTabBar.tsx). Rendered here
+                rather than inside the Stack.Screen for "index"/"settings" so
+                it survives across pushes to other routes instead of
+                unmounting/remounting. */}
+            {hasSession ? <BottomTabBar /> : null}
+          </>
+        )
+      ) : null}
+      {showSplash ? (
+        <SplashLoadingScreen
+          visible={!bootReady}
+          onFadeOutComplete={() => setShowSplash(false)}
+        />
+      ) : null}
     </>
   );
 }
@@ -120,15 +141,7 @@ function RootNavigator() {
     );
   }
 
-  if (!success) {
-    return (
-      <Screen>
-        <LoadingState message={copy.global.settingUpDatabase} />
-      </Screen>
-    );
-  }
-
-  return <SessionGate />;
+  return <SessionGate migrationsReady={success} />;
 }
 
 export default function RootLayout() {

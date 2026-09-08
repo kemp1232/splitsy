@@ -4,11 +4,24 @@
 // swapping models later is a config change (see engines.ts), not a code one.
 const GROQ_CHAT_COMPLETIONS_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
+// Groq rejects the request outright (a hard 429, not a "wait and retry")
+// whenever the *declared* max_tokens exceeds the account's output-tokens-
+// per-minute (OTPM) limit for the model — this is a ceiling on what the
+// request says it might use, not on what it actually used, so leaving
+// max_tokens unset (which defaults to 2048 for qwen/qwen3.8-27b) fails every
+// single request on this account's on_demand tier (observed OTPM limit:
+// 1000), regardless of how short the receipt actually is. 900 leaves a
+// little headroom under that observed limit. Env-tunable (matching
+// OCR_IMAGE_MAX_WIDTH's own pattern) so raising Groq's Dev Tier later is a
+// config change, not a code change.
+const DEFAULT_MAX_OUTPUT_TOKENS = 900;
+
 export type GroqChatOptions = {
   apiKey: string;
   model: string;
   prompt: string;
   imageBase64: string;
+  maxOutputTokens?: number;
 };
 
 type GroqChatResponse = {
@@ -37,6 +50,7 @@ export async function requestReceiptExtraction({
   model,
   prompt,
   imageBase64,
+  maxOutputTokens = DEFAULT_MAX_OUTPUT_TOKENS,
 }: GroqChatOptions): Promise<string> {
   let response: Response;
   try {
@@ -59,6 +73,10 @@ export async function requestReceiptExtraction({
         ],
         // Extraction, not creative writing — keep it deterministic.
         temperature: 0,
+        // See DEFAULT_MAX_OUTPUT_TOKENS above — must stay under the
+        // account's enforced OTPM limit or Groq rejects the request before
+        // it ever runs.
+        max_tokens: maxOutputTokens,
         // qwen3.8-27b (like its predecessor qwen3.6-27b, which Groq
         // deprecated 2026-09) "thinks" by default (a <think>...</think>
         // reasoning block prepended to content) — harmless for chat, but it

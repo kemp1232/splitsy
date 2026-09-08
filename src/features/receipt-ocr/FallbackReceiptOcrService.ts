@@ -1,4 +1,5 @@
 import {
+  OcrQueuedError,
   OcrRateLimitedError,
   type OcrRecognitionResult,
   type ReceiptOcrService,
@@ -43,6 +44,15 @@ export class FallbackReceiptOcrService implements ReceiptOcrService {
     try {
       return await withTimeout(this.primary.recognize(imageUri), this.timeoutMs);
     } catch (error) {
+      // A queued caller (see scanQueue.ts / OcrQueuedError) should wait and
+      // retry the same, better-accuracy backend path — not get silently
+      // downgraded to on-device OCR the way every other failure here does,
+      // which would defeat the point of a queue (nobody would ever actually
+      // wait their turn if scanning again always just worked anyway via the
+      // fallback). Left for the caller (processing.tsx) to show the wait
+      // and retry once the cooldown elapses.
+      if (error instanceof OcrQueuedError) throw error;
+
       // Development-only diagnostic (spec §18: dev logging must be gated and
       // easy to disable) — surfaces the real cause (cleartext block, timeout,
       // unreachable host) in `adb logcat` under ReactNativeJS instead of

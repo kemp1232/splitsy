@@ -18,7 +18,7 @@ import {
   BackendReceiptOcrService,
   groqExtractionToParsedReceipt,
 } from './BackendReceiptOcrService';
-import { OcrRateLimitedError } from './ReceiptOcrService';
+import { OcrQueuedError, OcrRateLimitedError } from './ReceiptOcrService';
 
 // `import * as config from '@/constants/config'` would go through Babel's
 // namespace-import interop, which copies properties onto a new object rather
@@ -147,6 +147,31 @@ describe('BackendReceiptOcrService', () => {
       const service = new BackendReceiptOcrService();
 
       await expect(service.recognize('file:///receipt.jpg')).rejects.toThrow(OcrRateLimitedError);
+    });
+
+    it('throws OcrQueuedError (not OcrRateLimitedError) for the backend scan-queue\'s own 429 shape', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 429,
+        text: async () => JSON.stringify({ error: 'queued', reason: 'queued', retryAfterSeconds: 42 }),
+      });
+      const service = new BackendReceiptOcrService();
+
+      const rejection = service.recognize('file:///receipt.jpg');
+      await expect(rejection).rejects.toBeInstanceOf(OcrQueuedError);
+      await expect(rejection).rejects.not.toBeInstanceOf(OcrRateLimitedError);
+      await expect(rejection).rejects.toMatchObject({ retryAfterSeconds: 42 });
+    });
+
+    it('falls back to OcrRateLimitedError when a 429 body does not match the queued shape', async () => {
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue({ ok: false, status: 429, text: async () => 'rate limited' });
+      const service = new BackendReceiptOcrService();
+
+      const rejection = service.recognize('file:///receipt.jpg');
+      await expect(rejection).rejects.toBeInstanceOf(OcrRateLimitedError);
+      await expect(rejection).rejects.not.toBeInstanceOf(OcrQueuedError);
     });
 
     it('throws a plain Error (not OcrRateLimitedError) for a non-429 failure', async () => {

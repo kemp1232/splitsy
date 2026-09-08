@@ -6,6 +6,7 @@ import { GroqRequestError, requestReceiptExtraction } from '../ocr/groqClient.js
 import { preprocessReceiptImage } from '../ocr/imagePreprocess.js';
 import { RECEIPT_EXTRACTION_PROMPT } from '../ocr/prompts.js';
 import { validateReceiptExtraction } from '../ocr/receiptExtraction.schema.js';
+import { claimScanSlot } from '../ocr/scanQueue.js';
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // plenty for a resized receipt photo
 
@@ -47,6 +48,32 @@ ocrRoute.post('/api/ocr', async (c) => {
   const maxWidth = process.env.OCR_IMAGE_MAX_WIDTH
     ? Number(process.env.OCR_IMAGE_MAX_WIDTH)
     : undefined;
+  const maxOutputTokens = process.env.OCR_MAX_OUTPUT_TOKENS
+    ? Number(process.env.OCR_MAX_OUTPUT_TOKENS)
+    : undefined;
+
+  // Global scan queue (see scanQueue.ts) — Groq's free-tier output-tokens-
+  // per-minute budget is shared across every user of this backend, not
+  // per-caller, so at most one scan may run per cooldown window regardless
+  // of who's asking. Checked before doing any of the (comparatively
+  // expensive) image preprocessing or the Groq call itself, both so a queued
+  // caller gets an immediate answer and so a queued request never spends any
+  // of that shared token budget at all. Distinguished from a genuine Groq-
+  // side 429 (GroqRequestError below) via `reason: 'queued'` in the body —
+  // the client (BackendReceiptOcrService.ts) uses that to show a "you're
+  // queued, try again in Ns" message rather than silently falling back to
+  // on-device OCR the way every other error does.
+  const slot = await claimScanSlot();
+  if (!slot.claimed) {
+    return c.json(
+      {
+        error: `Another scan is in progress. Try again in ${slot.retryAfterSeconds}s.`,
+        reason: 'queued',
+        retryAfterSeconds: slot.retryAfterSeconds,
+      },
+      429,
+    );
+  }
 
   try {
     const model = resolveModelTag(engine);
@@ -56,6 +83,7 @@ ocrRoute.post('/api/ocr', async (c) => {
       model,
       prompt: RECEIPT_EXTRACTION_PROMPT,
       imageBase64: preprocessed.toString('base64'),
+      maxOutputTokens,
     });
 
     let parsed: unknown;

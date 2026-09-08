@@ -1,5 +1,6 @@
 import { FallbackReceiptOcrService } from './FallbackReceiptOcrService';
 import {
+  OcrQueuedError,
   OcrRateLimitedError,
   type OcrRecognitionResult,
   type ReceiptOcrService,
@@ -44,6 +45,14 @@ function serviceThatRejectsWithRateLimit(): ReceiptOcrService {
   return {
     recognize: async () => {
       throw new OcrRateLimitedError('rate limited');
+    },
+  };
+}
+
+function serviceThatRejectsWithQueued(retryAfterSeconds: number): ReceiptOcrService {
+  return {
+    recognize: async () => {
+      throw new OcrQueuedError('queued', retryAfterSeconds);
     },
   };
 }
@@ -97,6 +106,19 @@ describe('FallbackReceiptOcrService', () => {
     const result = await service.recognize('file:///receipt.jpg');
 
     expect(result.fallbackReason).toBe('rate_limited');
+  });
+
+  it('rethrows OcrQueuedError instead of falling back to on-device, unlike every other failure', async () => {
+    const fallback = jest.fn();
+    const service = new FallbackReceiptOcrService(serviceThatRejectsWithQueued(42), {
+      recognize: fallback,
+    });
+
+    await expect(service.recognize('file:///receipt.jpg')).rejects.toBeInstanceOf(OcrQueuedError);
+    // Falling back here would silently downgrade a queued user to on-device
+    // OCR instead of letting them wait for their turn at the better-accuracy
+    // backend — the one thing this specific error must never trigger.
+    expect(fallback).not.toHaveBeenCalled();
   });
 
   it('leaves fallbackReason unset for every other kind of primary failure', async () => {
