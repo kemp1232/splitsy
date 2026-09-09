@@ -282,11 +282,18 @@ export default function ProcessingScreen() {
             />
           </View>
         </View>
-        <AppButton
-          variant="text"
-          label={copy.processing.cancelAction}
-          onPress={() => router.replace('/')}
-        />
+        {/* AppButton has no style prop of its own (this codebase's
+            convention — see its own props comment), so the extra breathing
+            room above Cancel (it otherwise sits right under the "Check
+            receipt" button with only `centered`'s own spacing.sm gap, which
+            reads as cramped) is a wrapping View's marginTop instead. */}
+        <View style={styles.cancelSpacing}>
+          <AppButton
+            variant="text"
+            label={copy.processing.cancelAction}
+            onPress={() => router.replace('/')}
+          />
+        </View>
       </View>
 
       {/* Mirrors bill/[billId]/index.tsx's own receipt-image modal — same
@@ -320,6 +327,7 @@ export default function ProcessingScreen() {
 const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   centerText: { textAlign: 'center' },
+  cancelSpacing: { marginTop: spacing.md },
   // Section-to-section rhythm: the failure heading/body group vs. the
   // actions group below it.
   failureBody: { gap: spacing.xl },
