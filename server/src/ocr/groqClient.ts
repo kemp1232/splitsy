@@ -10,11 +10,21 @@ const GROQ_CHAT_COMPLETIONS_URL = 'https://api.groq.com/openai/v1/chat/completio
 // request says it might use, not on what it actually used, so leaving
 // max_tokens unset (which defaults to 2048 for qwen/qwen3.8-27b) fails every
 // single request on this account's on_demand tier (observed OTPM limit:
-// 1000), regardless of how short the receipt actually is. 900 leaves a
-// little headroom under that observed limit. Env-tunable (matching
+// 1000), regardless of how short the receipt actually is. Set to the literal
+// observed ceiling itself (confirmed accepted, not rejected, via a direct
+// Groq call) rather than leaving headroom under it, since server/src/ocr/
+// scanQueue.ts already serializes every request to at most one per 60s
+// window — nothing else can be competing for the same minute's OTPM budget,
+// so there's no need to hold any of it back. A longer/denser receipt (more
+// line items) can still exceed even this literal ceiling and get a
+// `finish_reason: "length"` truncated response — receiptExtraction.schema.ts
+// tolerates that by degrading detectedSubtotalCentavos/
+// detectedTotalCentavos/rawText to null/empty rather than failing outright,
+// since no max_tokens value under this account's hard limit can guarantee
+// every possible receipt finishes. Env-tunable (matching
 // OCR_IMAGE_MAX_WIDTH's own pattern) so raising Groq's Dev Tier later is a
 // config change, not a code change.
-const DEFAULT_MAX_OUTPUT_TOKENS = 900;
+const DEFAULT_MAX_OUTPUT_TOKENS = 1000;
 
 export type GroqChatOptions = {
   apiKey: string;

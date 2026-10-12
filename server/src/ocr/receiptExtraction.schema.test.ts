@@ -56,8 +56,26 @@ describe('validateReceiptExtraction', () => {
     ).toThrow();
   });
 
-  it('rejects a missing rawText field', () => {
+  it('defaults a missing rawText to an empty string rather than rejecting it', () => {
+    // Deliberately accepted, not rejected — Groq's max_tokens cap can cut
+    // the response off before this trailing field is ever emitted at all
+    // (see this schema's own comment), which should degrade the same way an
+    // explicit null total already does, not hard-fail the whole extraction.
     const { rawText: _rawText, ...withoutRawText } = VALID;
-    expect(() => validateReceiptExtraction(withoutRawText)).toThrow();
+    expect(validateReceiptExtraction(withoutRawText)).toEqual({ ...VALID, rawText: '' });
+  });
+
+  it('defaults missing detectedSubtotalCentavos/detectedTotalCentavos to null rather than rejecting them', () => {
+    const { detectedSubtotalCentavos: _s, detectedTotalCentavos: _t, ...withoutTotals } = VALID;
+    expect(validateReceiptExtraction(withoutTotals)).toEqual({
+      ...VALID,
+      detectedSubtotalCentavos: null,
+      detectedTotalCentavos: null,
+    });
+  });
+
+  it('still rejects a missing items/adjustments field (unlike the trailing fields above, these are never optional)', () => {
+    const { items: _items, ...withoutItems } = VALID;
+    expect(() => validateReceiptExtraction(withoutItems)).toThrow();
   });
 });
