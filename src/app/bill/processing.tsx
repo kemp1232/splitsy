@@ -66,24 +66,32 @@ export default function ProcessingScreen() {
   const [failureIsTruncated, setFailureIsTruncated] = useState(false);
 
   useEffect(() => {
+    // Guards against a stale attempt (e.g. a slow scan still in flight when
+    // "Try again" bumps `attempt` and re-runs this effect) resolving after a
+    // newer attempt and clobbering its state or double-navigating.
+    let cancelled = false;
     (async () => {
       setStage('preparing');
       setRawText(null);
       setFailureIsTruncated(false);
       try {
         const bill = await billsRepository.getById(billId);
+        if (cancelled) return;
         if (!bill?.receiptImageUri) throw new Error('Missing receipt image for this bill.');
         setReceiptImageUri(bill.receiptImageUri);
 
         const ocrReadyUri = await createOcrDerivative(bill.receiptImageUri);
+        if (cancelled) return;
 
         setStage('reading');
         const { receipt, source, fallbackReason, truncated } =
           await ocrService.recognize(ocrReadyUri);
+        if (cancelled) return;
         setRawText(receipt.rawText);
 
         setStage('organizing');
         await saveParsedReceiptDraft(billId, receipt);
+        if (cancelled) return;
 
         // ocrSource/fallbackReason/truncated are one-time UI hints for the review
         // screen ("read online" vs "read on-device", and why), not persisted
@@ -101,6 +109,7 @@ export default function ProcessingScreen() {
           },
         });
       } catch (error) {
+        if (cancelled) return;
         // The backend's shared scan queue is busy (see scanQueue.ts) — this
         // is expected under normal multi-user load, not a failure, so it
         // gets its own stage (a countdown, handled by the effect below) that
@@ -118,6 +127,9 @@ export default function ProcessingScreen() {
         setStage('error');
       }
     })();
+    return () => {
+      cancelled = true;
+    };
     // `attempt` isn't read above — it's a deliberate counter so the retry
     // button can force this effect to run again with the same billId.
   }, [billId, router, attempt]);
