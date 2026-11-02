@@ -75,16 +75,24 @@ ocrRoute.post('/api/ocr', async (c) => {
     );
   }
 
+  // Hoisted so the catch block can report it too: a Groq response cut off
+  // mid-item fails JSON parsing/schema validation below, and the client needs
+  // to know that failure was caused by the token cap. Stays false for any
+  // failure before Groq actually returned a response (preprocessing,
+  // GroqRequestError).
+  let truncated = false;
   try {
     const model = resolveModelTag(engine);
     const preprocessed = await preprocessReceiptImage(bytes, maxWidth);
-    const content = await requestReceiptExtraction({
+    const result = await requestReceiptExtraction({
       apiKey,
       model,
       prompt: RECEIPT_EXTRACTION_PROMPT,
       imageBase64: preprocessed.toString('base64'),
       maxOutputTokens,
     });
+    const { content } = result;
+    truncated = result.truncated;
 
     let parsed: unknown;
     try {
@@ -107,7 +115,10 @@ ocrRoute.post('/api/ocr', async (c) => {
       throw new Error(`Groq response did not match the expected schema: ${detail}`);
     }
 
-    return c.json(extraction);
+    // `truncated` travels as a sibling of the validated extraction (like the
+    // queued-429 body's `reason`) so the client can warn the user that the
+    // scan was cut off by the token cap and some fields may be missing.
+    return c.json({ ...extraction, truncated });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown OCR error';
     // Groq's free-tier rate limit (429) is a distinct, expected, user-facing
@@ -115,6 +126,6 @@ ocrRoute.post('/api/ocr', async (c) => {
     // Passed through as our own 429 so the client can show a specific
     // message instead of lumping it in with every other 502 case.
     const status = error instanceof GroqRequestError && error.status === 429 ? 429 : 502;
-    return c.json({ error: message }, status);
+    return c.json({ error: message, truncated }, status);
   }
 });

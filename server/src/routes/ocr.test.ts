@@ -65,13 +65,29 @@ describe('POST /api/ocr', () => {
   });
 
   it('returns the validated structured extraction on success', async () => {
-    vi.mocked(requestReceiptExtraction).mockResolvedValue(JSON.stringify(VALID_EXTRACTION));
+    vi.mocked(requestReceiptExtraction).mockResolvedValue({
+      content: JSON.stringify(VALID_EXTRACTION),
+      truncated: false,
+    });
     const file = new File([new Uint8Array(tinyPng)], 'receipt.jpg', { type: 'image/jpeg' });
 
     const res = await ocrRoute.fetch(buildRequest(file));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual(VALID_EXTRACTION);
+    expect(await res.json()).toEqual({ ...VALID_EXTRACTION, truncated: false });
+  });
+
+  it('reports truncated: true when Groq hit its token cap before finishing', async () => {
+    vi.mocked(requestReceiptExtraction).mockResolvedValue({
+      content: JSON.stringify(VALID_EXTRACTION),
+      truncated: true,
+    });
+    const file = new File([new Uint8Array(tinyPng)], 'receipt.jpg', { type: 'image/jpeg' });
+
+    const res = await ocrRoute.fetch(buildRequest(file));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ...VALID_EXTRACTION, truncated: true });
   });
 
   it('returns 400 when no image is provided', async () => {
@@ -125,7 +141,10 @@ describe('POST /api/ocr', () => {
   });
 
   it('returns 502 when Groq responds with text that is not valid JSON', async () => {
-    vi.mocked(requestReceiptExtraction).mockResolvedValue('not json at all');
+    vi.mocked(requestReceiptExtraction).mockResolvedValue({
+      content: 'not json at all',
+      truncated: false,
+    });
     const file = new File([new Uint8Array(tinyPng)], 'receipt.jpg', { type: 'image/jpeg' });
 
     const res = await ocrRoute.fetch(buildRequest(file));
@@ -136,15 +155,97 @@ describe('POST /api/ocr', () => {
 
   it('returns 502 (not a 200 with corrupted money data) when Groq JSON does not match the schema', async () => {
     // e.g. a non-integer amount, as if Groq emitted decimal pesos by mistake.
-    vi.mocked(requestReceiptExtraction).mockResolvedValue(
-      JSON.stringify({ ...VALID_EXTRACTION, detectedTotalCentavos: 294.5 }),
-    );
+    vi.mocked(requestReceiptExtraction).mockResolvedValue({
+      content: JSON.stringify({ ...VALID_EXTRACTION, detectedTotalCentavos: 294.5 }),
+      truncated: false,
+    });
     const file = new File([new Uint8Array(tinyPng)], 'receipt.jpg', { type: 'image/jpeg' });
 
     const res = await ocrRoute.fetch(buildRequest(file));
 
     expect(res.status).toBe(502);
     expect((await res.json()).error).toMatch(/did not match the expected schema/);
+  });
+
+  it('reports truncated: true on the 502 when a cut-off Groq response fails schema validation', async () => {
+    // Cut off mid-item: the last item is missing quantity/lineTotalCentavos.
+    vi.mocked(requestReceiptExtraction).mockResolvedValue({
+      content: JSON.stringify({ ...VALID_EXTRACTION, items: [{ name: 'BURGER' }] }),
+      truncated: true,
+    });
+    const file = new File([new Uint8Array(tinyPng)], 'receipt.jpg', { type: 'image/jpeg' });
+
+    const res = await ocrRoute.fetch(buildRequest(file));
+
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error).toMatch(/did not match the expected schema/);
+    expect(body.truncated).toBe(true);
+  });
+
+  it('reports truncated: true on the 502 when a cut-off Groq response is not valid JSON', async () => {
+    vi.mocked(requestReceiptExtraction).mockResolvedValue({
+      content: '{"merchantName":"SAMP',
+      truncated: true,
+    });
+    const file = new File([new Uint8Array(tinyPng)], 'receipt.jpg', { type: 'image/jpeg' });
+
+    const res = await ocrRoute.fetch(buildRequest(file));
+
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error).toMatch(/not valid JSON/);
+    expect(body.truncated).toBe(true);
+  });
+
+  it.each([
+    [
+      'a generic Groq call failure',
+      () => vi.mocked(requestReceiptExtraction).mockRejectedValue(new Error('model unavailable')),
+      502,
+    ],
+    [
+      "Groq's own 429",
+      () =>
+        vi
+          .mocked(requestReceiptExtraction)
+          .mockRejectedValue(new GroqRequestError('Groq request failed (429): rate limit', 429)),
+      429,
+    ],
+    [
+      'a 500 from Groq itself',
+      () =>
+        vi
+          .mocked(requestReceiptExtraction)
+          .mockRejectedValue(new GroqRequestError('Groq request failed (500): internal', 500)),
+      502,
+    ],
+    [
+      'a non-truncated schema mismatch',
+      () =>
+        vi.mocked(requestReceiptExtraction).mockResolvedValue({
+          content: JSON.stringify({ ...VALID_EXTRACTION, detectedTotalCentavos: 294.5 }),
+          truncated: false,
+        }),
+      502,
+    ],
+  ])('reports truncated: false on the error response for %s', async (_label, arrange, status) => {
+    arrange();
+    const file = new File([new Uint8Array(tinyPng)], 'receipt.jpg', { type: 'image/jpeg' });
+
+    const res = await ocrRoute.fetch(buildRequest(file));
+
+    expect(res.status).toBe(status);
+    expect((await res.json()).truncated).toBe(false);
+  });
+
+  it('reports truncated: false when the image fails before Groq is ever called', async () => {
+    const file = new File([new Uint8Array([1, 2, 3])], 'receipt.jpg', { type: 'image/jpeg' });
+
+    const res = await ocrRoute.fetch(buildRequest(file));
+
+    expect(res.status).toBe(502);
+    expect((await res.json()).truncated).toBe(false);
   });
 
   it('returns 502 (not an unhandled crash) when the uploaded bytes are not a decodable image', async () => {
@@ -166,6 +267,7 @@ describe('POST /api/ocr', () => {
     const body = await res.json();
     expect(body.reason).toBe('queued');
     expect(body.retryAfterSeconds).toBe(42);
+    expect(body).not.toHaveProperty('truncated');
     // The whole point of checking the queue first is never spending any of
     // the shared Groq token budget on a request that's just going to be
     // turned away.

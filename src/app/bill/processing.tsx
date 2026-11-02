@@ -15,7 +15,11 @@ import { createOcrDerivative } from '@/features/receipt-capture/receiptImage.ser
 import { BackendReceiptOcrService } from '@/features/receipt-ocr/BackendReceiptOcrService';
 import { FallbackReceiptOcrService } from '@/features/receipt-ocr/FallbackReceiptOcrService';
 import { MlKitReceiptOcrService } from '@/features/receipt-ocr/MlKitReceiptOcrService';
-import { OcrQueuedError, type ReceiptOcrService } from '@/features/receipt-ocr/ReceiptOcrService';
+import {
+  OcrQueuedError,
+  OcrTruncatedError,
+  type ReceiptOcrService,
+} from '@/features/receipt-ocr/ReceiptOcrService';
 import { spacing } from '@/theme/tokens';
 
 type Stage = 'preparing' | 'reading' | 'organizing' | 'queued' | 'error';
@@ -56,11 +60,16 @@ export default function ProcessingScreen() {
   // by the effect below so the UI doesn't need to re-ask the server every
   // second just to update a number.
   const [queuedSecondsLeft, setQueuedSecondsLeft] = useState<number | null>(null);
+  // Whether the last failure was a token-cap-truncated backend scan
+  // (OcrTruncatedError) — only reachable on web, where there's no on-device
+  // fallback to absorb it. Reset at the start of every attempt.
+  const [failureIsTruncated, setFailureIsTruncated] = useState(false);
 
   useEffect(() => {
     (async () => {
       setStage('preparing');
       setRawText(null);
+      setFailureIsTruncated(false);
       try {
         const bill = await billsRepository.getById(billId);
         if (!bill?.receiptImageUri) throw new Error('Missing receipt image for this bill.');
@@ -69,21 +78,27 @@ export default function ProcessingScreen() {
         const ocrReadyUri = await createOcrDerivative(bill.receiptImageUri);
 
         setStage('reading');
-        const { receipt, source, fallbackReason } = await ocrService.recognize(ocrReadyUri);
+        const { receipt, source, fallbackReason, truncated } =
+          await ocrService.recognize(ocrReadyUri);
         setRawText(receipt.rawText);
 
         setStage('organizing');
         await saveParsedReceiptDraft(billId, receipt);
 
-        // ocrSource/fallbackReason are one-time UI hints for the review
+        // ocrSource/fallbackReason/truncated are one-time UI hints for the review
         // screen ("read online" vs "read on-device", and why), not persisted
         // bill data — they simply won't be present if the user reopens this
         // draft later, which is fine.
         router.replace({
           pathname: '/bill/[billId]/receipt-review',
-          params: fallbackReason
-            ? { billId, ocrSource: source, fallbackReason }
-            : { billId, ocrSource: source },
+          params: {
+            billId,
+            ocrSource: source,
+            ...(fallbackReason ? { fallbackReason } : {}),
+            // String-boolean, like sign-in.tsx's `justReset: '1'` — router
+            // params are strings.
+            ...(truncated ? { truncated: '1' } : {}),
+          },
         });
       } catch (error) {
         // The backend's shared scan queue is busy (see scanQueue.ts) — this
@@ -99,6 +114,7 @@ export default function ProcessingScreen() {
         // and easy to disable) — never shown to the end user, unlike the
         // removed DEBUG-text banner this screen used to render here.
         if (__DEV__) console.error('[ProcessingScreen] OCR failed:', error);
+        setFailureIsTruncated(error instanceof OcrTruncatedError);
         setStage('error');
       }
     })();
@@ -176,9 +192,11 @@ export default function ProcessingScreen() {
                 accurate description of what just happened, not a guess —
                 it's shown alongside spec 13.8's own required heading/body,
                 not in place of it, since that pair is an exact copy
-                contract of its own. */}
+                contract of its own. On web there is no fallback wrapper, so
+                a token-cap-truncated scan (OcrTruncatedError) lands here
+                directly and gets its own, more specific line instead. */}
             <AppText variant="body" color="textSecondary">
-              {copy.global.ocrUnavailable}
+              {failureIsTruncated ? copy.ocrFailure.truncatedNote : copy.global.ocrUnavailable}
             </AppText>
           </View>
 

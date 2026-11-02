@@ -13,6 +13,19 @@ export class OcrRateLimitedError extends Error {
   }
 }
 
+// Thrown when the backend's request failed because Groq's response was cut
+// off by its token cap (`truncated: true` on the error body — see
+// server/src/routes/ocr.ts) badly enough to be unusable. Unlike a usable but
+// incomplete result (OcrRecognitionResult.truncated), nothing from the
+// backend can be shown here, so FallbackReceiptOcrService falls back to
+// on-device OCR and tags the result `fallbackReason: 'token_limit_truncated'`.
+export class OcrTruncatedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OcrTruncatedError';
+  }
+}
+
 // Thrown specifically when the backend's own global scan queue (see
 // server/src/ocr/scanQueue.ts) turned this request away before it ever
 // reached Groq — Groq's free-tier output-tokens-per-minute budget is shared
@@ -37,13 +50,18 @@ export class OcrQueuedError extends Error {
 // Which implementation actually produced this result — lets the UI show
 // whether a scan used the Groq backend or fell back to on-device OCR (see
 // FallbackReceiptOcrService). A UI hint only, never treated as bill data
-// (spec section 7). `fallbackReason` is set only for the one reason the UI
-// currently distinguishes (rate limiting) — every other fallback reason
-// stays silent, same as before this existed.
+// (spec section 7). `fallbackReason` is set only for the reasons the UI
+// currently distinguishes (rate limiting, a token-cap-truncated backend
+// response) — every other fallback reason stays silent, same as before.
 export type OcrRecognitionResult = {
   receipt: ParsedReceipt;
   source: 'backend' | 'on-device';
-  fallbackReason?: 'rate_limited';
+  fallbackReason?: 'rate_limited' | 'token_limit_truncated';
+  // Set only when source === 'backend' and the Groq call was cut off by its
+  // token cap (finish_reason "length") — some fields (total, subtotal, full
+  // text) may be missing. Deliberately not a `fallbackReason`: nothing fell
+  // back to on-device here, the backend result is still the one used.
+  truncated?: boolean;
 };
 
 // The only interface the rest of the app is allowed to depend on. Swapping

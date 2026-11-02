@@ -48,11 +48,14 @@ export default function ReceiptReviewScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { billId, ocrSource, fallbackReason } = useLocalSearchParams<{
+  const { billId, ocrSource, fallbackReason, truncated } = useLocalSearchParams<{
     billId: string;
     ocrSource?: 'backend' | 'on-device';
-    fallbackReason?: 'rate_limited';
+    fallbackReason?: 'rate_limited' | 'token_limit_truncated';
+    // '1' when the backend scan was cut off by its token cap (processing.tsx).
+    truncated?: string;
   }>();
+  const isTruncated = truncated === '1';
 
   const [state, setState] = useState<LoadState>('loading');
   const [bill, setBill] = useState<Bill | null>(null);
@@ -230,8 +233,10 @@ export default function ReceiptReviewScreen() {
               }
               tone={
                 ocrSource === 'backend'
-                  ? 'success'
-                  : fallbackReason === 'rate_limited'
+                  ? isTruncated
+                    ? 'warning'
+                    : 'success'
+                  : fallbackReason === 'rate_limited' || fallbackReason === 'token_limit_truncated'
                     ? 'warning'
                     : 'neutral'
               }
@@ -247,6 +252,14 @@ export default function ReceiptReviewScreen() {
           {fallbackReason === 'rate_limited' ? (
             <AppText variant="caption" color="warning" style={styles.uniformText}>
               {copy.receiptReview.rateLimitedNote}
+            </AppText>
+          ) : null}
+
+          {/* Backend result cut off by the token cap (isTruncated), or so
+              badly cut off that it fell back to on-device — same message. */}
+          {isTruncated || fallbackReason === 'token_limit_truncated' ? (
+            <AppText variant="caption" color="warning" style={styles.uniformText}>
+              {copy.receiptReview.truncatedNote}
             </AppText>
           ) : null}
         </View>

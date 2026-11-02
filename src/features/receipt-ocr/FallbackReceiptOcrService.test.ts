@@ -2,6 +2,7 @@ import { FallbackReceiptOcrService } from './FallbackReceiptOcrService';
 import {
   OcrQueuedError,
   OcrRateLimitedError,
+  OcrTruncatedError,
   type OcrRecognitionResult,
   type ReceiptOcrService,
 } from './ReceiptOcrService';
@@ -74,6 +75,20 @@ describe('FallbackReceiptOcrService', () => {
     expect(fallback).not.toHaveBeenCalled();
   });
 
+  it('passes a truncated primary result through unchanged', async () => {
+    const fallback = jest.fn();
+    const service = new FallbackReceiptOcrService(
+      { recognize: async () => ({ ...resultTaggedWith('backend'), truncated: true }) },
+      { recognize: fallback },
+    );
+
+    const result = await service.recognize('file:///receipt.jpg');
+
+    expect(result.source).toBe('backend');
+    expect(result.truncated).toBe(true);
+    expect(fallback).not.toHaveBeenCalled();
+  });
+
   it('falls back to the on-device service when the primary throws', async () => {
     const service = new FallbackReceiptOcrService(
       serviceThatRejects('network error'),
@@ -106,6 +121,24 @@ describe('FallbackReceiptOcrService', () => {
     const result = await service.recognize('file:///receipt.jpg');
 
     expect(result.fallbackReason).toBe('rate_limited');
+  });
+
+  it('falls back on-device and tags fallbackReason "token_limit_truncated" when the primary was truncated', async () => {
+    const fallback = jest.fn(async () => resultTaggedWith('on-device'));
+    const service = new FallbackReceiptOcrService(
+      {
+        recognize: async () => {
+          throw new OcrTruncatedError('truncated');
+        },
+      },
+      { recognize: fallback },
+    );
+
+    const result = await service.recognize('file:///receipt.jpg');
+
+    expect(fallback).toHaveBeenCalled();
+    expect(result.source).toBe('on-device');
+    expect(result.fallbackReason).toBe('token_limit_truncated');
   });
 
   it('rethrows OcrQueuedError instead of falling back to on-device, unlike every other failure', async () => {

@@ -35,7 +35,7 @@ export type GroqChatOptions = {
 };
 
 type GroqChatResponse = {
-  choices?: { message?: { content?: string } }[];
+  choices?: { message?: { content?: string }; finish_reason?: string }[];
   error?: { message?: string };
 };
 
@@ -52,16 +52,21 @@ export class GroqRequestError extends Error {
   }
 }
 
-// Returns the model's raw JSON-string response for the receipt-extraction
-// prompt — the caller (ocr.ts) is responsible for JSON.parse-ing and
-// schema-validating it before trusting any of it.
+// `content` is the model's raw JSON-string response for the receipt-
+// extraction prompt — the caller (ocr.ts) is responsible for JSON.parse-ing
+// and schema-validating it before trusting any of it. `truncated` is true when
+// Groq reports `finish_reason: "length"`, i.e. the response was cut off by
+// `max_tokens` before the model finished (trailing fields such as the totals
+// may be missing) — passed through so the app can tell the user why.
+export type GroqExtractionResult = { content: string; truncated: boolean };
+
 export async function requestReceiptExtraction({
   apiKey,
   model,
   prompt,
   imageBase64,
   maxOutputTokens = DEFAULT_MAX_OUTPUT_TOKENS,
-}: GroqChatOptions): Promise<string> {
+}: GroqChatOptions): Promise<GroqExtractionResult> {
   let response: Response;
   try {
     response = await fetch(GROQ_CHAT_COMPLETIONS_URL, {
@@ -120,9 +125,10 @@ export async function requestReceiptExtraction({
   }
 
   const data = (await response.json()) as GroqChatResponse;
-  const content = data.choices?.[0]?.message?.content;
+  const choice = data.choices?.[0];
+  const content = choice?.message?.content;
   if (typeof content !== 'string') {
     throw new Error(data.error?.message ?? 'Groq response did not include message content.');
   }
-  return content;
+  return { content, truncated: choice?.finish_reason === 'length' };
 }

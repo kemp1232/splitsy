@@ -18,7 +18,7 @@ import {
   BackendReceiptOcrService,
   groqExtractionToParsedReceipt,
 } from './BackendReceiptOcrService';
-import { OcrQueuedError, OcrRateLimitedError } from './ReceiptOcrService';
+import { OcrQueuedError, OcrRateLimitedError, OcrTruncatedError } from './ReceiptOcrService';
 
 // `import * as config from '@/constants/config'` would go through Babel's
 // namespace-import interop, which copies properties onto a new object rather
@@ -172,6 +172,58 @@ describe('BackendReceiptOcrService', () => {
       const rejection = service.recognize('file:///receipt.jpg');
       await expect(rejection).rejects.toBeInstanceOf(OcrRateLimitedError);
       await expect(rejection).rejects.not.toBeInstanceOf(OcrQueuedError);
+    });
+
+    it.each([
+      [true, true],
+      [false, undefined],
+      [undefined, undefined],
+    ])(
+      'surfaces truncated=%p from a successful backend response as %p',
+      async (truncated, expected) => {
+        global.fetch = jest.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () =>
+            truncated === undefined ? BASE_EXTRACTION : { ...BASE_EXTRACTION, truncated },
+        });
+        const service = new BackendReceiptOcrService();
+
+        const result = await service.recognize('file:///receipt.jpg');
+
+        expect(result.source).toBe('backend');
+        expect(result.truncated).toBe(expected);
+      },
+    );
+
+    it.each([502, 500, 429])(
+      'throws OcrTruncatedError for a non-ok body with truncated: true (status %p)',
+      async (status) => {
+        global.fetch = jest.fn().mockResolvedValue({
+          ok: false,
+          status,
+          text: async () => JSON.stringify({ error: 'schema mismatch', truncated: true }),
+        });
+        const service = new BackendReceiptOcrService();
+
+        const rejection = service.recognize('file:///receipt.jpg');
+        await expect(rejection).rejects.toBeInstanceOf(OcrTruncatedError);
+        await expect(rejection).rejects.not.toBeInstanceOf(OcrRateLimitedError);
+        await expect(rejection).rejects.not.toBeInstanceOf(OcrQueuedError);
+      },
+    );
+
+    it('throws a plain Error (not OcrTruncatedError) for a non-ok body with truncated: false', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        text: async () => JSON.stringify({ error: 'model unavailable', truncated: false }),
+      });
+      const service = new BackendReceiptOcrService();
+
+      const rejection = service.recognize('file:///receipt.jpg');
+      await expect(rejection).rejects.toThrow(/OCR backend request failed \(502\)/);
+      await expect(rejection).rejects.not.toBeInstanceOf(OcrTruncatedError);
     });
 
     it('throws a plain Error (not OcrRateLimitedError) for a non-429 failure', async () => {

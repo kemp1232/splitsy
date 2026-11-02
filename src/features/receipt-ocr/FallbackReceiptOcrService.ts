@@ -1,6 +1,7 @@
 import {
   OcrQueuedError,
   OcrRateLimitedError,
+  OcrTruncatedError,
   type OcrRecognitionResult,
   type ReceiptOcrService,
 } from './ReceiptOcrService';
@@ -61,12 +62,15 @@ export class FallbackReceiptOcrService implements ReceiptOcrService {
         console.warn('[FallbackReceiptOcrService] primary OCR failed, falling back:', error);
       }
       const result = await this.fallback.recognize(imageUri);
-      // Rate limiting is the one fallback reason the UI currently explains
-      // to the user (see receipt-review.tsx) — every other reason (network
-      // down, misconfigured, timeout, bad response) stays silent, same as
-      // before this existed.
+      // Rate limiting and token-cap truncation are the fallback reasons the
+      // UI currently explains to the user (see receipt-review.tsx) — every
+      // other reason (network down, misconfigured, timeout, bad response)
+      // stays silent, same as before this existed.
       if (error instanceof OcrRateLimitedError) {
         return { ...result, fallbackReason: 'rate_limited' };
+      }
+      if (error instanceof OcrTruncatedError) {
+        return { ...result, fallbackReason: 'token_limit_truncated' };
       }
       return result;
     }

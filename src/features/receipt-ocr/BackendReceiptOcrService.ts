@@ -8,6 +8,7 @@ import { buildImageFormDataPart } from './buildImageFormDataPart';
 import {
   OcrQueuedError,
   OcrRateLimitedError,
+  OcrTruncatedError,
   type OcrRecognitionResult,
   type ReceiptOcrService,
 } from './ReceiptOcrService';
@@ -46,6 +47,9 @@ const backendReceiptExtractionSchema = z.object({
   detectedSubtotalCentavos: z.number().int().nullable(),
   detectedTotalCentavos: z.number().int().nullable(),
   rawText: z.string(),
+  // Sibling flag from server/src/routes/ocr.ts — the Groq response hit its
+  // token cap before finishing.
+  truncated: z.boolean().optional(),
 });
 
 type BackendReceiptExtraction = z.infer<typeof backendReceiptExtractionSchema>;
@@ -142,6 +146,27 @@ export class BackendReceiptOcrService implements ReceiptOcrService {
 
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
+      // Parsed defensively — a non-JSON body (proxy error page, etc.) just
+      // yields null and falls through to the generic handling below.
+      const parsed = (() => {
+        try {
+          return JSON.parse(detail) as {
+            reason?: unknown;
+            retryAfterSeconds?: unknown;
+            truncated?: unknown;
+          } | null;
+        } catch {
+          return null;
+        }
+      })();
+      // Groq's response was cut off by its token cap badly enough to be
+      // unusable (see server/src/routes/ocr.ts) — checked for any status so
+      // the UI can explain why the backend result was lost.
+      if (parsed?.truncated === true) {
+        throw new OcrTruncatedError(
+          `OCR backend scan was truncated (${response.status}): ${detail}`,
+        );
+      }
       // The server passes Groq's own 429 through as our API's 429 (see
       // server/src/routes/ocr.ts) specifically so this distinction is
       // possible — everything else stays a generic failure that
@@ -154,13 +179,6 @@ export class BackendReceiptOcrService implements ReceiptOcrService {
         // through unexpectedly. Only the former gets the queued treatment;
         // parsing failure (non-JSON body, missing fields) falls back to the
         // generic rate-limited case rather than throwing a worse error.
-        const parsed = (() => {
-          try {
-            return JSON.parse(detail) as { reason?: string; retryAfterSeconds?: number };
-          } catch {
-            return null;
-          }
-        })();
         if (parsed?.reason === 'queued' && typeof parsed.retryAfterSeconds === 'number') {
           throw new OcrQueuedError(
             `OCR backend is queued: retry in ${parsed.retryAfterSeconds}s`,
@@ -179,6 +197,10 @@ export class BackendReceiptOcrService implements ReceiptOcrService {
       throw new Error(errorMessage ?? `OCR backend response did not match the expected shape.`);
     }
 
-    return { receipt: groqExtractionToParsedReceipt(parseResult.data), source: 'backend' };
+    return {
+      receipt: groqExtractionToParsedReceipt(parseResult.data),
+      source: 'backend',
+      ...(parseResult.data.truncated ? { truncated: true } : {}),
+    };
   }
 }
