@@ -9,7 +9,7 @@ import { Stack } from 'expo-router';
 // which of its screens happened to be on top before.
 export default function AuthLayout() {
   return (
-    <Stack screenOptions={{ headerShown: false }} initialRouteName="sign-in">
+    <Stack screenOptions={{ headerShown: false, animation: 'fade', animationDuration: 600 }} initialRouteName="sign-in">
       <Stack.Screen name="sign-in" />
       <Stack.Screen name="register" />
       <Stack.Screen name="forgot-password" />

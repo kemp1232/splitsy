@@ -97,7 +97,7 @@ function SessionGate({ migrationsReady }: { migrationsReady: boolean }) {
                 sign-in.tsx/register.tsx and the Settings "Log out" action
                 both rely on exactly that — they never navigate themselves,
                 this is the one place that reacts to the session changing. */}
-            <Stack screenOptions={{ headerShown: false }}>
+            <Stack screenOptions={{ headerShown: false, animation: 'fade', animationDuration: 600 }}>
               <Stack.Protected guard={hasSession}>
                 <Stack.Screen name="index" />
                 <Stack.Screen name="settings" />

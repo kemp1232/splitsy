@@ -633,7 +633,10 @@ function createStyles(colors: ColorTokens) {
     // below is positioned as a percentage of this same box, so it tracks the
     // bubble's actual position at whatever size this ends up rendering at.
     greetingImageWrap: {
-      width: '100%',
+      // Not full width — at 100% the mascot + bubble read as oversized on a
+      // phone. The overlay's percentages and the text sizes below scale with
+      // it, so shrinking this one value shrinks the whole block evenly.
+      width: '80%',
       // Must match greeting.png's own current pixel dimensions exactly — a
       // mismatch here is what caused the "space above/below" bug even after
       // the image itself was re-cropped with no internal padding:
@@ -653,11 +656,17 @@ function createStyles(colors: ColorTokens) {
     // isn't the only failure mode here — plain gray reads as washed-out
     // against a stark white bubble the way it wouldn't against this app's
     // usual off-white/dark surfaces.
+    // Sizes stepped down from the heading/body variants (22/15) to roughly
+    // match greetingImageWrap's own 80% width.
     greetingHeadingText: {
       color: '#10141C',
+      fontSize: 18,
+      lineHeight: 23,
     },
     greetingSubtitleText: {
       color: '#2A2E38',
+      fontSize: 13,
+      lineHeight: 18,
     },
     // Percentages are the speech bubble's own measured interior within
     // greeting.png — the ninja + bubble tail occupy the left ~35%, so text

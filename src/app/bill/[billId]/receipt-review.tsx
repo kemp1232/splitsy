@@ -1,7 +1,16 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Modal, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  FlatList,
+  type ListRenderItem,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LineItemEditorSheet, type LineItemDraft } from '@/components/bill/LineItemEditorSheet';
 import { LineItemRow } from '@/components/bill/LineItemRow';
@@ -9,31 +18,40 @@ import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
 import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
+import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { Divider } from '@/components/ui/Divider';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { IconButton } from '@/components/ui/IconButton';
 import { InlineError } from '@/components/ui/InlineError';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
-import { StatusBadge } from '@/components/ui/StatusBadge';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { copy } from '@/constants/copy';
 import type { Bill } from '@/db/repositories/bills.repository';
 import { billsRepository } from '@/db/repositories/bills.repository';
 import { adjustmentsRepository } from '@/db/repositories/adjustments.repository';
 import type { LineItem } from '@/db/repositories/lineItems.repository';
 import { lineItemsRepository } from '@/db/repositories/lineItems.repository';
+import { buildOcrStatus, type OcrStatusTone } from '@/features/receipt-review/buildOcrStatus';
 import { nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
-import { formatCentavos } from '@/lib/money';
+import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
 import type { ColorTokens } from '@/theme/tokens';
-import { spacing } from '@/theme/tokens';
+import { radius, spacing, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
 // Matches spec section 9.1's documented receiptDate shape exactly.
 const RECEIPT_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+const STATUS_ICON: Record<OcrStatusTone, keyof typeof Feather.glyphMap> = {
+  success: 'check-circle',
+  warning: 'alert-triangle',
+  neutral: 'smartphone',
+};
 
 async function fetchReviewData(billId: string) {
   const [billRow, itemRows, adjustmentRows] = await Promise.all([
@@ -44,9 +62,22 @@ async function fetchReviewData(billId: string) {
   return { billRow, itemRows, adjustmentRows };
 }
 
+function keyExtractor(item: LineItem) {
+  return item.id;
+}
+
+function ItemSeparator() {
+  return <View style={separatorStyles.gap} />;
+}
+
+const separatorStyles = StyleSheet.create({
+  gap: { height: spacing.sm },
+});
+
 export default function ReceiptReviewScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { billId, ocrSource, fallbackReason, truncated } = useLocalSearchParams<{
     billId: string;
@@ -64,6 +95,10 @@ export default function ReceiptReviewScreen() {
   const [merchantName, setMerchantName] = useState('');
   const [receiptDate, setReceiptDate] = useState('');
   const [editingItem, setEditingItem] = useState<LineItem | 'new' | null>(null);
+  // The item awaiting delete confirmation — set from either a row's trash
+  // icon or the editor sheet's own Delete button. Nothing is removed until
+  // the ConfirmationDialog's confirm action runs.
+  const [pendingDelete, setPendingDelete] = useState<LineItem | null>(null);
   const [showRawText, setShowRawText] = useState(false);
   const [showReceiptImage, setShowReceiptImage] = useState(false);
   const [dateError, setDateError] = useState<string | null>(null);
@@ -92,6 +127,34 @@ export default function ReceiptReviewScreen() {
       }
     })();
   }, [billId]);
+
+  // Stable per-row callbacks (they take the item rather than closing over
+  // it) so LineItemRow's React.memo can skip unchanged rows.
+  const openEditor = useCallback((item: LineItem) => setEditingItem(item), []);
+  const requestDelete = useCallback((item: LineItem) => setPendingDelete(item), []);
+  const renderItem = useCallback<ListRenderItem<LineItem>>(
+    ({ item }) => <LineItemRow item={item} onEdit={openEditor} onDelete={requestDelete} />,
+    [openEditor, requestDelete],
+  );
+
+  const scrollContentStyle = useMemo(
+    () => [
+      styles.body,
+      // Keeps the last content (the "Add people" button) clear of the global
+      // BottomTabBar overlay. Screen's SafeAreaView skips the bottom edge, so
+      // the inset is added here explicitly.
+      { paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE + insets.bottom },
+    ],
+    [styles.body, insets.bottom],
+  );
+
+  // Straight back to Home rather than router.back(): after a scan the stack
+  // is Home → capture → review (preview/processing replace themselves), so a
+  // plain back would land on the camera. dismissTo pops to Home when it's in
+  // the stack and otherwise replaces this screen with it.
+  function handleBack() {
+    router.dismissTo('/');
+  }
 
   async function refreshItems() {
     const itemRows = await lineItemsRepository.listByBillId(billId);
@@ -162,17 +225,39 @@ export default function ReceiptReviewScreen() {
     }
   }
 
-  async function handleDeleteItem() {
+  // Only ever reached through the ConfirmationDialog's confirm action (see
+  // handleConfirmDelete). Takes the target explicitly so the row trash icon
+  // (no editor open) and the editor sheet's Delete share one path.
+  async function handleDeleteItem(target: LineItem) {
     setActionError(null);
     try {
-      if (editingItem && editingItem !== 'new') {
-        await lineItemsRepository.remove(editingItem.id);
-      }
+      await lineItemsRepository.remove(target.id);
       setEditingItem(null);
       await refreshItems();
     } catch {
       setEditingItem(null);
       setActionError(copy.global.storageFailure);
+    }
+  }
+
+  // Mirrors adjustments.tsx's handleRequestDelete: the sheet closes before
+  // the ConfirmationDialog opens, so only one Modal is ever visible at a time.
+  // Cancelling returns to the screen (unsaved sheet edits are discarded);
+  // confirming deletes via handleDeleteItem, which doesn't need the sheet.
+  function handleRequestDeleteFromSheet() {
+    if (editingItem && editingItem !== 'new') {
+      setPendingDelete(editingItem);
+    }
+    setEditingItem(null);
+  }
+
+  function handleConfirmDelete() {
+    const target = pendingDelete;
+    // Cleared first so the dialog hides immediately and a double tap can't
+    // fire a second delete.
+    setPendingDelete(null);
+    if (target) {
+      void handleDeleteItem(target);
     }
   }
 
@@ -204,17 +289,32 @@ export default function ReceiptReviewScreen() {
     ? computedTotalCentavos - bill.detectedReceiptTotalCentavos!
     : 0;
 
+  const ocrStatus = buildOcrStatus(ocrSource, fallbackReason, isTruncated);
+  const reconciliationMessage = buildReconciliationMessage(totalDifference, formatCentavos);
+  const reconciliationSpeech = buildReconciliationMessage(totalDifference, formatCentavosForSpeech);
+  const textCaption =
+    ocrSource === 'backend' && !fallbackReason
+      ? copy.receiptReview.viewTextCaptionAi
+      : copy.receiptReview.viewTextCaptionDevice;
+
   return (
-    <Screen scroll padded={false}>
-      <View style={styles.body}>
+    <Screen scroll={false} padded={false}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={scrollContentStyle}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.headerBlock}>
-          {/* Deliberately full-size `heading` (no uniformText override,
-              unlike everything else on this screen) — matches the Home
-              screen's own greeting header, so this screen reads as having a
-              real page header rather than blending into the body copy. */}
           <View style={styles.headingRow}>
+            <IconButton
+              accessibilityLabel={copy.receiptReview.backAccessibilityLabel}
+              onPress={handleBack}
+              icon={<Feather name="arrow-left" size={22} color={colors.textPrimary} />}
+            />
             <Feather name="file-text" size={24} color={colors.primary} />
-            <AppText variant="heading">{copy.receiptReview.heading}</AppText>
+            <AppText variant="heading" style={styles.headingText} accessibilityRole="header">
+              {copy.receiptReview.heading}
+            </AppText>
           </View>
           <AppText variant="body" color="textSecondary" style={styles.uniformText}>
             {copy.receiptReview.body}
@@ -223,54 +323,58 @@ export default function ReceiptReviewScreen() {
           {/* Shared by every write path below (merchant/date autosave, item
               save/delete) — mirrors participants.tsx's own actionError. */}
           {actionError ? <InlineError message={actionError} /> : null}
-
-          {ocrSource ? (
-            <StatusBadge
-              label={
-                ocrSource === 'backend'
-                  ? copy.receiptReview.ocrSourceBackend
-                  : copy.receiptReview.ocrSourceOnDevice
-              }
-              tone={
-                ocrSource === 'backend'
-                  ? isTruncated
-                    ? 'warning'
-                    : 'success'
-                  : fallbackReason === 'rate_limited' || fallbackReason === 'token_limit_truncated'
-                    ? 'warning'
-                    : 'neutral'
-              }
-            />
-          ) : null}
-
-          {ocrSource === 'backend' ? (
-            <AppText variant="caption" color="textSecondary" style={styles.uniformText}>
-              {copy.receiptReview.handwritingNote}
-            </AppText>
-          ) : null}
-
-          {fallbackReason === 'rate_limited' ? (
-            <AppText variant="caption" color="warning" style={styles.uniformText}>
-              {copy.receiptReview.rateLimitedNote}
-            </AppText>
-          ) : null}
-
-          {/* Backend result cut off by the token cap (isTruncated), or so
-              badly cut off that it fell back to on-device — same message. */}
-          {isTruncated || fallbackReason === 'token_limit_truncated' ? (
-            <AppText variant="caption" color="warning" style={styles.uniformText}>
-              {copy.receiptReview.truncatedNote}
-            </AppText>
-          ) : null}
         </View>
 
-        <View style={styles.fieldsBlock}>
+        {/* Non-interactive status card — derived only from processing.tsx's
+            one-time route params, so a reopened draft shows nothing. */}
+        {ocrStatus ? (
+          <View
+            accessible
+            accessibilityLabel={[
+              ocrStatus.title,
+              ocrStatus.body,
+              ...ocrStatus.notes.map((n) => n.text),
+            ]
+              .filter(Boolean)
+              .join('. ')}
+            style={[styles.statusCard, styles[ocrStatus.tone]]}
+          >
+            <Feather
+              name={STATUS_ICON[ocrStatus.tone]}
+              size={20}
+              color={ocrStatus.tone === 'neutral' ? colors.textSecondary : colors[ocrStatus.tone]}
+            />
+            <View style={styles.statusText}>
+              <AppText variant="subheading" style={styles.uniformText}>
+                {ocrStatus.title}
+              </AppText>
+              {ocrStatus.body ? (
+                <AppText variant="caption" color="textSecondary" style={styles.uniformText}>
+                  {ocrStatus.body}
+                </AppText>
+              ) : null}
+              {ocrStatus.notes.map((note) => (
+                <AppText
+                  key={note.text}
+                  variant="caption"
+                  color={note.tone}
+                  style={styles.uniformText}
+                >
+                  {note.text}
+                </AppText>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        <SectionCard>
           <AppTextInput
             label={copy.receiptReview.merchantLabel}
             placeholder={copy.receiptReview.merchantPlaceholder}
             value={merchantName}
             onChangeText={setMerchantName}
             onEndEditing={handleMerchantBlur}
+            leadingIcon={(color) => <Feather name="shopping-bag" size={18} color={color} />}
           />
           <AppTextInput
             label={copy.receiptReview.dateLabel}
@@ -282,25 +386,31 @@ export default function ReceiptReviewScreen() {
             }}
             onEndEditing={handleDateBlur}
             error={dateError ?? undefined}
+            leadingIcon={(color) => <Feather name="calendar" size={18} color={color} />}
           />
-        </View>
-
-        <Divider />
+        </SectionCard>
 
         <View style={styles.itemsBlock}>
-          <View style={styles.sectionHeader}>
-            <AppText variant="subheading" style={styles.uniformText}>
-              {copy.receiptReview.itemsSection}
-            </AppText>
-            {items.length > 0 ? (
-              <AppText variant="caption" color="textSecondary" style={styles.uniformText}>
-                {items.length === 1
-                  ? copy.receiptReview.detectedCountSingular
-                  : copy.receiptReview.detectedCountPlural.replace(
-                      '{count}',
-                      String(items.length),
-                    )}
+          <View style={styles.itemsHeaderRow}>
+            <View style={styles.itemsHeaderText}>
+              <AppText variant="subheading" accessibilityRole="header">
+                {copy.receiptReview.itemsSectionWithCount.replace('{count}', () =>
+                  String(items.length),
+                )}
               </AppText>
+              <AppText variant="caption" color="textSecondary">
+                {copy.receiptReview.itemsCaption}
+              </AppText>
+            </View>
+            {/* Hidden with no items — EmptyState below carries its own Add
+                item action then, so the screen never shows two. */}
+            {items.length > 0 ? (
+              <AppButton
+                variant="secondary"
+                label={copy.receiptReview.addItem}
+                icon={(color) => <Feather name="plus" size={16} color={color} />}
+                onPress={() => setEditingItem('new')}
+              />
             ) : null}
           </View>
 
@@ -312,63 +422,72 @@ export default function ReceiptReviewScreen() {
               onAction={() => setEditingItem('new')}
             />
           ) : (
-            <>
-              <FlatList
-                data={items}
-                keyExtractor={(item) => item.id}
-                scrollEnabled={false}
-                ItemSeparatorComponent={() => <View style={styles.itemGap} />}
-                renderItem={({ item }) => (
-                  <LineItemRow item={item} onPress={() => setEditingItem(item)} />
-                )}
-              />
-              <AppButton
-                variant="secondary"
-                label={copy.receiptReview.addItem}
-                icon={(color) => <Feather name="plus-circle" size={18} color={color} />}
-                onPress={() => setEditingItem('new')}
-              />
-            </>
+            <FlatList
+              data={items}
+              keyExtractor={keyExtractor}
+              scrollEnabled={false}
+              ItemSeparatorComponent={ItemSeparator}
+              renderItem={renderItem}
+            />
           )}
-
-          {/* Moved below Add item per the user's own request — was down in
-              actionsBlock, alongside Continue. "View receipt" is new here
-              (mirrors bill/[billId]/index.tsx's own receipt-image modal),
-              placed beside "View extracted text" since both are just
-              different views onto the same underlying OCR pass. Hidden
-              entirely rather than showing an empty row when a manually-
-              entered bill has neither. */}
-          {bill.receiptImageUri || bill.rawOcrText ? (
-            <View style={styles.viewActionsRow}>
-              {bill.receiptImageUri ? (
-                <View style={styles.viewActionColumn}>
-                  <AppButton
-                    variant="text"
-                    label={copy.receiptReview.receiptAction}
-                    icon={(color) => <Feather name="image" size={18} color={color} />}
-                    onPress={() => setShowReceiptImage(true)}
-                  />
-                </View>
-              ) : null}
-              {bill.rawOcrText ? (
-                <View style={styles.viewActionColumn}>
-                  <AppButton
-                    variant="text"
-                    label={copy.receiptReview.rawTextAction}
-                    icon={(color) => <Feather name="file-text" size={18} color={color} />}
-                    onPress={() => setShowRawText(true)}
-                  />
-                </View>
-              ) : null}
-            </View>
-          ) : null}
         </View>
 
-        <Divider />
+        {/* Two independent stacked rows (not tabs), each hidden when its
+            data is missing. */}
+        {bill.receiptImageUri || bill.rawOcrText ? (
+          <View style={styles.viewActions}>
+            {bill.receiptImageUri ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${copy.receiptReview.viewReceiptTitle}, ${copy.receiptReview.viewReceiptCaption}`}
+                onPress={() => setShowReceiptImage(true)}
+                style={({ pressed }) => [styles.viewActionRow, pressed && styles.pressed]}
+              >
+                <View style={styles.viewActionIcon}>
+                  <Feather name="image" size={18} color={colors.primary} />
+                </View>
+                <View style={styles.viewActionText}>
+                  <AppText variant="subheading" style={styles.uniformText}>
+                    {copy.receiptReview.viewReceiptTitle}
+                  </AppText>
+                  <AppText variant="caption" color="textSecondary">
+                    {copy.receiptReview.viewReceiptCaption}
+                  </AppText>
+                </View>
+                <Feather name="chevron-right" size={20} color={colors.textSecondary} />
+              </Pressable>
+            ) : null}
+            {bill.rawOcrText ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${copy.receiptReview.viewTextTitle}, ${textCaption}`}
+                onPress={() => setShowRawText(true)}
+                style={({ pressed }) => [styles.viewActionRow, pressed && styles.pressed]}
+              >
+                <View style={styles.viewActionIcon}>
+                  <Feather name="file-text" size={18} color={colors.primary} />
+                </View>
+                <View style={styles.viewActionText}>
+                  <AppText variant="subheading" style={styles.uniformText}>
+                    {copy.receiptReview.viewTextTitle}
+                  </AppText>
+                  <AppText variant="caption" color="textSecondary">
+                    {textCaption}
+                  </AppText>
+                </View>
+                <Feather name="chevron-right" size={20} color={colors.textSecondary} />
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
 
-        <View style={styles.totalsBlock}>
+        <SectionCard>
           {bill.detectedSubtotalCentavos != null ? (
-            <View style={styles.totalRow}>
+            <View
+              style={styles.totalRow}
+              accessible
+              accessibilityLabel={`${copy.receiptReview.detectedSubtotalLabel}, ${formatCentavosForSpeech(bill.detectedSubtotalCentavos)}`}
+            >
               <AppText color="textSecondary" style={styles.uniformText}>
                 {copy.receiptReview.detectedSubtotalLabel}
               </AppText>
@@ -377,14 +496,22 @@ export default function ReceiptReviewScreen() {
               </AppText>
             </View>
           ) : null}
-          <View style={styles.totalRow}>
+          <View
+            style={styles.totalRow}
+            accessible
+            accessibilityLabel={`${copy.receiptReview.itemSubtotalLabel}, ${formatCentavosForSpeech(itemSubtotalCentavos)}`}
+          >
             <AppText color="textSecondary" style={styles.uniformText}>
               {copy.receiptReview.itemSubtotalLabel}
             </AppText>
             <AppText style={styles.uniformText}>{formatCentavos(itemSubtotalCentavos)}</AppText>
           </View>
           {hasDetectedTotal ? (
-            <View style={styles.totalRow}>
+            <View
+              style={styles.totalRow}
+              accessible
+              accessibilityLabel={`${copy.receiptReview.detectedTotalLabel}, ${formatCentavosForSpeech(bill.detectedReceiptTotalCentavos!)}`}
+            >
               <AppText color="textSecondary" style={styles.uniformText}>
                 {copy.receiptReview.detectedTotalLabel}
               </AppText>
@@ -393,50 +520,50 @@ export default function ReceiptReviewScreen() {
               </AppText>
             </View>
           ) : null}
-          <View style={styles.totalRow}>
-            <AppText variant="subheading" style={styles.uniformText}>
-              {copy.receiptReview.computedTotalLabel}
-            </AppText>
-            <AppText variant="subheading" style={styles.uniformText}>
+          <Divider />
+          <View
+            style={styles.totalRow}
+            accessible
+            accessibilityLabel={`${copy.receiptReview.computedTotalLabel}, ${formatCentavosForSpeech(computedTotalCentavos)}`}
+          >
+            <AppText variant="subheading">{copy.receiptReview.computedTotalLabel}</AppText>
+            <AppText variant="amount" style={styles.currentTotalAmount}>
               {formatCentavos(computedTotalCentavos)}
             </AppText>
           </View>
 
           {hasDetectedTotal ? (
-            <StatusBadge
-              tone={totalDifference === 0 ? 'success' : 'warning'}
-              style={styles.matchBadge}
-              label={
-                totalDifference === 0
-                  ? copy.receiptReview.matchSuccess
-                  : copy.receiptReview.mismatchWarning
-                      .replace('{difference}', formatCentavos(Math.abs(totalDifference)))
-                      .replace(
-                        '{higherOrLower}',
-                        totalDifference > 0
-                          ? copy.receiptReview.higherWord
-                          : copy.receiptReview.lowerWord,
-                      )
-              }
-            />
+            <View
+              accessible
+              accessibilityLabel={reconciliationSpeech}
+              style={[
+                styles.reconciliationRow,
+                totalDifference === 0 ? styles.success : styles.warning,
+              ]}
+            >
+              <Feather
+                name={totalDifference === 0 ? 'check-circle' : 'alert-triangle'}
+                size={18}
+                color={totalDifference === 0 ? colors.success : colors.warning}
+              />
+              <AppText variant="caption" style={styles.reconciliationText}>
+                {reconciliationMessage}
+              </AppText>
+            </View>
           ) : null}
-        </View>
+        </SectionCard>
 
-        {/* Was a sticky BottomActionBar footer — moved inline, per the
-            user's own explicit request (2026-08-27) to drop the sticky nav
-            here in favor of a plain in-flow button. View extracted text/View
-            receipt used to live here too — moved up into itemsBlock,
-            directly below Add item. */}
-        <View style={styles.actionsBlock}>
-          <AppButton
-            label={copy.receiptReview.continueButton}
-            disabled={items.length === 0}
-            icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
-            iconPosition="trailing"
-            onPress={() => router.push(`/bill/${billId}/participants`)}
-          />
-        </View>
-      </View>
+        {/* In-flow (not sticky), directly below the totals card. The only
+            "Add people" button on this screen. */}
+        <AppButton
+          large
+          label={copy.receiptReview.continueButton}
+          disabled={items.length === 0}
+          icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+          iconPosition="trailing"
+          onPress={() => router.push(`/bill/${billId}/participants`)}
+        />
+      </ScrollView>
 
       <LineItemEditorSheet
         visible={editingItem !== null}
@@ -450,8 +577,21 @@ export default function ReceiptReviewScreen() {
             : null
         }
         onSave={handleSaveItem}
-        onDelete={editingItem && editingItem !== 'new' ? handleDeleteItem : undefined}
+        onDelete={editingItem && editingItem !== 'new' ? handleRequestDeleteFromSheet : undefined}
         onCancel={() => setEditingItem(null)}
+      />
+
+      {/* Shared by the row trash icon and the editor sheet's Delete (which
+          closes the sheet first — see handleRequestDeleteFromSheet). */}
+      <ConfirmationDialog
+        visible={pendingDelete !== null}
+        heading={copy.itemEditor.deleteConfirmHeading}
+        body={copy.itemEditor.deleteConfirmBody}
+        confirmLabel={copy.itemEditor.deleteAction}
+        cancelLabel={copy.global.cancelAction}
+        destructive
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setPendingDelete(null)}
       />
 
       {/* Mirrors bill/[billId]/index.tsx's own receipt-image modal — same
@@ -490,11 +630,7 @@ export default function ReceiptReviewScreen() {
             onPress={() => setShowRawText(false)}
           />
           <ScrollView style={styles.rawTextScroll}>
-            <AppText
-              selectable
-              variant="caption"
-              style={[styles.uniformText, styles.rawText]}
-            >
+            <AppText selectable variant="caption" style={[styles.uniformText, styles.rawText]}>
               {bill.rawOcrText}
             </AppText>
           </ScrollView>
@@ -504,71 +640,139 @@ export default function ReceiptReviewScreen() {
   );
 }
 
+// Match/mismatch text for the totals card — one builder for both the visible
+// label (formatCentavos) and its screen-reader label (formatCentavosForSpeech).
+function buildReconciliationMessage(
+  totalDifference: number,
+  formatMoney: (centavos: number) => string,
+): string {
+  if (totalDifference === 0) return copy.receiptReview.matchSuccess;
+  return copy.receiptReview.mismatchWarning
+    .replace('{difference}', () => formatMoney(Math.abs(totalDifference)))
+    .replace('{higherOrLower}', () =>
+      totalDifference > 0 ? copy.receiptReview.higherWord : copy.receiptReview.lowerWord,
+    );
+}
+
+// Low-alpha wash of a tone token — the same `${token}26` convention
+// StatusBadge.tsx uses for its own tone fills, kept in this one place so the
+// status card and reconciliation row never carry scattered hex literals.
+function tint(hex: string): string {
+  return `${hex}26`;
+}
+
 function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
-    // Every AppText on this screen renders at this one uniform size — matches
-    // the `caption` variant's own size exactly. `variant="heading"`/
-    // `"subheading"` still carry their bold font-weight, which is now the
-    // only thing distinguishing a heading from body text.
+    // Body-sized copy on this screen renders at the `caption` size; headings
+    // keep their variant's weight.
     uniformText: {
       fontSize: 14,
       lineHeight: 19,
     },
+    scroll: {
+      flex: 1,
+    },
     body: {
       padding: spacing.lg,
-      // Section-to-section rhythm (headerBlock / fieldsBlock / itemsBlock /
-      // totalsBlock / actionsBlock): spacing.xl between each distinct block,
-      // spacing.md/sm within one — see each block's own style below.
-      gap: spacing.xl,
-      // The Continue button used to sit in a sticky footer, which
-      // Screen.tsx pads above the global nav bar automatically — now that
-      // it's plain in-flow content, this screen has to reserve that space
-      // itself so the button doesn't end up hidden underneath the bar.
-      paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+      gap: spacing.lg,
     },
     headerBlock: {
-      gap: spacing.sm,
+      gap: spacing.xs,
     },
     headingRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
+      // Pulls the back button's own touch-target padding flush with the
+      // content edge so the arrow lines up with the cards below.
+      marginLeft: -spacing.md,
     },
-    fieldsBlock: {
-      gap: spacing.md,
+    headingText: {
+      flexShrink: 1,
     },
+    statusCard: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      borderCurve: 'continuous',
+      borderWidth: 1,
+    },
+    statusText: {
+      flex: 1,
+      gap: 2,
+    },
+    success: { backgroundColor: tint(colors.success), borderColor: colors.success },
+    warning: { backgroundColor: tint(colors.warning), borderColor: colors.warning },
+    neutral: { backgroundColor: colors.surfaceMuted, borderColor: colors.border },
     itemsBlock: {
       gap: spacing.sm,
     },
-    // "View receipt" / "View extracted text" side by side, below Add item —
-    // equal-width columns (mirrors preview.tsx's own Retake/Rotate row and
-    // summary.tsx's Share/Copy row) so the pair stays visually balanced
-    // regardless of which one/both are present.
-    viewActionsRow: {
+    itemsHeaderRow: {
       flexDirection: 'row',
+      alignItems: 'center',
       gap: spacing.sm,
     },
-    viewActionColumn: {
+    itemsHeaderText: {
       flex: 1,
-    },
-    sectionHeader: {
       gap: 2,
     },
-    itemGap: {
-      height: spacing.sm,
+    viewActions: {
+      gap: spacing.sm,
     },
-    totalsBlock: {
-      gap: spacing.xs,
-    },
-    matchBadge: {
-      marginTop: spacing.xs,
-    },
-    actionsBlock: {
+    viewActionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
       gap: spacing.md,
+      minHeight: touchTarget.preferred,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.md,
+      borderCurve: 'continuous',
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    viewActionIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: radius.sm,
+      borderCurve: 'continuous',
+      backgroundColor: tint(colors.primary),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    viewActionText: {
+      flex: 1,
+      gap: 2,
+    },
+    pressed: {
+      backgroundColor: colors.surfaceMuted,
     },
     totalRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    currentTotalAmount: {
+      fontSize: 20,
+      lineHeight: 26,
+    },
+    reconciliationRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginTop: spacing.xs,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.md,
+      borderCurve: 'continuous',
+      borderWidth: 1,
+    },
+    reconciliationText: {
+      flex: 1,
     },
     rawTextScroll: {
       marginTop: spacing.md,

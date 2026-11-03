@@ -60,6 +60,12 @@ const BOTTOM_RADIUS = Platform.OS === 'web' ? 0 : 32;
 // clearance. A generous approximation, not pixel-exact.
 export const TAB_BAR_CONTENT_CLEARANCE = BAR_HEIGHT + spacing.lg + spacing.md;
 
+// Exact height the bar's flat body plus its raised "+" button occupy above the
+// safe-area inset, for a screen's docked footer to sit flush on the bar (vs.
+// the generous TAB_BAR_CONTENT_CLEARANCE above, meant for scroll padding).
+// Callers add insets.bottom themselves.
+export const TAB_BAR_DOCK_HEIGHT = BAR_HEIGHT + BUTTON_RADIUS;
+
 // Fixed set of destinations this bar links to — no longer read from a real
 // Tabs navigator's route list (see this component's own header comment for
 // why it isn't one anymore), so this is now the one place that defines them.

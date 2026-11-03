@@ -22,6 +22,9 @@ type Props = {
   // and save") — left off by default so every other button keeps its
   // existing, less attention-grabbing corner radius.
   pill?: boolean;
+  // Opts this button into a taller (52 instead of 48) hit area for a screen's
+  // single dominant full-width action (e.g. a docked "Add people" CTA).
+  large?: boolean;
   // A render-prop, not a bare ReactNode or a glyph-name lookup: this button
   // already computes the correct per-variant label color below (onPrimary vs
   // primary) — handing that color into the factory guarantees an icon always
@@ -41,6 +44,7 @@ export function AppButton({
   disabled,
   loading,
   pill,
+  large,
   icon,
   iconPosition = 'leading',
 }: Props) {
@@ -60,6 +64,7 @@ export function AppButton({
         styles.base,
         styles[variant],
         pill && styles.pill,
+        large && styles.large,
         pressed && !isDisabled && pressedStyles(colors, scheme)[variant],
         isDisabled && styles.disabled,
       ]}
@@ -117,6 +122,9 @@ function createStyles(colors: ColorTokens) {
     pill: {
       borderRadius: radius.pill,
       borderCurve: 'continuous',
+    },
+    large: {
+      minHeight: 52,
     },
     primary: { backgroundColor: colors.primary },
     secondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primary },

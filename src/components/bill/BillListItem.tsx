@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
-import { memo, useMemo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { memo, useMemo, useState } from 'react';
+import { Animated, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { FoodIconBadge } from '@/components/ui/FoodIconBadge';
@@ -53,6 +53,24 @@ export const BillListItem = memo(function BillListItem({
 }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  // Lifted out of `main`'s own Pressable render-prop and applied to the
+  // outer `row` View instead — `main` doesn't span the full card width (the
+  // overflow IconButton is a required sibling, not a child, for the
+  // accessibility reason explained below), so highlighting only `main` on
+  // press left the IconButton's own corner looking like an unhighlighted
+  // square cut out of the card. Tracking press state explicitly via
+  // onPressIn/onPressOut (rather than Pressable's own `pressed` render prop,
+  // which only `main` itself gets) lets the WHOLE card tint together while
+  // `main` and the IconButton stay separate, independently-tappable
+  // Pressables underneath. Animated (rather than a plain boolean) so the
+  // highlight fades in/out over 0.2s instead of snapping — interpolated into
+  // a backgroundColor below.
+  // A lazy useState initializer, not useRef(...).current — this Animated.Value
+  // is still a single stable, mutable instance across the component's whole
+  // lifetime (never replaced, only driven via Animated.timing() below), but
+  // the newer react-hooks/refs lint rule flags reading a ref's .current
+  // during render, however safe this particular usage is.
+  const [pressAnimation] = useState(() => new Animated.Value(0));
   const { bill, participantCount } = entry;
   const title = bill.merchantName ?? bill.title ?? copy.home.unknownMerchantTitle;
   const total =
@@ -73,7 +91,7 @@ export const BillListItem = memo(function BillListItem({
     // is what keeps that information actually available — a screen reader
     // still hears the status even though it's no longer drawn as its own
     // badge — rather than silently dropping it.
-    <View
+    <Animated.View
       style={[
         styles.row,
         // Completed gets a lighter tint of `success` (a 40%-alpha wash, same
@@ -83,6 +101,12 @@ export const BillListItem = memo(function BillListItem({
         // both themes), so it reads as "unaccented" next to completed's
         // accent rather than needing a second color of its own.
         { borderColor: isCompleted ? `${colors.success}66` : colors.border },
+        {
+          backgroundColor: pressAnimation.interpolate({
+            inputRange: [0, 1],
+            outputRange: [colors.surface, colors.surfaceMuted],
+          }),
+        },
       ]}
     >
       {/* The row's primary tap target (resume/view) is its own Pressable,
@@ -91,16 +115,32 @@ export const BillListItem = memo(function BillListItem({
           touchable is an accessibility/hit-testing hazard (which one
           receives the tap becomes ambiguous), so this mirrors the
           established sibling-Pressables row shape already used by
-          participants.tsx's own row + trailing IconButton. */}
+          participants.tsx's own row + trailing IconButton. The pressed-state
+          tint itself lives on the outer `row` (pressAnimation, above), not
+          here — see its own comment. */}
       <Pressable
         onPress={() => onPress(bill)}
+        onPressIn={() => {
+          Animated.timing(pressAnimation, {
+            toValue: 1,
+            duration: 200,
+            useNativeDriver: false,
+          }).start();
+        }}
+        onPressOut={() => {
+          Animated.timing(pressAnimation, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: false,
+          }).start();
+        }}
         accessibilityRole="button"
         accessibilityLabel={`${title}, ${statusLabel}${
           bill.detectedReceiptTotalCentavos != null
             ? `, ${formatCentavosForSpeech(bill.detectedReceiptTotalCentavos)}`
             : ''
         }`}
-        style={({ pressed }) => [styles.main, pressed && styles.pressed]}
+        style={styles.main}
       >
         <FoodIconBadge id={bill.id} />
 
@@ -160,7 +200,7 @@ export const BillListItem = memo(function BillListItem({
         onPress={() => onOverflowPress(bill)}
         icon={<Feather name="more-vertical" size={16} color={colors.textSecondary} />}
       />
-    </View>
+    </Animated.View>
   );
 });
 
@@ -182,9 +222,10 @@ function createStyles(colors: ColorTokens) {
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
-      // Clips `main`'s own pressed-state background (a plain rectangle) to
-      // this row's rounded corners — without this, that rectangle's sharp
-      // corners poke out past the border's curve on press.
+      // Clips this row's own pressed-state background (applied here now,
+      // not on `main` — see pressAnimation above) to its rounded corners,
+      // and keeps the IconButton's own square touch-target box from poking
+      // out past the curve.
       overflow: 'hidden',
     },
     main: {
@@ -194,9 +235,6 @@ function createStyles(colors: ColorTokens) {
       gap: spacing.md,
       paddingVertical: spacing.md,
       paddingLeft: spacing.md,
-    },
-    pressed: {
-      backgroundColor: colors.surfaceMuted,
     },
     mainText: {
       flex: 1,
