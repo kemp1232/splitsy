@@ -226,8 +226,8 @@ export default function ReceiptReviewScreen() {
   }
 
   // Only ever reached through the ConfirmationDialog's confirm action (see
-  // handleConfirmDelete). Takes the target explicitly so the row trash icon
-  // (no editor open) and the editor sheet's Delete share one path.
+  // handleConfirmDelete). Takes the target explicitly so it doesn't depend on
+  // which item (if any) the editor sheet currently has open.
   async function handleDeleteItem(target: LineItem) {
     setActionError(null);
     try {
@@ -238,17 +238,6 @@ export default function ReceiptReviewScreen() {
       setEditingItem(null);
       setActionError(copy.global.storageFailure);
     }
-  }
-
-  // Mirrors adjustments.tsx's handleRequestDelete: the sheet closes before
-  // the ConfirmationDialog opens, so only one Modal is ever visible at a time.
-  // Cancelling returns to the screen (unsaved sheet edits are discarded);
-  // confirming deletes via handleDeleteItem, which doesn't need the sheet.
-  function handleRequestDeleteFromSheet() {
-    if (editingItem && editingItem !== 'new') {
-      setPendingDelete(editingItem);
-    }
-    setEditingItem(null);
   }
 
   function handleConfirmDelete() {
@@ -577,12 +566,10 @@ export default function ReceiptReviewScreen() {
             : null
         }
         onSave={handleSaveItem}
-        onDelete={editingItem && editingItem !== 'new' ? handleRequestDeleteFromSheet : undefined}
         onCancel={() => setEditingItem(null)}
       />
 
-      {/* Shared by the row trash icon and the editor sheet's Delete (which
-          closes the sheet first — see handleRequestDeleteFromSheet). */}
+      {/* Opened by the row trash icon. */}
       <ConfirmationDialog
         visible={pendingDelete !== null}
         heading={copy.itemEditor.deleteConfirmHeading}

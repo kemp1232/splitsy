@@ -10,20 +10,24 @@ type Props = {
   icon: ReactNode;
   onPress: () => void;
   accessibilityLabel: string;
+  // Optional and additive: omitted by every existing call site.
+  disabled?: boolean;
 };
 
 // Icon-only controls must always carry a screen-reader label (spec section 17) —
 // accessibilityLabel is required, not optional, on this component.
-export function IconButton({ icon, onPress, accessibilityLabel }: Props) {
+export function IconButton({ icon, onPress, accessibilityLabel, disabled }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled: !!disabled }}
+      disabled={disabled}
       onPress={onPress}
       hitSlop={8}
-      style={({ pressed }) => [styles.base, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.base, pressed && styles.pressed, disabled && styles.disabled]}
     >
       {icon}
     </Pressable>
@@ -44,6 +48,9 @@ function createStyles(colors: ColorTokens) {
     },
     pressed: {
       backgroundColor: colors.surfaceMuted,
+    },
+    disabled: {
+      opacity: 0.4,
     },
   });
 }

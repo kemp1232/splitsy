@@ -1,3 +1,4 @@
+import type { ComponentProps, ReactNode } from 'react';
 import { useState } from 'react';
 
 import { AppTextInput } from './AppTextInput';
@@ -8,6 +9,14 @@ type Props = {
   onChangeCentavos: (centavos: number) => void;
   error?: string;
   placeholder?: string;
+  // Forwarded to AppTextInput's leadingIcon (e.g. a fixed currency sign that
+  // sits outside the editable text). Omitted by every other call site.
+  leadingIcon?: (color: string) => ReactNode;
+  // Forwarded to AppTextInput (see its hideErrorMessage); off by default.
+  hideErrorMessage?: boolean;
+  // Forwarded to AppTextInput's text input, e.g. to match a neighbouring
+  // field's height.
+  style?: ComponentProps<typeof AppTextInput>['style'];
 };
 
 // Matches the spec's suggested max (₱9,999,999.99): up to 7 integer digits,
@@ -38,6 +47,9 @@ export function AmountInput({
   onChangeCentavos,
   error,
   placeholder = '0.00',
+  leadingIcon,
+  hideErrorMessage,
+  style,
 }: Props) {
   const [text, setText] = useState(() => centavosToInputText(valueCentavos));
 
@@ -59,6 +71,9 @@ export function AmountInput({
       onChangeText={handleChange}
       keyboardType="decimal-pad"
       placeholder={placeholder}
+      leadingIcon={leadingIcon}
+      hideErrorMessage={hideErrorMessage}
+      style={style}
     />
   );
 }

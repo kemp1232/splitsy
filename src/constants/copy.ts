@@ -270,6 +270,8 @@ export const copy = {
     amountLabel: 'Line total',
     amountPlaceholder: '0.00',
     saveAction: 'Save item',
+    saveChangesAction: 'Save changes',
+    closeAccessibilityLabel: 'Close',
     deleteAction: 'Delete item',
     cancelAction: 'Cancel',
     requiredNameError: 'Enter an item name.',

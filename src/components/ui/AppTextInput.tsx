@@ -26,9 +26,21 @@ type Props = ComponentProps<typeof RNTextInput> & {
   // toggle's own open/closed state and handler owned by the screen using
   // it, not duplicated into this shared field component.
   trailingIcon?: (color: string) => ReactNode;
+  // Keeps the red error border but skips the inline message, for callers that
+  // render the message elsewhere (e.g. full-width below a two-up row so it
+  // doesn't make one column taller than its neighbour).
+  hideErrorMessage?: boolean;
 };
 
-export function AppTextInput({ label, error, style, leadingIcon, trailingIcon, ...rest }: Props) {
+export function AppTextInput({
+  label,
+  error,
+  style,
+  leadingIcon,
+  trailingIcon,
+  hideErrorMessage,
+  ...rest
+}: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const id = useId();
@@ -56,7 +68,7 @@ export function AppTextInput({ label, error, style, leadingIcon, trailingIcon, .
         />
         {trailingIcon ? <View style={styles.trailingIcon}>{trailingIcon(iconColor)}</View> : null}
       </View>
-      {error ? <InlineError message={error} /> : null}
+      {error && !hideErrorMessage ? <InlineError message={error} /> : null}
     </View>
   );
 }
