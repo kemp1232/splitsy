@@ -1,7 +1,7 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
   ParticipantEditorSheet,
@@ -11,7 +11,6 @@ import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
-import { Divider } from '@/components/ui/Divider';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { IconButton } from '@/components/ui/IconButton';
@@ -63,6 +62,14 @@ export default function ParticipantsScreen() {
       }
     })();
   }, [billId]);
+
+  function handleBack() {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/');
+    }
+  }
 
   async function refreshParticipants() {
     const rows = await participantsRepository.listByBillId(billId);
@@ -161,16 +168,23 @@ export default function ParticipantsScreen() {
     .filter((participant) => participant.id !== editingParticipantId)
     .map((participant) => participant.name);
 
+  const isEmpty = participants.length === 0;
+  const countText = String(participants.length);
+
   return (
     <Screen scroll padded={false}>
       <View style={styles.body}>
         <View style={styles.headerBlock}>
-          {/* Full-size heading (no uniformText override) — matches
-              receipt-review.tsx's own header treatment, so every step in the
-              draft wizard reads as having a real page header. */}
           <View style={styles.headingRow}>
+            <IconButton
+              accessibilityLabel={copy.participants.backAccessibilityLabel}
+              onPress={handleBack}
+              icon={<Feather name="arrow-left" size={22} color={colors.textPrimary} />}
+            />
             <Feather name="users" size={24} color={colors.primary} />
-            <AppText variant="heading">{copy.participants.heading}</AppText>
+            <AppText variant="heading" style={styles.headingText} accessibilityRole="header">
+              {copy.participants.heading}
+            </AppText>
           </View>
           <AppText variant="body" color="textSecondary" style={styles.uniformText}>
             {copy.participants.body}
@@ -180,20 +194,10 @@ export default function ParticipantsScreen() {
               each closes its own sheet/dialog before this can ever render, so
               it's always visible here rather than hidden behind a modal. */}
           {actionError ? <InlineError message={actionError} /> : null}
-
-          <AppButton
-            variant="secondary"
-            label={copy.participants.quickAddMe}
-            disabled={meAlreadyExists}
-            icon={(color) => <Feather name="plus-circle" size={18} color={color} />}
-            onPress={handleQuickAddMe}
-          />
         </View>
 
-        <Divider />
-
-        <View style={styles.rosterBlock}>
-          {participants.length === 0 ? (
+        <View style={styles.sectionCard}>
+          {isEmpty ? (
             <EmptyState
               heading={copy.participants.emptyHeading}
               body={copy.participants.emptyBody}
@@ -202,49 +206,66 @@ export default function ParticipantsScreen() {
             />
           ) : (
             <>
-              <FlatList
-                data={participants}
-                keyExtractor={(participant) => participant.id}
-                scrollEnabled={false}
-                ItemSeparatorComponent={() => <View style={styles.itemGap} />}
-                renderItem={({ item }) => (
-                  <View style={styles.row}>
-                    {/* Same circular person-icon treatment as the Home
-                        header's own avatar button (top right of the Splitsy
-                        wordmark) — decorative here too, the row's own name
-                        text already identifies the person. */}
-                    <View style={styles.avatarCircle} accessibilityElementsHidden>
-                      <Feather name="user" size={18} color={colors.primary} />
-                    </View>
-                    <Pressable
-                      onPress={() => setEditingParticipant(item)}
-                      accessibilityRole="button"
-                      style={({ pressed }) => [styles.rowMain, pressed && styles.rowMainPressed]}
-                    >
-                      <AppText variant="body" numberOfLines={1} style={styles.uniformText}>
-                        {item.name}
-                      </AppText>
-                    </Pressable>
-                    <IconButton
-                      accessibilityLabel={copy.participants.removeConfirmHeading.replace(
-                        '{name}',
-                        item.name,
-                      )}
-                      onPress={() => setRemovingParticipant(item)}
-                      icon={<Feather name="trash" size={20} color={colors.danger} />}
-                    />
+              <View style={styles.sectionHeader}>
+                <AppText
+                  variant="subheading"
+                  style={styles.sectionTitle}
+                  accessibilityRole="header"
+                  accessibilityLabel={copy.participants.sectionAccessibilityLabel.replace(
+                    '{count}',
+                    countText,
+                  )}
+                >
+                  {copy.participants.sectionWithCount.replace('{count}', countText)}
+                </AppText>
+                <Pressable
+                  onPress={() => setEditingParticipant('new')}
+                  accessibilityRole="button"
+                  accessibilityLabel={copy.participants.addAction}
+                  style={({ pressed }) => [styles.addPersonButton, pressed && styles.pressed]}
+                >
+                  <Feather name="plus" size={16} color={colors.primary} />
+                  <AppText variant="body" color="primary" style={styles.addPersonText}>
+                    {copy.participants.addAction}
+                  </AppText>
+                </Pressable>
+              </View>
+              {participants.map((item) => (
+                <View key={item.id} style={styles.row}>
+                  <View style={styles.avatarCircle} accessibilityElementsHidden>
+                    <Feather name="user" size={18} color={colors.primary} />
                   </View>
-                )}
-              />
-              <AppButton
-                variant="secondary"
-                label={copy.participants.addAction}
-                icon={(color) => <Feather name="plus-circle" size={18} color={color} />}
-                onPress={() => setEditingParticipant('new')}
-              />
+                  <Pressable
+                    onPress={() => setEditingParticipant(item)}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
+                  >
+                    <AppText variant="body" numberOfLines={1} style={styles.uniformText}>
+                      {item.name}
+                    </AppText>
+                  </Pressable>
+                  <IconButton
+                    accessibilityLabel={copy.participants.removeAccessibilityLabel.replace(
+                      '{name}',
+                      item.name,
+                    )}
+                    onPress={() => setRemovingParticipant(item)}
+                    icon={<Feather name="trash" size={20} color={colors.danger} />}
+                  />
+                </View>
+              ))}
             </>
           )}
         </View>
+
+        {!meAlreadyExists ? (
+          <AppButton
+            variant="secondary"
+            label={copy.participants.quickAddMe}
+            icon={(color) => <Feather name="plus-circle" size={18} color={color} />}
+            onPress={handleQuickAddMe}
+          />
+        ) : null}
 
         {/* Was a sticky BottomActionBar footer — moved inline, per the
             user's own explicit request (2026-08-27) to drop sticky nav
@@ -321,8 +342,39 @@ function createStyles(colors: ColorTokens) {
       alignItems: 'center',
       gap: spacing.sm,
     },
-    rosterBlock: {
+    headingText: {
+      flex: 1,
+    },
+    sectionCard: {
+      borderRadius: radius.md,
+      borderCurve: 'continuous',
+      backgroundColor: colors.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      overflow: 'hidden',
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
       gap: spacing.md,
+      paddingLeft: spacing.md,
+      paddingRight: spacing.sm,
+    },
+    sectionTitle: {
+      flexShrink: 1,
+    },
+    addPersonButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      minHeight: touchTarget.min,
+      paddingHorizontal: spacing.sm,
+    },
+    addPersonText: {
+      fontSize: 14,
+      lineHeight: 19,
+      fontWeight: '600',
     },
     continueBlock: {
       gap: spacing.md,
@@ -330,24 +382,12 @@ function createStyles(colors: ColorTokens) {
     row: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
       gap: spacing.md,
-      // Not a plain `padding: spacing.md` — the trailing delete IconButton
-      // has its own built-in touchTarget.preferred (48x48) hit box around a
-      // 20px icon, noticeably roomier than the leading avatarCircle's tight
-      // 36x36 fit around an 18px icon. Left/top/bottom stay at spacing.md;
-      // right is pulled in so the *visible* trash icon ends up roughly the
-      // same distance from the row's true edge as the visible user icon does
-      // on the left, instead of IconButton's own extra internal padding
-      // stacking on top of the row's own.
-      paddingVertical: spacing.md,
+      paddingVertical: spacing.xs,
       paddingLeft: spacing.md,
       paddingRight: spacing.xs,
-      borderRadius: radius.md,
-      borderCurve: 'continuous',
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
     },
     // Same treatment as Home's own avatar circle (src/app/index.tsx).
     avatarCircle: {
@@ -366,11 +406,8 @@ function createStyles(colors: ColorTokens) {
       minHeight: touchTarget.min,
       justifyContent: 'center',
     },
-    rowMainPressed: {
+    pressed: {
       opacity: 0.7,
-    },
-    itemGap: {
-      height: spacing.sm,
     },
   });
 }
