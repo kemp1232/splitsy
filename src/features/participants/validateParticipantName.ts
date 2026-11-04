@@ -8,11 +8,17 @@
 
 export const MAX_PARTICIPANT_NAME_LENGTH = 30;
 
-// The exact name created by the "Add me" quick-add action (spec F-013's
-// "Assign all unassigned to me"). The assignments screen's bulk-assign
-// shortcut depends on matching this exact string, so it's centralized here
-// once instead of being redeclared per screen.
+// Fallback name for the "Add me" quick-add action (spec F-013's "Assign all
+// unassigned to me") when there is no signed-in user name. Also the legacy
+// name that older bills may contain, so bulk-assign still matches it.
 export const QUICK_ADD_ME_NAME = 'Me';
+
+// Name used by "Add me": the signed-in user's name, trimmed and cut to the
+// participant name limit, or the 'Me' fallback when it's empty/missing.
+export function resolveQuickAddMeName(sessionName: string | null | undefined): string {
+  const name = (sessionName ?? '').trim().slice(0, MAX_PARTICIPANT_NAME_LENGTH).trim();
+  return name || QUICK_ADD_ME_NAME;
+}
 
 // Case-insensitive normalization used for duplicate detection (spec F-012 /
 // section 13.12's "That name is already in this bill." error).

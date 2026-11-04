@@ -33,7 +33,9 @@ import {
 import {
   normalizeParticipantName,
   QUICK_ADD_ME_NAME,
+  resolveQuickAddMeName,
 } from '@/features/participants/validateParticipantName';
+import { authClient } from '@/lib/authClient';
 import { nowIso } from '@/lib/date';
 import { formatCentavos } from '@/lib/money';
 import { tint } from '@/theme/tint';
@@ -132,6 +134,8 @@ function AssignmentItemRow({ item, assignedNames, onAssign }: ItemRowProps) {
 export default function AssignmentsScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { data: session } = authClient.useSession();
+  const meName = resolveQuickAddMeName(session?.user.name);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { billId } = useLocalSearchParams<{ billId: string }>();
 
@@ -221,10 +225,13 @@ export default function AssignmentsScreen() {
   async function handleBulkAssign(unassignedItemIds: string[]) {
     if (unassignedItemIds.length === 0) return;
 
-    const meParticipant = participants.find(
-      (participant) =>
-        normalizeParticipantName(participant.name) === normalizeParticipantName(QUICK_ADD_ME_NAME),
-    );
+    // Prefer the user's name; fall back to the legacy 'Me' from older bills.
+    const findByName = (name: string) =>
+      participants.find(
+        (participant) =>
+          normalizeParticipantName(participant.name) === normalizeParticipantName(name),
+      );
+    const meParticipant = findByName(meName) ?? findByName(QUICK_ADD_ME_NAME);
 
     if (meParticipant) {
       await Promise.all(

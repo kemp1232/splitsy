@@ -21,9 +21,10 @@ import { copy } from '@/constants/copy';
 import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
 import {
   normalizeParticipantName,
-  QUICK_ADD_ME_NAME,
+  resolveQuickAddMeName,
 } from '@/features/participants/validateParticipantName';
 import { createTrip } from '@/features/trips/trip.service';
+import { authClient } from '@/lib/authClient';
 import { createId } from '@/lib/ids';
 import type { ColorTokens } from '@/theme/tokens';
 import { radius, spacing, touchTarget } from '@/theme/tokens';
@@ -40,6 +41,8 @@ type DraftRosterMember = { draftId: string; name: string };
 export default function NewTripScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { data: session } = authClient.useSession();
+  const meName = resolveQuickAddMeName(session?.user.name);
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [name, setName] = useState('');
@@ -50,7 +53,7 @@ export default function NewTripScreen() {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const meetsMinimumParticipants = hasMinimumParticipants(roster.length);
-  const normalizedMeName = normalizeParticipantName(QUICK_ADD_ME_NAME);
+  const normalizedMeName = normalizeParticipantName(meName);
   const meAlreadyExists = roster.some(
     (member) => normalizeParticipantName(member.name) === normalizedMeName,
   );
@@ -75,7 +78,7 @@ export default function NewTripScreen() {
   }
 
   function handleQuickAddMe() {
-    setRoster((current) => [...current, { draftId: createId(), name: QUICK_ADD_ME_NAME }]);
+    setRoster((current) => [...current, { draftId: createId(), name: meName }]);
   }
 
   function handleConfirmRemove() {

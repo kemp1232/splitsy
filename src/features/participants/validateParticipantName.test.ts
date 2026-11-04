@@ -2,6 +2,8 @@ import {
   isDuplicateParticipantName,
   MAX_PARTICIPANT_NAME_LENGTH,
   normalizeParticipantName,
+  QUICK_ADD_ME_NAME,
+  resolveQuickAddMeName,
   validateParticipantName,
 } from './validateParticipantName';
 
@@ -73,5 +75,22 @@ describe('validateParticipantName', () => {
       valid: true,
       name: 'Jamie',
     });
+  });
+});
+
+describe('resolveQuickAddMeName', () => {
+  it('uses the trimmed session name', () => {
+    expect(resolveQuickAddMeName('  Kemp  ')).toBe('Kemp');
+  });
+
+  it('falls back to the Me name for undefined, null, or whitespace', () => {
+    expect(resolveQuickAddMeName(undefined)).toBe(QUICK_ADD_ME_NAME);
+    expect(resolveQuickAddMeName(null)).toBe(QUICK_ADD_ME_NAME);
+    expect(resolveQuickAddMeName('   ')).toBe(QUICK_ADD_ME_NAME);
+  });
+
+  it('truncates to the maximum participant name length', () => {
+    const result = resolveQuickAddMeName('a'.repeat(MAX_PARTICIPANT_NAME_LENGTH + 10));
+    expect(result).toBe('a'.repeat(MAX_PARTICIPANT_NAME_LENGTH));
   });
 });

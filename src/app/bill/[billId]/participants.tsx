@@ -24,8 +24,9 @@ import { removeParticipant } from '@/features/bills/bill.service';
 import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
 import {
   normalizeParticipantName,
-  QUICK_ADD_ME_NAME,
+  resolveQuickAddMeName,
 } from '@/features/participants/validateParticipantName';
+import { authClient } from '@/lib/authClient';
 import { nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
 import type { ColorTokens } from '@/theme/tokens';
@@ -37,6 +38,8 @@ type LoadState = 'loading' | 'ready' | 'error';
 export default function ParticipantsScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { data: session } = authClient.useSession();
+  const meName = resolveQuickAddMeName(session?.user.name);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { billId } = useLocalSearchParams<{ billId: string }>();
 
@@ -111,7 +114,7 @@ export default function ParticipantsScreen() {
         id: createId(),
         billId,
         sortOrder: participants.length,
-        name: QUICK_ADD_ME_NAME,
+        name: meName,
         createdAt: timestamp,
         updatedAt: timestamp,
       });
@@ -157,7 +160,7 @@ export default function ParticipantsScreen() {
     );
   }
 
-  const normalizedMeName = normalizeParticipantName(QUICK_ADD_ME_NAME);
+  const normalizedMeName = normalizeParticipantName(meName);
   const meAlreadyExists = participants.some(
     (participant) => normalizeParticipantName(participant.name) === normalizedMeName,
   );
