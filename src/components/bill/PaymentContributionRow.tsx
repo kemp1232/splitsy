@@ -5,7 +5,6 @@ import { StyleSheet, View } from 'react-native';
 import { AmountInput } from '@/components/ui/AmountInput';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
-import { SectionCard } from '@/components/ui/SectionCard';
 import { copy } from '@/constants/copy';
 import type { ColorTokens } from '@/theme/tokens';
 import { spacing } from '@/theme/tokens';
@@ -25,7 +24,8 @@ type Props = {
 // Post-MVP scope expansion (see settlement.ts's header comment for the
 // feature's overall rationale) — one participant's row on the Payments
 // screen: their name, an editable contribution amount, and the one-tap
-// "paid in full" shortcut.
+// "paid in full" shortcut. Borderless: the Payments screen's GroupedCard
+// draws the card and the hairline separators between rows.
 export function PaymentContributionRow({
   name,
   valueCentavos,
@@ -35,7 +35,7 @@ export function PaymentContributionRow({
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   return (
-    <SectionCard>
+    <View style={styles.container}>
       {/* Same circular person-icon treatment as participants.tsx's own
           roster row — decorative here too, the name text already identifies
           the person. */}
@@ -59,19 +59,26 @@ export function PaymentContributionRow({
           onPress={onFullAmount}
         />
       </View>
-    </SectionCard>
+    </View>
   );
 }
 
 function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
+    container: {
+      padding: spacing.md,
+      gap: spacing.sm,
+    },
     nameRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
     },
+    // Uniform 14/19 row text, as on participants.tsx.
     nameText: {
       flex: 1,
+      fontSize: 14,
+      lineHeight: 19,
     },
     // Same treatment as participants.tsx's own avatarCircle.
     avatarCircle: {

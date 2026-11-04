@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Modal, StyleSheet, View } from 'react-native';
 
 import {
@@ -9,17 +9,18 @@ import {
 } from '@/components/bill/AdjustmentEditorSheet';
 import { AdjustmentRow } from '@/components/bill/AdjustmentRow';
 import { ReconciliationCard } from '@/components/bill/ReconciliationCard';
+import { ActionRow } from '@/components/ui/ActionRow';
 import { AppButton } from '@/components/ui/AppButton';
-import { AppText } from '@/components/ui/AppText';
 import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
-import { Divider } from '@/components/ui/Divider';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { GroupedCard, GroupedSeparator, SectionHeader } from '@/components/ui/GroupedSection';
 import { InlineError } from '@/components/ui/InlineError';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { copy } from '@/constants/copy';
 import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
 import { adjustmentAllocationsRepository } from '@/db/repositories/adjustmentAllocations.repository';
@@ -49,7 +50,6 @@ import { nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
 import { formatCentavos } from '@/lib/money';
 import { spacing } from '@/theme/tokens';
-import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -127,7 +127,6 @@ function computeSplitAndReconciliation(data: LoadedData): {
 
 export default function AdjustmentsScreen() {
   const router = useRouter();
-  const { colors } = useTheme();
   const { billId } = useLocalSearchParams<{ billId: string }>();
 
   const [state, setState] = useState<LoadState>('loading');
@@ -225,14 +224,17 @@ export default function AdjustmentsScreen() {
     }
   }
 
-  async function handleOpenEditor(adjustment: Adjustment) {
+  // useCallback (RN list-performance rule): one stable reference passed to
+  // every memoized AdjustmentRow, which calls it with its own adjustment.
+  // Only touches state setters and a module-level repository, so no deps.
+  const handleOpenEditor = useCallback(async (adjustment: Adjustment) => {
     const allocations =
       adjustment.allocationMethod === 'CUSTOM'
         ? await adjustmentAllocationsRepository.listByAdjustmentId(adjustment.id)
         : [];
     setEditingCustomAllocations(allocations);
     setEditingAdjustment(adjustment);
-  }
+  }, []);
 
   function handleOpenNewEditor() {
     setEditingCustomAllocations([]);
@@ -395,53 +397,58 @@ export default function AdjustmentsScreen() {
   return (
     <Screen scroll padded={false}>
       <View style={styles.body}>
-        <View style={styles.introBlock}>
-          {/* Full-size heading (no uniformText override) + leading icon —
-              matches every other draft-wizard step's own header treatment. */}
-          <View style={styles.headingRow}>
-            <Feather name="percent" size={24} color={colors.primary} />
-            <AppText variant="heading">{copy.adjustments.heading}</AppText>
-          </View>
-          <AppText variant="body" color="textSecondary" style={styles.uniformText}>
-            {copy.adjustments.body}
-          </AppText>
-
+        <ScreenHeader
+          icon="percent"
+          heading={copy.adjustments.heading}
+          body={copy.adjustments.body}
+        >
           {/* Shared by every write path below (save/delete an adjustment, add
               the reconciliation difference) — mirrors participants.tsx's and
               receipt-review.tsx's own actionError. */}
           {actionError ? <InlineError message={actionError} /> : null}
-        </View>
+        </ScreenHeader>
 
-        <Divider />
-
-        {adjustments.length === 0 ? (
-          <EmptyState
-            heading={copy.adjustments.emptyHeading}
-            body={copy.adjustments.emptyBody}
-            actionLabel={copy.adjustments.addAction}
-            onAction={handleOpenNewEditor}
+        <View style={styles.listBlock}>
+          <SectionHeader
+            title={copy.adjustments.sectionWithCount.replace('{count}', () =>
+              String(adjustments.length),
+            )}
+            caption={copy.adjustments.sectionCaption}
+            action={
+              // Hidden with no adjustments — EmptyState below carries its own
+              // Add action then, so the screen never shows two (same rule as
+              // receipt-review.tsx's Add item button).
+              adjustments.length > 0 ? (
+                <AppButton
+                  variant="secondary"
+                  label={copy.adjustments.addAction}
+                  onPress={handleOpenNewEditor}
+                  icon={(color) => <Feather name="plus" size={16} color={color} />}
+                />
+              ) : null
+            }
           />
-        ) : (
-          <View style={styles.listBlock}>
-            <FlatList
-              data={adjustments}
-              keyExtractor={(adjustment) => adjustment.id}
-              scrollEnabled={false}
-              ItemSeparatorComponent={() => <View style={styles.itemGap} />}
-              renderItem={({ item }) => (
-                <AdjustmentRow adjustment={item} onPress={() => handleOpenEditor(item)} />
-              )}
+          {adjustments.length === 0 ? (
+            <EmptyState
+              heading={copy.adjustments.emptyHeading}
+              body={copy.adjustments.emptyBody}
+              actionLabel={copy.adjustments.addAction}
+              onAction={handleOpenNewEditor}
             />
-            <AppButton
-              variant="secondary"
-              label={copy.adjustments.addAction}
-              onPress={handleOpenNewEditor}
-              icon={(color) => <Feather name="plus-circle" size={18} color={color} />}
-            />
-          </View>
-        )}
-
-        <Divider />
+          ) : (
+            <GroupedCard>
+              <FlatList
+                data={adjustments}
+                keyExtractor={(adjustment) => adjustment.id}
+                scrollEnabled={false}
+                ItemSeparatorComponent={GroupedSeparator}
+                renderItem={({ item }) => (
+                  <AdjustmentRow adjustment={item} onPress={handleOpenEditor} />
+                )}
+              />
+            </GroupedCard>
+          )}
+        </View>
 
         <ReconciliationCard
           itemSubtotalCentavos={splitResult.itemSubtotalCentavos}
@@ -456,22 +463,23 @@ export default function AdjustmentsScreen() {
 
         {/* Was a sticky BottomActionBar footer — moved inline, per the
             user's own explicit request (2026-08-27) to drop sticky nav
-            footers in favor of plain in-flow buttons. Trailing arrow-right:
+            footers in favor of plain in-flow buttons. Trailing arrow-right-circle:
             this is a linear wizard step (spec section 15), whether or not a
             reconciliation difference is still outstanding. */}
         <View style={styles.actionsBlock}>
           {/* Quick access back to the original receipt image without
               backtracking to receipt-review.tsx — same modal shape that
-              screen already uses for its own "Receipt" button. */}
+              screen already uses for its own "View receipt" row. */}
           {bill.receiptImageUri ? (
-            <AppButton
-              variant="secondary"
-              label={copy.receiptReview.receiptAction}
-              icon={(color) => <Feather name="image" size={18} color={color} />}
+            <ActionRow
+              icon="image"
+              title={copy.receiptReview.viewReceiptTitle}
+              caption={copy.receiptReview.viewReceiptCaption}
               onPress={() => setShowReceiptImage(true)}
             />
           ) : null}
           <AppButton
+            large
             label={
               reconciliation.matches
                 ? copy.adjustments.continueButton
@@ -553,39 +561,18 @@ const styles = StyleSheet.create({
     // pads above the global nav bar automatically — now that it's plain
     // in-flow content, this screen reserves that space itself.
     paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
-    // Section-to-section rhythm (intro block / adjustments list / the
-    // reconciliation card / the continue button each read as their own
-    // distinct block) — spacing.md is reserved for tight, within-section
-    // grouping instead (see introBlock/listBlock below).
-    gap: spacing.xl,
-  },
-  introBlock: {
-    gap: spacing.sm,
-  },
-  headingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+    // Section-to-section rhythm (header / adjustments list / the
+    // reconciliation card / the continue block) — spacing.lg, the same
+    // rhythm receipt-review.tsx uses between its blocks.
+    gap: spacing.lg,
   },
   actionsBlock: {
     gap: spacing.md,
   },
   listBlock: {
-    gap: spacing.md,
-  },
-  itemGap: {
-    height: spacing.sm,
+    gap: spacing.sm,
   },
   receiptImage: {
     flex: 1,
-  },
-  // Matches the `caption` variant's own size — every AppText directly in
-  // this screen now reads at one uniform size (see BillListItem.tsx's own
-  // titleText/totalText for the same treatment); each variant's own
-  // font-weight (and, for `amount`, tabular-nums) is what still distinguishes
-  // headings/money from body text.
-  uniformText: {
-    fontSize: 14,
-    lineHeight: 19,
   },
 });

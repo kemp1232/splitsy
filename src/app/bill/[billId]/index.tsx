@@ -1,21 +1,23 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, View } from 'react-native';
 
+import { BillTotalCard } from '@/components/bill/BillTotalCard';
 import { PersonTotalCard } from '@/components/bill/PersonTotalCard';
 import { SettlementCard } from '@/components/bill/SettlementCard';
+import { ActionRow } from '@/components/ui/ActionRow';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
-import { Divider } from '@/components/ui/Divider';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { GroupedCard, GroupedSeparator, SectionHeader } from '@/components/ui/GroupedSection';
 import { InlineError } from '@/components/ui/InlineError';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
-import { StatusBadge } from '@/components/ui/StatusBadge';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { copy } from '@/constants/copy';
 import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
 import { adjustmentAllocationsRepository } from '@/db/repositories/adjustmentAllocations.repository';
@@ -52,7 +54,6 @@ import {
   type SummaryItemInfo,
 } from '@/features/summary/buildParticipantShareDisplay';
 import { nowIso } from '@/lib/date';
-import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
 import { shareText } from '@/lib/share';
 import type { ColorTokens } from '@/theme/tokens';
 import { spacing } from '@/theme/tokens';
@@ -312,6 +313,17 @@ export default function SavedBillDetailScreen() {
     router.replace(`/bill/${billId}/receipt-review`);
   }
 
+  // Straight back to Home rather than router.back(), mirroring
+  // receipt-review.tsx: "Finish and save" lands here via router.replace from
+  // summary.tsx, so the stack underneath still holds the stale draft wizard
+  // (review → … → payments) and a plain back would reopen Payments for a
+  // now-COMPLETED bill. dismissTo pops to Home when it's in the stack and
+  // otherwise replaces this screen with it; the "Back to {trip}" button below
+  // still covers bills opened from a trip.
+  function handleBack() {
+    router.dismissTo('/');
+  }
+
   async function handleConfirmDelete() {
     // Same closure-narrowing note as handleShare above.
     if (!bill) return;
@@ -329,34 +341,22 @@ export default function SavedBillDetailScreen() {
     <Screen scroll padded={false}>
       <View style={styles.body}>
         <View style={styles.headerBlock}>
-          <AppText variant="heading" style={styles.uniformText}>
-            {title}
-          </AppText>
+          <ScreenHeader
+            icon="file-text"
+            heading={title}
+            body={copy.savedBillDetail.body}
+            onBack={handleBack}
+          />
 
-          <View style={styles.totalRow}>
-            <AppText color="textSecondary" style={styles.uniformText}>
-              {copy.summary.totalLabel}
-            </AppText>
-            {/* accessibilityLabel is the spoken form (spec section 17's "520
-                pesos and 25 centavos" example), distinct from the visible
-                formatCentavos text. */}
-            <AppText
-              variant="amount"
-              accessibilityLabel={formatCentavosForSpeech(splitResult.computedTotalCentavos)}
-              style={styles.uniformText}
-            >
-              {formatCentavos(splitResult.computedTotalCentavos)}
-            </AppText>
-          </View>
-
-          {hasDetectedTotal ? (
-            <StatusBadge
-              label={
-                reconciliation.matches ? copy.summary.matchSuccess : copy.summary.mismatchStatus
-              }
-              tone={reconciliation.matches ? 'success' : 'warning'}
-            />
-          ) : null}
+          {/* Same totals-card treatment as receipt-review.tsx's own "Current
+              total" row. Shared with summary.tsx; no caption here because
+              the header above already shows the bill title. */}
+          <BillTotalCard
+            totalCentavos={splitResult.computedTotalCentavos}
+            matchStatus={
+              hasDetectedTotal ? (reconciliation.matches ? 'matches' : 'mismatch') : null
+            }
+          />
 
           {tripLink ? (
             // Deliberately obvious (secondary, full-width) — matches
@@ -397,19 +397,19 @@ export default function SavedBillDetailScreen() {
 
         <View style={styles.linksBlock}>
           {hasReceiptImage ? (
-            <AppButton
-              variant="text"
-              label={copy.savedBillDetail.receiptAction}
+            <ActionRow
+              icon="image"
+              title={copy.savedBillDetail.receiptAction}
+              caption={copy.savedBillDetail.receiptCaption}
               onPress={() => setShowReceiptImage(true)}
-              icon={(color) => <Feather name="file-text" size={18} color={color} />}
             />
           ) : null}
           {hasRawOcrText ? (
-            <AppButton
-              variant="text"
-              label={copy.savedBillDetail.rawOcrAction}
+            <ActionRow
+              icon="file-text"
+              title={copy.savedBillDetail.rawOcrAction}
+              caption={copy.savedBillDetail.rawOcrCaption}
               onPress={() => setShowRawText(true)}
-              icon={(color) => <Feather name="file-text" size={18} color={color} />}
             />
           ) : null}
           {!hasReceiptImage && !hasRawOcrText ? (
@@ -420,29 +420,40 @@ export default function SavedBillDetailScreen() {
         </View>
 
         <View style={styles.cardsBlock}>
-          <Divider />
-          <View style={styles.cardsList}>
-            {splitResult.participantShares.map((share) => {
+          <SectionHeader
+            title={copy.summary.peopleSectionWithCount.replace('{count}', () =>
+              String(splitResult.participantShares.length),
+            )}
+            accessibilityLabel={copy.summary.peopleSectionAccessibilityLabel.replace(
+              '{count}',
+              () => String(splitResult.participantShares.length),
+            )}
+            caption={copy.summary.peopleCaption}
+          />
+          <GroupedCard>
+            {splitResult.participantShares.map((share, index) => {
               const name = nameByParticipantId.get(share.participantId) ?? '';
               return (
-                <PersonTotalCard
-                  key={share.participantId}
-                  name={name}
-                  finalTotalCentavos={share.finalTotalCentavos}
-                  itemShares={buildParticipantItemShareDisplay(share.itemShares, itemInfoById)}
-                  adjustmentShares={buildParticipantAdjustmentShareDisplay(
-                    share.adjustmentShares,
-                    adjustmentInfoById,
-                  )}
-                  paidCentavos={
-                    hasAnyContribution
-                      ? contributionByParticipantId.get(share.participantId)?.contributedCentavos
-                      : undefined
-                  }
-                />
+                <Fragment key={share.participantId}>
+                  {index > 0 ? <GroupedSeparator /> : null}
+                  <PersonTotalCard
+                    name={name}
+                    finalTotalCentavos={share.finalTotalCentavos}
+                    itemShares={buildParticipantItemShareDisplay(share.itemShares, itemInfoById)}
+                    adjustmentShares={buildParticipantAdjustmentShareDisplay(
+                      share.adjustmentShares,
+                      adjustmentInfoById,
+                    )}
+                    paidCentavos={
+                      hasAnyContribution
+                        ? contributionByParticipantId.get(share.participantId)?.contributedCentavos
+                        : undefined
+                    }
+                  />
+                </Fragment>
               );
             })}
-          </View>
+          </GroupedCard>
         </View>
 
         {hasAnyContribution ? (
@@ -461,6 +472,7 @@ export default function SavedBillDetailScreen() {
             mapping table's `share` icon rather than a "Continue"-style
             arrow-right. */}
         <AppButton
+          large
           label={copy.savedBillDetail.shareAction}
           onPress={handleShare}
           icon={(color) => <Feather name="share" size={18} color={color} />}
@@ -503,11 +515,7 @@ export default function SavedBillDetailScreen() {
             icon={(color) => <Feather name="x" size={18} color={color} />}
           />
           <ScrollView style={styles.rawTextScroll}>
-            <AppText
-              selectable
-              variant="caption"
-              style={[styles.uniformText, styles.rawText]}
-            >
+            <AppText selectable variant="caption" style={[styles.uniformText, styles.rawText]}>
               {bill.rawOcrText}
             </AppText>
           </ScrollView>
@@ -540,16 +548,11 @@ function createStyles(colors: ColorTokens) {
       // receipt+raw-text links / person cards each read as their own
       // distinct block. spacing.md/sm stays reserved for tight,
       // within-section grouping (see the block-specific styles below).
-      gap: spacing.xl,
+      // spacing.lg matches receipt-review.tsx's block rhythm.
+      gap: spacing.lg,
     },
     headerBlock: {
-      gap: spacing.xs,
-    },
-    totalRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginTop: spacing.sm,
+      gap: spacing.md,
     },
     actionsBlock: {
       gap: spacing.sm,
@@ -562,9 +565,6 @@ function createStyles(colors: ColorTokens) {
       gap: spacing.sm,
     },
     cardsBlock: {
-      gap: spacing.md,
-    },
-    cardsList: {
       gap: spacing.sm,
     },
     receiptImage: {

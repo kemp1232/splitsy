@@ -1,11 +1,17 @@
+import Feather from '@expo/vector-icons/Feather';
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
+import { Divider } from '@/components/ui/Divider';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { copy } from '@/constants/copy';
 import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
-import { spacing } from '@/theme/tokens';
+import { tint } from '@/theme/tint';
+import type { ColorTokens } from '@/theme/tokens';
+import { radius, spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 type Props = {
   itemSubtotalCentavos: number;
@@ -30,7 +36,8 @@ type Props = {
 // items alone. All inputs are already-computed centavo totals from
 // calculateSplit/reconcileBillTotals (src/features/splitting/) — this
 // component only ever formats them for display, never recomputes money itself
-// (spec 10.1).
+// (spec 10.1). Styled like receipt-review.tsx's own totals card (plain, not
+// torn) so the two reconciliation views read as one design.
 export function ReconciliationCard({
   itemSubtotalCentavos,
   adjustmentsTotalCentavos,
@@ -41,25 +48,43 @@ export function ReconciliationCard({
   onAddDifference,
   onReviewItems,
 }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const hasDetectedTotal = detectedReceiptTotalCentavos !== null;
 
   return (
-    <SectionCard torn>
+    <SectionCard>
       <View style={styles.row}>
-        <AppText color="textSecondary">{copy.adjustments.itemSubtotalLabel}</AppText>
-        <AppText>{formatCentavos(itemSubtotalCentavos)}</AppText>
+        <AppText color="textSecondary" style={styles.uniformText}>
+          {copy.adjustments.itemSubtotalLabel}
+        </AppText>
+        <AppText style={styles.uniformText}>{formatCentavos(itemSubtotalCentavos)}</AppText>
       </View>
       <View style={styles.row}>
-        <AppText color="textSecondary">{copy.adjustments.adjustmentsTotalLabel}</AppText>
-        <AppText>{formatCentavos(adjustmentsTotalCentavos)}</AppText>
+        <AppText color="textSecondary" style={styles.uniformText}>
+          {copy.adjustments.adjustmentsTotalLabel}
+        </AppText>
+        <AppText style={styles.uniformText}>{formatCentavos(adjustmentsTotalCentavos)}</AppText>
       </View>
+      {hasDetectedTotal ? (
+        <View style={styles.row}>
+          <AppText color="textSecondary" style={styles.uniformText}>
+            {copy.adjustments.receiptTotalLabel}
+          </AppText>
+          <AppText style={styles.uniformText}>
+            {formatCentavos(detectedReceiptTotalCentavos)}
+          </AppText>
+        </View>
+      ) : null}
+      <Divider />
       <View style={styles.row}>
         <AppText variant="subheading">{copy.adjustments.computedTotalLabel}</AppText>
         {/* accessibilityLabel is the spoken form (spec section 17's "520
             pesos and 25 centavos" example), distinct from the visible
             formatCentavos text. */}
         <AppText
-          variant="subheading"
+          variant="amount"
+          style={styles.totalAmount}
           accessibilityLabel={formatCentavosForSpeech(computedTotalCentavos)}
         >
           {formatCentavos(computedTotalCentavos)}
@@ -68,21 +93,25 @@ export function ReconciliationCard({
 
       {hasDetectedTotal ? (
         <>
-          <View style={styles.row}>
-            <AppText color="textSecondary">{copy.adjustments.receiptTotalLabel}</AppText>
-            <AppText>{formatCentavos(detectedReceiptTotalCentavos)}</AppText>
-          </View>
-
           {/* Status is conveyed by the message text itself, not only the
               success/warning color (spec section 17). */}
-          <AppText color={matches ? 'success' : 'warning'}>
-            {matches
-              ? copy.adjustments.matchSuccess
-              : copy.adjustments.differenceWarning.replace(
-                  '{difference}',
-                  formatCentavos(Math.abs(differenceCentavos ?? 0)),
-                )}
-          </AppText>
+          <View style={[styles.statusRow, matches ? styles.success : styles.warning]}>
+            <Feather
+              name={matches ? 'check-circle' : 'alert-triangle'}
+              size={18}
+              color={matches ? colors.success : colors.warning}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            />
+            <AppText variant="caption" style={styles.statusText}>
+              {matches
+                ? copy.adjustments.matchSuccess
+                : copy.adjustments.differenceWarning.replace(
+                    '{difference}',
+                    formatCentavos(Math.abs(differenceCentavos ?? 0)),
+                  )}
+            </AppText>
+          </View>
 
           {!matches ? (
             <View style={styles.actions}>
@@ -108,12 +137,40 @@ export function ReconciliationCard({
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  actions: {
-    gap: spacing.sm,
-  },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    row: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    uniformText: {
+      fontSize: 14,
+      lineHeight: 19,
+    },
+    totalAmount: {
+      fontSize: 20,
+      lineHeight: 26,
+    },
+    statusRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginTop: spacing.xs,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.md,
+      borderCurve: 'continuous',
+      borderWidth: 1,
+    },
+    statusText: {
+      flex: 1,
+    },
+    success: { backgroundColor: tint(colors.success), borderColor: colors.success },
+    warning: { backgroundColor: tint(colors.warning), borderColor: colors.warning },
+    actions: {
+      gap: spacing.sm,
+    },
+  });
+}

@@ -548,7 +548,7 @@ export default function ReceiptReviewScreen() {
           large
           label={copy.receiptReview.continueButton}
           disabled={items.length === 0}
-          icon={(color) => <Feather name="arrow-right" size={18} color={color} />}
+          icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
           iconPosition="trailing"
           onPress={() => router.push(`/bill/${billId}/participants`)}
         />

@@ -1,10 +1,10 @@
+import Feather from '@expo/vector-icons/Feather';
 import { memo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { InitialsAvatar } from '@/components/ui/InitialsAvatar';
 import { ProgressBar } from '@/components/ui/ProgressBar';
-import { SectionCard } from '@/components/ui/SectionCard';
 import { copy } from '@/constants/copy';
 import type {
   ParticipantAdjustmentShareDisplay,
@@ -12,6 +12,7 @@ import type {
 } from '@/features/summary/buildParticipantShareDisplay';
 import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
 import { spacing, touchTarget } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 type Props = {
   name: string;
@@ -41,6 +42,8 @@ type Props = {
 // Summary/saved-bill-detail screens, and this card's own expand/collapse
 // state is entirely local — it shouldn't re-render just because an unrelated
 // sibling card toggled or a parent-level toast/error state changed.
+// Borderless row: the Summary/saved-bill screens wrap these in one
+// GroupedCard with hairline separators between people.
 export const PersonTotalCard = memo(function PersonTotalCard({
   name,
   finalTotalCentavos,
@@ -48,13 +51,14 @@ export const PersonTotalCard = memo(function PersonTotalCard({
   adjustmentShares,
   paidCentavos,
 }: Props) {
+  const { colors } = useTheme();
   const [expanded, setExpanded] = useState(false);
   const hasPaymentInfo = paidCentavos !== undefined;
   const fraction = hasPaymentInfo && finalTotalCentavos > 0 ? paidCentavos / finalTotalCentavos : 0;
   const isPaidInFull = hasPaymentInfo && paidCentavos >= finalTotalCentavos;
 
   return (
-    <SectionCard>
+    <View style={styles.container}>
       <Pressable
         onPress={() => setExpanded((current) => !current)}
         accessibilityRole="button"
@@ -87,14 +91,13 @@ export const PersonTotalCard = memo(function PersonTotalCard({
             section 17's icon-only-control label rule doesn't apply here,
             since this row isn't icon-only). accessibilityState.expanded above
             is what actually announces the expand/collapse state. */}
-        <AppText
-          variant="subheading"
-          color="textSecondary"
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-        >
-          {expanded ? '▾' : '▸'}
-        </AppText>
+        <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <Feather
+            name={expanded ? 'chevron-down' : 'chevron-right'}
+            size={20}
+            color={colors.textSecondary}
+          />
+        </View>
       </Pressable>
 
       {hasPaymentInfo ? (
@@ -158,11 +161,15 @@ export const PersonTotalCard = memo(function PersonTotalCard({
           ) : null}
         </View>
       ) : null}
-    </SectionCard>
+    </View>
   );
 });
 
 const styles = StyleSheet.create({
+  container: {
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -174,8 +181,11 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
+  // Indented past the 36px avatar so the breakdown lines up under the
+  // name rather than the avatar.
   details: {
     gap: spacing.md,
+    paddingLeft: 36 + spacing.md,
   },
   section: {
     gap: spacing.xs,

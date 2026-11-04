@@ -1,19 +1,21 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Modal, StyleSheet, Switch, View } from 'react-native';
 
 import { AssignmentStatus } from '@/components/bill/AssignmentStatus';
 import { ParticipantPickerSheet } from '@/components/bill/ParticipantPickerSheet';
+import { ActionRow } from '@/components/ui/ActionRow';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
-import { Divider } from '@/components/ui/Divider';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { GroupedCard, GroupedSeparator, SectionHeader } from '@/components/ui/GroupedSection';
 import { InlineError } from '@/components/ui/InlineError';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { copy } from '@/constants/copy';
 import type { Bill } from '@/db/repositories/bills.repository';
 import { billsRepository } from '@/db/repositories/bills.repository';
@@ -34,6 +36,7 @@ import {
 } from '@/features/participants/validateParticipantName';
 import { nowIso } from '@/lib/date';
 import { formatCentavos } from '@/lib/money';
+import { tint } from '@/theme/tint';
 import type { ColorTokens } from '@/theme/tokens';
 import { radius, spacing, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -114,10 +117,12 @@ function AssignmentItemRow({ item, assignedNames, onAssign }: ItemRowProps) {
         <AppText variant="body" numberOfLines={1} style={styles.uniformText}>
           {item.name}
         </AppText>
-        <AppText variant="caption" color="textSecondary" style={styles.uniformText}>
-          {formatCentavos(item.lineTotalCentavos)}
-        </AppText>
-        <AssignmentStatus names={assignedNames} />
+        <View style={styles.itemMeta}>
+          <AppText variant="caption" color="textSecondary" style={styles.uniformText}>
+            {formatCentavos(item.lineTotalCentavos)}
+          </AppText>
+          <AssignmentStatus names={assignedNames} />
+        </View>
       </View>
       <AppButton variant="secondary" label={copy.assignments.assignAction} onPress={onAssign} />
     </View>
@@ -305,26 +310,23 @@ export default function AssignmentsScreen() {
   return (
     <Screen scroll padded={false}>
       <View style={styles.body}>
-        <View style={styles.headerBlock}>
-          {/* Full-size heading (no uniformText override) + leading icon —
-              matches receipt-review.tsx's/participants.tsx's own header
-              treatment, so every step in the draft wizard reads the same. */}
-          <View style={styles.headingRow}>
-            <Feather name="trello" size={24} color={colors.primary} />
-            <AppText variant="heading">{copy.assignments.heading}</AppText>
-          </View>
-          <AppText variant="body" color="textSecondary" style={styles.uniformText}>
-            {copy.assignments.body}
-          </AppText>
+        <ScreenHeader icon="trello" heading={copy.assignments.heading} body={copy.assignments.body}>
           <AppText variant="caption" color="textSecondary" style={styles.uniformText}>
             {copy.assignments.sharedNote}
           </AppText>
-
           {actionError ? <InlineError message={actionError} /> : null}
-        </View>
+        </ScreenHeader>
 
+        {/* Same tile-row shape as receipt-review.tsx's view-action rows. */}
         <View style={styles.toggleRow}>
-          <AppText variant="body" style={[styles.uniformText, styles.toggleLabel]}>
+          <View
+            style={styles.iconTile}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            <Feather name="divide" size={18} color={colors.primary} />
+          </View>
+          <AppText variant="subheading" style={[styles.uniformText, styles.toggleLabel]}>
             {copy.assignments.splitEquallyToggleLabel}
           </AppText>
           <Switch
@@ -336,46 +338,70 @@ export default function AssignmentsScreen() {
           />
         </View>
 
-        <Divider />
-
         {unassignedItems.length > 0 ? (
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <AppText variant="subheading" style={styles.uniformText}>
-                {copy.assignments.unassignedSection}
-              </AppText>
-              <AppButton
-                variant="text"
-                label={copy.assignments.bulkAssignAction}
-                icon={(color) => <Feather name="users" size={18} color={color} />}
-                onPress={() => handleBulkAssign(unassignedItems.map((item) => item.id))}
-              />
-            </View>
-            {unassignedItems.map((item) => (
-              <AssignmentItemRow
-                key={item.id}
-                item={item}
-                assignedNames={assignedNamesFor(item)}
-                onAssign={() => handleOpenItemPicker(item)}
-              />
-            ))}
+            <SectionHeader
+              title={copy.assignments.unassignedSectionWithCount.replace('{count}', () =>
+                String(unassignedItems.length),
+              )}
+              caption={copy.assignments.unassignedCaption}
+              action={
+                <AppButton
+                  variant="text"
+                  label={copy.assignments.bulkAssignAction}
+                  icon={(color) => <Feather name="users" size={18} color={color} />}
+                  onPress={() => handleBulkAssign(unassignedItems.map((item) => item.id))}
+                />
+              }
+            />
+            <GroupedCard>
+              {unassignedItems.map((item, index) => (
+                <Fragment key={item.id}>
+                  {index > 0 ? <GroupedSeparator /> : null}
+                  <AssignmentItemRow
+                    item={item}
+                    assignedNames={assignedNamesFor(item)}
+                    onAssign={() => handleOpenItemPicker(item)}
+                  />
+                </Fragment>
+              ))}
+            </GroupedCard>
           </View>
         ) : null}
 
         {assignedItems.length > 0 ? (
           <View style={styles.section}>
-            <AppText variant="subheading" style={styles.uniformText}>
-              {copy.assignments.assignedSection}
-            </AppText>
-            {assignedItems.map((item) => (
-              <AssignmentItemRow
-                key={item.id}
-                item={item}
-                assignedNames={assignedNamesFor(item)}
-                onAssign={() => handleOpenItemPicker(item)}
-              />
-            ))}
+            <SectionHeader
+              title={copy.assignments.assignedSectionWithCount.replace('{count}', () =>
+                String(assignedItems.length),
+              )}
+              caption={copy.assignments.assignedCaption}
+            />
+            <GroupedCard>
+              {assignedItems.map((item, index) => (
+                <Fragment key={item.id}>
+                  {index > 0 ? <GroupedSeparator /> : null}
+                  <AssignmentItemRow
+                    item={item}
+                    assignedNames={assignedNamesFor(item)}
+                    onAssign={() => handleOpenItemPicker(item)}
+                  />
+                </Fragment>
+              ))}
+            </GroupedCard>
           </View>
+        ) : null}
+
+        {/* Quick access back to the original receipt image without
+            backtracking to receipt-review.tsx — same modal shape that
+            screen already uses for its own "View receipt" row. */}
+        {bill.receiptImageUri ? (
+          <ActionRow
+            icon="image"
+            title={copy.receiptReview.viewReceiptTitle}
+            caption={copy.receiptReview.viewReceiptCaption}
+            onPress={() => setShowReceiptImage(true)}
+          />
         ) : null}
 
         {/* Was a sticky BottomActionBar footer — moved inline, per the
@@ -384,26 +410,25 @@ export default function AssignmentsScreen() {
         <View style={styles.actionsBlock}>
           {showBlockingError && isBlocked ? (
             <View style={styles.blockingError} accessibilityLiveRegion="assertive">
-              <AppText variant="subheading" color="danger" style={styles.uniformText}>
-                {copy.assignments.blockingErrorHeading}
-              </AppText>
-              <AppText variant="body" color="textSecondary" style={styles.uniformText}>
-                {blockingErrorBody}
-              </AppText>
+              <Feather
+                name="alert-triangle"
+                size={20}
+                color={colors.danger}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              />
+              <View style={styles.blockingErrorText}>
+                <AppText variant="subheading" color="danger" style={styles.uniformText}>
+                  {copy.assignments.blockingErrorHeading}
+                </AppText>
+                <AppText variant="caption" color="textSecondary" style={styles.uniformText}>
+                  {blockingErrorBody}
+                </AppText>
+              </View>
             </View>
           ) : null}
-          {/* Quick access back to the original receipt image without
-              backtracking to receipt-review.tsx — same modal shape that
-              screen already uses for its own "Receipt" button. */}
-          {bill.receiptImageUri ? (
-            <AppButton
-              variant="secondary"
-              label={copy.receiptReview.receiptAction}
-              icon={(color) => <Feather name="image" size={18} color={color} />}
-              onPress={() => setShowReceiptImage(true)}
-            />
-          ) : null}
           <AppButton
+            large
             label={copy.assignments.continueButton}
             icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
             iconPosition="trailing"
@@ -460,23 +485,14 @@ function createStyles(colors: ColorTokens) {
     },
     body: {
       padding: spacing.lg,
-      // Section-to-section rhythm (headerBlock / toggle row / unassigned
-      // section / assigned section / actionsBlock): spacing.xl between each
-      // distinct block, spacing.md/sm within one — see each block's own
-      // style below.
-      gap: spacing.xl,
+      // Section-to-section rhythm (header / toggle row / unassigned section /
+      // assigned section / receipt row / actionsBlock) — spacing.lg, the same
+      // rhythm receipt-review.tsx uses between its blocks.
+      gap: spacing.lg,
       // The Continue button used to sit in a sticky footer, which Screen.tsx
       // pads above the global nav bar automatically — now that it's plain
       // in-flow content, this screen reserves that space itself.
       paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
-    },
-    headerBlock: {
-      gap: spacing.sm,
-    },
-    headingRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
     },
     actionsBlock: {
       gap: spacing.md,
@@ -484,10 +500,10 @@ function createStyles(colors: ColorTokens) {
     toggleRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
       minHeight: touchTarget.preferred,
       gap: spacing.md,
-      padding: spacing.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
       borderRadius: radius.md,
       borderCurve: 'continuous',
       backgroundColor: colors.surface,
@@ -497,32 +513,54 @@ function createStyles(colors: ColorTokens) {
     toggleLabel: {
       flex: 1,
     },
+    iconTile: {
+      width: 36,
+      height: 36,
+      borderRadius: radius.sm,
+      borderCurve: 'continuous',
+      backgroundColor: tint(colors.primary),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     section: {
       gap: spacing.sm,
     },
-    sectionHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
+    // Borderless — the section's GroupedCard draws the card and the
+    // hairline separators between rows.
     itemRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: spacing.md,
-      padding: spacing.md,
-      borderRadius: radius.md,
-      borderCurve: 'continuous',
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
+      minHeight: touchTarget.preferred,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
     },
     itemMain: {
       flex: 1,
-      gap: 2,
+      gap: spacing.xs,
     },
+    itemMeta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+    },
+    // Danger-tinted status card, same shape as receipt-review.tsx's own.
     blockingError: {
-      gap: spacing.xs / 2,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      borderCurve: 'continuous',
+      borderWidth: 1,
+      borderColor: colors.danger,
+      backgroundColor: tint(colors.danger),
+    },
+    blockingErrorText: {
+      flex: 1,
+      gap: 2,
     },
     receiptImage: {
       flex: 1,

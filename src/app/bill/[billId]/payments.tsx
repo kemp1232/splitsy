@@ -5,13 +5,13 @@ import { FlatList, StyleSheet, View } from 'react-native';
 
 import { PaymentContributionRow } from '@/components/bill/PaymentContributionRow';
 import { AppButton } from '@/components/ui/AppButton';
-import { AppText } from '@/components/ui/AppText';
 import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
-import { Divider } from '@/components/ui/Divider';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { GroupedCard, GroupedSeparator, SectionHeader } from '@/components/ui/GroupedSection';
 import { InlineError } from '@/components/ui/InlineError';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { copy } from '@/constants/copy';
 import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
 import { adjustmentAllocationsRepository } from '@/db/repositories/adjustmentAllocations.repository';
@@ -40,7 +40,6 @@ import type {
 } from '@/features/splitting/split.types';
 import { nowIso } from '@/lib/date';
 import { spacing } from '@/theme/tokens';
-import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -130,7 +129,6 @@ function computeSplitAndReconciliation(data: LoadedData): {
 // truth for bill data" rule).
 export default function PaymentsScreen() {
   const router = useRouter();
-  const { colors } = useTheme();
   const { billId } = useLocalSearchParams<{ billId: string }>();
 
   const [state, setState] = useState<LoadState>('loading');
@@ -295,40 +293,45 @@ export default function PaymentsScreen() {
   return (
     <Screen scroll padded={false}>
       <View style={styles.body}>
-        <View style={styles.introBlock}>
-          {/* Full-size heading (no uniformText override) + leading icon —
-              matches every other draft-wizard step's own header treatment. */}
-          <View style={styles.headingRow}>
-            <Feather name="credit-card" size={24} color={colors.primary} />
-            <AppText variant="heading">{copy.payments.heading}</AppText>
-          </View>
-          <AppText variant="body" color="textSecondary">
-            {copy.payments.body}
-          </AppText>
-        </View>
-
-        <Divider />
-
-        <FlatList
-          data={participants}
-          keyExtractor={(participant) => `${participant.id}-${resetToken}`}
-          extraData={contributions}
-          scrollEnabled={false}
-          ItemSeparatorComponent={() => <View style={styles.itemGap} />}
-          renderItem={({ item }) => (
-            <PaymentContributionRow
-              name={item.name}
-              valueCentavos={contributions[item.id] ?? 0}
-              onChangeCentavos={(centavos) => handleAmountChange(item.id, centavos)}
-              onFullAmount={() => handleFullAmount(item.id)}
-            />
-          )}
+        <ScreenHeader
+          icon="credit-card"
+          heading={copy.payments.heading}
+          body={copy.payments.body}
         />
+
+        <View style={styles.listBlock}>
+          <SectionHeader
+            title={copy.payments.sectionWithCount.replace('{count}', () =>
+              String(participants.length),
+            )}
+            accessibilityLabel={copy.payments.sectionAccessibilityLabel.replace('{count}', () =>
+              String(participants.length),
+            )}
+            caption={copy.payments.sectionCaption}
+          />
+          <GroupedCard>
+            <FlatList
+              data={participants}
+              keyExtractor={(participant) => `${participant.id}-${resetToken}`}
+              extraData={contributions}
+              scrollEnabled={false}
+              ItemSeparatorComponent={GroupedSeparator}
+              renderItem={({ item }) => (
+                <PaymentContributionRow
+                  name={item.name}
+                  valueCentavos={contributions[item.id] ?? 0}
+                  onChangeCentavos={(centavos) => handleAmountChange(item.id, centavos)}
+                  onFullAmount={() => handleFullAmount(item.id)}
+                />
+              )}
+            />
+          </GroupedCard>
+        </View>
 
         {/* Was a sticky BottomActionBar footer — moved inline, per the
             user's own explicit request (2026-08-27) to drop sticky nav
             footers in favor of plain in-flow buttons. Skip stays icon-less
-            (skipping isn't a forward wizard action worth an arrow-right, per
+            (skipping isn't a forward wizard action worth an arrow-right-circle, per
             the polish-pass icon-mapping table). */}
         <View style={styles.actionsBlock}>
           {actionError ? <InlineError message={actionError} /> : null}
@@ -339,6 +342,7 @@ export default function PaymentsScreen() {
             onPress={handleSkip}
           />
           <AppButton
+            large
             label={copy.payments.continueButton}
             onPress={handleContinue}
             loading={saving}
@@ -359,22 +363,15 @@ const styles = StyleSheet.create({
     // Screen.tsx pads above the global nav bar automatically — now that
     // they're plain in-flow content, this screen reserves that space itself.
     paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
-    // Section-to-section rhythm (intro block / the contribution rows list /
-    // the skip+continue actions each read as their own distinct block).
-    gap: spacing.xl,
+    // Section-to-section rhythm (header / the contribution rows list /
+    // the skip+continue actions) — spacing.lg, the same rhythm
+    // receipt-review.tsx uses between its blocks.
+    gap: spacing.lg,
   },
-  introBlock: {
-    gap: spacing.sm,
-  },
-  headingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  listBlock: {
     gap: spacing.sm,
   },
   actionsBlock: {
     gap: spacing.sm,
-  },
-  itemGap: {
-    height: spacing.sm,
   },
 });

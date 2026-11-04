@@ -322,8 +322,6 @@ export const copy = {
     // lets an itemized bill switch to an equal split, and reflects a
     // quick-split bill's already-equal split back to the user.
     splitEquallyToggleLabel: 'Split everything equally',
-    unassignedSection: 'Unassigned',
-    assignedSection: 'Assigned',
     assignAction: 'Choose people',
     multiPersonState: 'Shared by {count}',
     noAssignmentState: 'Not assigned',
@@ -335,6 +333,10 @@ export const copy = {
     itemWordPlural: 'items',
     assignmentWordSingular: 'an assignment',
     assignmentWordPlural: 'assignments',
+    unassignedSectionWithCount: 'Unassigned ({count})',
+    assignedSectionWithCount: 'Assigned ({count})',
+    unassignedCaption: 'Choose who had each of these items.',
+    assignedCaption: 'Tap Choose people to change who shared an item.',
   },
 
   // Section 13.14 — Participant picker sheet
@@ -375,6 +377,8 @@ export const copy = {
     // of the OTHER adjustment created by "Add difference as an adjustment"
     // (spec 10.8).
     autoAdjustmentLabel: 'Receipt total difference',
+    sectionWithCount: 'Adjustments ({count})',
+    sectionCaption: 'Tap an amount to edit it or change how it’s split.',
   },
 
   // Section 13.16 — Add/edit adjustment sheet
@@ -439,6 +443,9 @@ export const copy = {
     // is conveyed by this label text, never by the bar's color alone).
     progressPaidInFull: 'Paid in full',
     progressPartial: '{paid} of {total} paid',
+    sectionWithCount: 'People ({count})',
+    sectionAccessibilityLabel: '{count} people',
+    sectionCaption: 'Enter what each person paid, or tap Paid in full.',
   },
 
   // Not from the spec — settlement ("who owes whom") display on the Summary
@@ -504,6 +511,9 @@ export const copy = {
     // and save" lands on — obvious both before and after saving, not just
     // on Summary.
     backToTripAction: 'Back to {name}',
+    peopleSectionWithCount: 'People ({count})',
+    peopleSectionAccessibilityLabel: '{count} people',
+    peopleCaption: 'Tap a person to see their items and fees.',
   },
 
   // Section 13.19 — Saved bill detail
@@ -527,6 +537,9 @@ export const copy = {
     // rather than reading as a passive info label — the user wants this
     // obvious both before and after saving, not just on Summary.
     tripLinkLabel: 'Back to {name}',
+    body: "Everyone's share for this saved bill.",
+    receiptCaption: 'Open the original receipt photo',
+    rawOcrCaption: 'Read the text found on the receipt',
   },
 
   // Section 13.20 — Settings
@@ -713,6 +726,8 @@ export const copy = {
 
   // Section 14 — global
   global: {
+    // Shared back-arrow label for ScreenHeader (the redesigned bill screens).
+    backAccessibilityLabel: 'Go back',
     genericErrorHeading: 'Something went wrong',
     genericErrorBody: 'Try again. Your saved bills are still on this device.',
     retryAction: 'Try again',

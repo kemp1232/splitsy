@@ -1,21 +1,21 @@
 import Feather from '@expo/vector-icons/Feather';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { BillTotalCard } from '@/components/bill/BillTotalCard';
 import { PersonTotalCard } from '@/components/bill/PersonTotalCard';
 import { SettlementCard } from '@/components/bill/SettlementCard';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
-import { Divider } from '@/components/ui/Divider';
 import { ErrorState } from '@/components/ui/ErrorState';
-import { GradientHeroCard } from '@/components/ui/GradientHeroCard';
+import { GroupedCard, GroupedSeparator, SectionHeader } from '@/components/ui/GroupedSection';
 import { InlineError } from '@/components/ui/InlineError';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
-import { StatusBadge } from '@/components/ui/StatusBadge';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { copy } from '@/constants/copy';
 import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
 import { adjustmentAllocationsRepository } from '@/db/repositories/adjustmentAllocations.repository';
@@ -393,45 +393,20 @@ export default function SummaryScreen() {
   return (
     <Screen scroll padded={false}>
       <View style={styles.headerRow}>
-        {/* Full-size heading (no uniformText override) + leading icon —
-            matches every other draft-wizard step's own header treatment. */}
-        <View style={styles.headingRow}>
-          <Feather name="share-2" size={24} color={colors.primary} />
-          <AppText variant="heading">{copy.summary.heading}</AppText>
-        </View>
-        <AppText variant="body" color="textSecondary">
-          {copy.summary.body}
-        </AppText>
+        <ScreenHeader icon="share-2" heading={copy.summary.heading} body={copy.summary.body} />
       </View>
 
-      {/* Gradient hero card (reference UI's rounded-bottom-corner "hero
-          panel", screenshot 2) — this screen's one genuinely single running
-          total. roundTopCorners/sideInset: unlike the trip screens' own hero
-          cards, this one renders below the heading above it rather than
-          flush against the screen's actual edges, so it now matches
-          PersonTotalCard's own inset and corner treatment below it. */}
-      <GradientHeroCard
-        label={copy.summary.totalLabel}
-        amountCentavos={splitResult.computedTotalCentavos}
-        subtitle={title}
-        meta={bill.receiptDate ? formatBillListDate(bill.receiptDate) : undefined}
-        icon={(color) => <Feather name="file-text" size={18} color={color} />}
-        roundTopCorners
-        sideInset
-        statusBadge={
-          hasDetectedTotal ? (
-            <StatusBadge
-              label={
-                reconciliation.matches ? copy.summary.matchSuccess : copy.summary.mismatchStatus
-              }
-              tone={reconciliation.matches ? 'success' : 'warning'}
-              solid
-            />
-          ) : undefined
-        }
-      />
-
       <View style={styles.body}>
+        {/* Same totals card as the saved-bill screen (index.tsx), so the
+            total and receipt-match badge look identical before and after
+            saving. The caption keeps the bill title and date that the old
+            hero showed, since this screen's header doesn't name the bill. */}
+        <BillTotalCard
+          totalCentavos={splitResult.computedTotalCentavos}
+          matchStatus={hasDetectedTotal ? (reconciliation.matches ? 'matches' : 'mismatch') : null}
+          caption={bill.receiptDate ? `${title} · ${formatBillListDate(bill.receiptDate)}` : title}
+        />
+
         <View style={styles.statusBlock}>
           {/* Deliberately obvious (secondary, full-width), not the quieter
               text-styled link used on the saved-bill-detail screen — finishing
@@ -477,29 +452,40 @@ export default function SummaryScreen() {
         </View>
 
         <View style={styles.cardsBlock}>
-          <Divider />
-          <View style={styles.cardsList}>
-            {splitResult.participantShares.map((share) => {
+          <SectionHeader
+            title={copy.summary.peopleSectionWithCount.replace('{count}', () =>
+              String(splitResult.participantShares.length),
+            )}
+            accessibilityLabel={copy.summary.peopleSectionAccessibilityLabel.replace(
+              '{count}',
+              () => String(splitResult.participantShares.length),
+            )}
+            caption={copy.summary.peopleCaption}
+          />
+          <GroupedCard>
+            {splitResult.participantShares.map((share, index) => {
               const name = nameByParticipantId.get(share.participantId) ?? '';
               return (
-                <PersonTotalCard
-                  key={share.participantId}
-                  name={name}
-                  finalTotalCentavos={share.finalTotalCentavos}
-                  itemShares={buildParticipantItemShareDisplay(share.itemShares, itemInfoById)}
-                  adjustmentShares={buildParticipantAdjustmentShareDisplay(
-                    share.adjustmentShares,
-                    adjustmentInfoById,
-                  )}
-                  paidCentavos={
-                    hasAnyContribution
-                      ? contributionByParticipantId.get(share.participantId)?.contributedCentavos
-                      : undefined
-                  }
-                />
+                <Fragment key={share.participantId}>
+                  {index > 0 ? <GroupedSeparator /> : null}
+                  <PersonTotalCard
+                    name={name}
+                    finalTotalCentavos={share.finalTotalCentavos}
+                    itemShares={buildParticipantItemShareDisplay(share.itemShares, itemInfoById)}
+                    adjustmentShares={buildParticipantAdjustmentShareDisplay(
+                      share.adjustmentShares,
+                      adjustmentInfoById,
+                    )}
+                    paidCentavos={
+                      hasAnyContribution
+                        ? contributionByParticipantId.get(share.participantId)?.contributedCentavos
+                        : undefined
+                    }
+                  />
+                </Fragment>
               );
             })}
-          </View>
+          </GroupedCard>
         </View>
 
         {hasAnyContribution ? (
@@ -534,15 +520,15 @@ export default function SummaryScreen() {
             </View>
           ) : null}
           {saveError ? <InlineError message={saveError} /> : null}
-          {/* The reference UI's prominent bottom-of-screen pill primary action
-              (screenshot 2's "Bill Splitting" breakdown screen). Leading
+          {/* The screen's prominent in-flow primary action — `large`, the same
+              size as receipt-review.tsx's own CTA. Leading
               check-circle rather than arrow-right: unlike adjustments.tsx/
               payments.tsx, this doesn't advance to another wizard step — it's
               the "fully done" action that marks the bill COMPLETED (mapping
               table's own "Mark trip settled" example is the same kind of
               action). */}
           <AppButton
-            pill
+            large
             label={copy.summary.saveAction}
             onPress={handleSave}
             loading={saving}
@@ -563,26 +549,19 @@ function createStyles(colors: ColorTokens) {
       // pads above the global nav bar automatically — now that it's plain
       // in-flow content, this screen reserves that space itself.
       paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
-      // Section-to-section rhythm: the hero card above already sits outside
-      // this View entirely, so the first gap here separates the status
-      // badge/trip-link block from the share/copy/edit block, then that from
-      // the person cards, the settlement card, and the finishing (payments
-      // link + save) block. spacing.md/sm stays reserved for tight,
-      // within-section grouping (see the block-specific styles below).
-      gap: spacing.xl,
+      // Section-to-section rhythm: the first gap here separates the totals
+      // card from the trip-link block, then that from the share/copy/edit
+      // block, then that from the person cards, the settlement card, and the finishing (payments
+      // link + save) block. spacing.lg matches receipt-review.tsx's rhythm;
+      // spacing.sm stays reserved for tight, within-section grouping.
+      gap: spacing.lg,
     },
     headerRow: {
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.lg,
-      // Larger than the usual spacing.sm bottom padding — doubles as the
-      // margin above the hero card directly below this block.
-      paddingBottom: spacing.lg,
-      gap: spacing.sm,
-    },
-    headingRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
+      // No bottom padding: the body's own top padding already spaces the
+      // totals card below, so this matches index.tsx's header-to-card gap.
+      paddingBottom: 0,
     },
     statusBlock: {
       gap: spacing.sm,
@@ -599,9 +578,6 @@ function createStyles(colors: ColorTokens) {
       gap: spacing.xs / 2,
     },
     cardsBlock: {
-      gap: spacing.md,
-    },
-    cardsList: {
       gap: spacing.sm,
     },
     finishBlock: {
