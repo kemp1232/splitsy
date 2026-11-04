@@ -9,6 +9,7 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AmountInput } from '@/components/ui/AmountInput';
 import { AppButton } from '@/components/ui/AppButton';
@@ -112,6 +113,7 @@ export function AdjustmentEditorSheet({
 }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
   const translateY = useSlideUpAnimation(visible);
   const [type, setType] = useState<AdjustmentType>(initial?.type ?? 'TAX');
   const [label, setLabel] = useState(initial?.label ?? '');
@@ -266,7 +268,10 @@ export function AdjustmentEditorSheet({
               maxHeight needs to resolve against this Animated.View's real
               parent size, not against `sheet`'s own content-based size. */}
           <Animated.View style={[styles.sheetMaxHeight, { transform: [{ translateY }] }]}>
-            <Pressable style={styles.sheet} onPress={() => {}}>
+            <Pressable
+              style={[styles.sheet, { paddingBottom: spacing.lg + insets.bottom }]}
+              onPress={() => {}}
+            >
               <AppText variant="subheading">
                 {initial ? copy.adjustmentEditor.editHeading : copy.adjustmentEditor.addHeading}
               </AppText>
@@ -456,6 +461,9 @@ function createStyles(colors: ColorTokens) {
       borderTopRightRadius: radius.lg,
       padding: spacing.lg,
       gap: spacing.md,
+      // Lets the sheet shrink to `sheetMaxHeight`'s cap so the ScrollView
+      // scrolls and the pinned actions stay visible.
+      flexShrink: 1,
       // Web desktop widening (theme/tokens.ts's own CONTENT_MAX_WIDTH
       // comment) — `alignSelf` centers this against `sheetMaxHeight`'s own
       // default 'stretch' cross-axis.
