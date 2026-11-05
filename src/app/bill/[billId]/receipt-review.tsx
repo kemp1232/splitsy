@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   type ListRenderItem,
@@ -11,6 +11,8 @@ import {
   View,
 } from 'react-native';
 
+import { AdjustmentEditorSheet } from '@/components/bill/AdjustmentEditorSheet';
+import { AdjustmentRow } from '@/components/bill/AdjustmentRow';
 import { LineItemEditorSheet, type LineItemDraft } from '@/components/bill/LineItemEditorSheet';
 import { LineItemRow } from '@/components/bill/LineItemRow';
 import { AppButton } from '@/components/ui/AppButton';
@@ -19,6 +21,7 @@ import { AppTextInput } from '@/components/ui/AppTextInput';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { GroupedCard, GroupedSeparator } from '@/components/ui/GroupedSection';
 import { IconButton } from '@/components/ui/IconButton';
 import { InlineError } from '@/components/ui/InlineError';
 import { LoadingState } from '@/components/ui/LoadingState';
@@ -28,9 +31,13 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { copy } from '@/constants/copy';
 import type { Bill } from '@/db/repositories/bills.repository';
 import { billsRepository } from '@/db/repositories/bills.repository';
+import type { Adjustment } from '@/db/repositories/adjustments.repository';
 import { adjustmentsRepository } from '@/db/repositories/adjustments.repository';
 import type { LineItem } from '@/db/repositories/lineItems.repository';
 import { lineItemsRepository } from '@/db/repositories/lineItems.repository';
+import type { Participant } from '@/db/repositories/participants.repository';
+import { participantsRepository } from '@/db/repositories/participants.repository';
+import { useAdjustmentEditor } from '@/features/adjustments/useAdjustmentEditor';
 import { buildOcrStatus, type OcrStatusTone } from '@/features/receipt-review/buildOcrStatus';
 import {
   buildMismatchMessage,
@@ -56,12 +63,16 @@ const STATUS_ICON: Record<OcrStatusTone, keyof typeof Feather.glyphMap> = {
 };
 
 async function fetchReviewData(billId: string) {
-  const [billRow, itemRows, adjustmentRows] = await Promise.all([
+  // Participants are only needed by AdjustmentEditorSheet's custom-amount
+  // option — usually none yet in the forward flow, since this screen comes
+  // before the participants step.
+  const [billRow, itemRows, adjustmentRows, participantRows] = await Promise.all([
     billsRepository.getById(billId),
     lineItemsRepository.listByBillId(billId),
     adjustmentsRepository.listByBillId(billId),
+    participantsRepository.listByBillId(billId),
   ]);
-  return { billRow, itemRows, adjustmentRows };
+  return { billRow, itemRows, adjustmentRows, participantRows };
 }
 
 function keyExtractor(item: LineItem) {
@@ -92,7 +103,8 @@ export default function ReceiptReviewScreen() {
   const [state, setState] = useState<LoadState>('loading');
   const [bill, setBill] = useState<Bill | null>(null);
   const [items, setItems] = useState<LineItem[]>([]);
-  const [adjustmentTotalCentavos, setAdjustmentTotalCentavos] = useState(0);
+  const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const [merchantName, setMerchantName] = useState('');
   const [receiptDate, setReceiptDate] = useState('');
   const [editingItem, setEditingItem] = useState<LineItem | 'new' | null>(null);
@@ -110,18 +122,29 @@ export default function ReceiptReviewScreen() {
   // actionError, and is distinct from dateError above, which is a field
   // validation message, not a storage failure.
   const [actionError, setActionError] = useState<string | null>(null);
+  // Add/edit/delete an adjustment (shared with the adjustments screen), so
+  // the gap between the items subtotal and the receipt total can be
+  // explained right here.
+  const adjustmentEditor = useAdjustmentEditor({
+    billId,
+    adjustmentCount: adjustments.length,
+    refresh: refreshAdjustments,
+    setActionError,
+  });
 
   useEffect(() => {
     (async () => {
       try {
-        const { billRow, itemRows, adjustmentRows } = await fetchReviewData(billId);
+        const { billRow, itemRows, adjustmentRows, participantRows } =
+          await fetchReviewData(billId);
         if (!billRow) {
           setState('error');
           return;
         }
         setBill(billRow);
         setItems(itemRows);
-        setAdjustmentTotalCentavos(adjustmentRows.reduce((sum, a) => sum + a.amountCentavos, 0));
+        setAdjustments(adjustmentRows);
+        setParticipants(participantRows);
         setMerchantName(billRow.merchantName ?? '');
         setReceiptDate(billRow.receiptDate ?? '');
         setState('ready');
@@ -161,6 +184,12 @@ export default function ReceiptReviewScreen() {
   async function refreshItems() {
     const itemRows = await lineItemsRepository.listByBillId(billId);
     setItems(itemRows);
+  }
+
+  // Errors propagate to useAdjustmentEditor's own catch (storage failure).
+  async function refreshAdjustments() {
+    const adjustmentRows = await adjustmentsRepository.listByBillId(billId);
+    setAdjustments(adjustmentRows);
   }
 
   async function handleMerchantBlur() {
@@ -274,6 +303,7 @@ export default function ReceiptReviewScreen() {
   }
 
   const itemSubtotalCentavos = items.reduce((sum, item) => sum + item.lineTotalCentavos, 0);
+  const adjustmentTotalCentavos = adjustments.reduce((sum, a) => sum + a.amountCentavos, 0);
   const computedTotalCentavos = itemSubtotalCentavos + adjustmentTotalCentavos;
   const detectedTotalCentavos = bill.detectedReceiptTotalCentavos;
   const totalsMatch = getTotalsMatch(computedTotalCentavos, detectedTotalCentavos);
@@ -324,7 +354,8 @@ export default function ReceiptReviewScreen() {
           </AppText>
 
           {/* Shared by every write path below (merchant/date autosave, item
-              save/delete) — mirrors participants.tsx's own actionError. */}
+              and adjustment save/delete) — mirrors participants.tsx's own
+              actionError. */}
           {actionError ? <InlineError message={actionError} /> : null}
         </View>
 
@@ -484,6 +515,48 @@ export default function ReceiptReviewScreen() {
           </View>
         ) : null}
 
+        {/* Fees, tax, and discounts — sits directly above the totals so the
+            gap between the items subtotal and the receipt total is visible.
+            A plain map (a handful of rows) rather than a second list. With
+            none yet, only a compact add action, no empty state. */}
+        {adjustments.length > 0 ? (
+          <View style={styles.itemsBlock}>
+            <View style={styles.itemsHeaderRow}>
+              <View style={styles.itemsHeaderText}>
+                <AppText variant="subheading" accessibilityRole="header">
+                  {copy.adjustments.sectionWithCount.replace('{count}', () =>
+                    String(adjustments.length),
+                  )}
+                </AppText>
+                <AppText variant="caption" color="textSecondary">
+                  {copy.adjustments.sectionCaption}
+                </AppText>
+              </View>
+              <AppButton
+                variant="secondary"
+                label={copy.adjustments.addAction}
+                icon={(color) => <Feather name="plus" size={16} color={color} />}
+                onPress={adjustmentEditor.openNewEditor}
+              />
+            </View>
+            <GroupedCard>
+              {adjustments.map((adjustment, index) => (
+                <Fragment key={adjustment.id}>
+                  {index > 0 ? <GroupedSeparator /> : null}
+                  <AdjustmentRow adjustment={adjustment} onPress={adjustmentEditor.openEditor} />
+                </Fragment>
+              ))}
+            </GroupedCard>
+          </View>
+        ) : (
+          <AppButton
+            variant="text"
+            label={copy.receiptReview.addAdjustmentAction}
+            icon={(color) => <Feather name="plus" size={16} color={color} />}
+            onPress={adjustmentEditor.openNewEditor}
+          />
+        )}
+
         <SectionCard>
           {/* Collapsed by default to one line ("Total ₱X ✓ matches receipt");
               the subtotal/receipt-total breakdown sits behind this toggle. */}
@@ -588,6 +661,27 @@ export default function ReceiptReviewScreen() {
         }
         onSave={handleSaveItem}
         onCancel={() => setEditingItem(null)}
+      />
+
+      <AdjustmentEditorSheet
+        visible={adjustmentEditor.isEditorVisible}
+        initial={adjustmentEditor.editingInitial}
+        initialCustomAllocations={adjustmentEditor.editingCustomAllocations}
+        participants={participants}
+        onSave={adjustmentEditor.saveAdjustment}
+        onDelete={adjustmentEditor.editingInitial ? adjustmentEditor.requestDelete : undefined}
+        onCancel={adjustmentEditor.cancelEditor}
+      />
+
+      <ConfirmationDialog
+        visible={adjustmentEditor.isDeleteConfirmVisible}
+        heading={copy.adjustmentEditor.deleteConfirmHeading}
+        body={copy.adjustmentEditor.deleteConfirmBody}
+        confirmLabel={copy.adjustmentEditor.deleteAction}
+        cancelLabel={copy.global.cancelAction}
+        destructive
+        onConfirm={adjustmentEditor.confirmDelete}
+        onCancel={adjustmentEditor.cancelDelete}
       />
 
       {/* Opened by the row trash icon. */}

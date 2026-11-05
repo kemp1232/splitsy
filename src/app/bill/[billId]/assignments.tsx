@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Fragment, useCallback, useMemo, useState } from 'react';
 import { Modal, StyleSheet, Switch, View } from 'react-native';
 
 import { AssignmentStatus } from '@/components/bill/AssignmentStatus';
@@ -16,6 +16,8 @@ import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { copy } from '@/constants/copy';
+import type { Adjustment } from '@/db/repositories/adjustments.repository';
+import { adjustmentsRepository } from '@/db/repositories/adjustments.repository';
 import type { Bill } from '@/db/repositories/bills.repository';
 import { billsRepository } from '@/db/repositories/bills.repository';
 import type { ItemAssignment } from '@/db/repositories/itemAssignments.repository';
@@ -29,6 +31,7 @@ import {
   groupAssignedParticipantIdsByLineItem,
   partitionLineItemsByAssignment,
 } from '@/features/assignments/partitionLineItemsByAssignment';
+import { resolvePostAssignmentsRoute } from '@/features/bills/resolvePostAssignmentsRoute';
 import {
   findMeParticipant,
   resolveQuickAddMeName,
@@ -49,13 +52,16 @@ type PickerState =
   | null;
 
 async function fetchAssignmentsData(billId: string) {
-  const [billRow, itemRows, participantRows, assignmentRows] = await Promise.all([
+  // Adjustments are only read here to decide where Continue goes (see
+  // resolvePostAssignmentsRoute) — this screen never edits them.
+  const [billRow, itemRows, participantRows, assignmentRows, adjustmentRows] = await Promise.all([
     billsRepository.getById(billId),
     lineItemsRepository.listByBillId(billId),
     participantsRepository.listByBillId(billId),
     itemAssignmentsRepository.listByBillId(billId),
+    adjustmentsRepository.listByBillId(billId),
   ]);
-  return { billRow, itemRows, participantRows, assignmentRows };
+  return { billRow, itemRows, participantRows, assignmentRows, adjustmentRows };
 }
 
 // Not from the spec — the post-MVP "split evenly" toggle's self-healing
@@ -142,6 +148,7 @@ export default function AssignmentsScreen() {
   const [items, setItems] = useState<LineItem[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [assignmentRows, setAssignmentRows] = useState<ItemAssignment[]>([]);
+  const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [picker, setPicker] = useState<PickerState>(null);
   const [showBlockingError, setShowBlockingError] = useState(false);
   const [showReceiptImage, setShowReceiptImage] = useState(false);
@@ -150,29 +157,37 @@ export default function AssignmentsScreen() {
   // own actionError.
   const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const {
-          billRow,
-          itemRows,
-          participantRows,
-          assignmentRows: rows,
-        } = await loadAssignmentsData(billId);
-        if (!billRow) {
+  // Runs on every focus, not just mount: the adjustments screen (opened via
+  // "Edit fees and discounts") can change the adjustments that decide where
+  // Continue goes, so coming back re-reads them instead of keeping a stale
+  // label/route.
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        try {
+          const {
+            billRow,
+            itemRows,
+            participantRows,
+            assignmentRows: rows,
+            adjustmentRows,
+          } = await loadAssignmentsData(billId);
+          if (!billRow) {
+            setState('error');
+            return;
+          }
+          setBill(billRow);
+          setItems(itemRows);
+          setParticipants(participantRows);
+          setAssignmentRows(rows);
+          setAdjustments(adjustmentRows);
+          setState('ready');
+        } catch {
           setState('error');
-          return;
         }
-        setBill(billRow);
-        setItems(itemRows);
-        setParticipants(participantRows);
-        setAssignmentRows(rows);
-        setState('ready');
-      } catch {
-        setState('error');
-      }
-    })();
-  }, [billId]);
+      })();
+    }, [billId]),
+  );
 
   async function refreshAssignments() {
     const {
@@ -180,6 +195,7 @@ export default function AssignmentsScreen() {
       itemRows,
       participantRows,
       assignmentRows: rows,
+      adjustmentRows,
     } = await loadAssignmentsData(billId);
     if (!billRow) {
       setState('error');
@@ -189,6 +205,7 @@ export default function AssignmentsScreen() {
     setItems(itemRows);
     setParticipants(participantRows);
     setAssignmentRows(rows);
+    setAdjustments(adjustmentRows);
   }
 
   async function handleToggleSplitEqually(nextEnabled: boolean) {
@@ -291,13 +308,24 @@ export default function AssignmentsScreen() {
     .replace('{itemWord}', itemWord)
     .replace('{assignmentWord}', assignmentWord);
 
+  // Skips the adjustments screen when there's no unresolved receipt
+  // discrepancy — the same rule payments.tsx's own guard enforces, so a
+  // skipped bill is never bounced back.
+  const nextRoute = resolvePostAssignmentsRoute({
+    items,
+    adjustments,
+    detectedReceiptTotalCentavos: bill.detectedReceiptTotalCentavos,
+    discrepancyAcknowledged: bill.discrepancyAcknowledged,
+  });
+  const skipsAdjustments = nextRoute === 'payments';
+
   function handleContinue() {
     if (isBlocked) {
       setShowBlockingError(true);
       return;
     }
     setShowBlockingError(false);
-    router.push(`/bill/${billId}/adjustments`);
+    router.push(`/bill/${billId}/${nextRoute}`);
   }
 
   function assignedNamesFor(item: LineItem): string[] {
@@ -429,11 +457,26 @@ export default function AssignmentsScreen() {
           ) : null}
           <AppButton
             large
-            label={copy.assignments.continueButton}
+            label={
+              skipsAdjustments
+                ? copy.assignments.continueToPaymentsButton
+                : copy.assignments.continueButton
+            }
             icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
             iconPosition="trailing"
             onPress={handleContinue}
           />
+          {/* Keeps the skipped adjustments screen reachable. Hidden while
+              items are unassigned — its own guard would just send the user
+              straight back here. */}
+          {skipsAdjustments && !isBlocked ? (
+            <AppButton
+              variant="secondary"
+              label={copy.assignments.editAdjustmentsAction}
+              icon={(color) => <Feather name="percent" size={16} color={color} />}
+              onPress={() => router.push(`/bill/${billId}/adjustments`)}
+            />
+          ) : null}
         </View>
       </View>
 
