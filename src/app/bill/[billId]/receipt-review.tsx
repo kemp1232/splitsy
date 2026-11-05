@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -12,18 +12,18 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AdjustmentEditorSheet } from '@/components/bill/AdjustmentEditorSheet';
+import { AdjustmentRow } from '@/components/bill/AdjustmentRow';
 import { LineItemEditorSheet, type LineItemDraft } from '@/components/bill/LineItemEditorSheet';
 import { LineItemRow } from '@/components/bill/LineItemRow';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
-import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
-import { Divider } from '@/components/ui/Divider';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { GroupedCard, GroupedSeparator } from '@/components/ui/GroupedSection';
 import { IconButton } from '@/components/ui/IconButton';
 import { InlineError } from '@/components/ui/InlineError';
 import { LoadingState } from '@/components/ui/LoadingState';
@@ -33,12 +33,21 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { copy } from '@/constants/copy';
 import type { Bill } from '@/db/repositories/bills.repository';
 import { billsRepository } from '@/db/repositories/bills.repository';
+import type { Adjustment } from '@/db/repositories/adjustments.repository';
 import { adjustmentsRepository } from '@/db/repositories/adjustments.repository';
 import type { LineItem } from '@/db/repositories/lineItems.repository';
 import { lineItemsRepository } from '@/db/repositories/lineItems.repository';
+import type { Participant } from '@/db/repositories/participants.repository';
+import { participantsRepository } from '@/db/repositories/participants.repository';
+import { useAdjustmentEditor } from '@/features/adjustments/useAdjustmentEditor';
 import { deleteBill } from '@/features/bills/bill.service';
 import { createGalleryBill, pickGalleryImageUri } from '@/features/bills/galleryBill';
 import { buildOcrStatus, type OcrStatusTone } from '@/features/receipt-review/buildOcrStatus';
+import {
+  buildMismatchMessage,
+  buildTotalHeadline,
+  getTotalsMatch,
+} from '@/features/receipt-review/buildTotalsSummary';
 import { nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
 import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
@@ -58,12 +67,16 @@ const STATUS_ICON: Record<OcrStatusTone, keyof typeof Feather.glyphMap> = {
 };
 
 async function fetchReviewData(billId: string) {
-  const [billRow, itemRows, adjustmentRows] = await Promise.all([
+  // Participants are only needed by AdjustmentEditorSheet's custom-amount
+  // option — usually none yet in the forward flow, since this screen comes
+  // before the participants step.
+  const [billRow, itemRows, adjustmentRows, participantRows] = await Promise.all([
     billsRepository.getById(billId),
     lineItemsRepository.listByBillId(billId),
     adjustmentsRepository.listByBillId(billId),
+    participantsRepository.listByBillId(billId),
   ]);
-  return { billRow, itemRows, adjustmentRows };
+  return { billRow, itemRows, adjustmentRows, participantRows };
 }
 
 function keyExtractor(item: LineItem) {
@@ -81,7 +94,6 @@ const separatorStyles = StyleSheet.create({
 export default function ReceiptReviewScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { billId, ocrSource, fallbackReason, truncated } = useLocalSearchParams<{
     billId: string;
@@ -95,7 +107,8 @@ export default function ReceiptReviewScreen() {
   const [state, setState] = useState<LoadState>('loading');
   const [bill, setBill] = useState<Bill | null>(null);
   const [items, setItems] = useState<LineItem[]>([]);
-  const [adjustmentTotalCentavos, setAdjustmentTotalCentavos] = useState(0);
+  const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const [merchantName, setMerchantName] = useState('');
   const [receiptDate, setReceiptDate] = useState('');
   const [editingItem, setEditingItem] = useState<LineItem | 'new' | null>(null);
@@ -105,6 +118,8 @@ export default function ReceiptReviewScreen() {
   const [pendingDelete, setPendingDelete] = useState<LineItem | null>(null);
   const [showRawText, setShowRawText] = useState(false);
   const [showReceiptImage, setShowReceiptImage] = useState(false);
+  // Totals card breakdown (subtotals/receipt total) — collapsed by default.
+  const [showBreakdown, setShowBreakdown] = useState(false);
   const [dateError, setDateError] = useState<string | null>(null);
   // One shared error slot for this screen's write paths (merchant/date
   // autosave, item save/delete) — mirrors participants.tsx's own
@@ -119,18 +134,29 @@ export default function ReceiptReviewScreen() {
   // Set on confirm, consumed by startChooseAnother — lets the dialog's iOS
   // onDismiss (which also fires after Cancel) tell a confirm from a cancel.
   const chooseAnotherPending = useRef(false);
+  // Add/edit/delete an adjustment (shared with the adjustments screen), so
+  // the gap between the items subtotal and the receipt total can be
+  // explained right here.
+  const adjustmentEditor = useAdjustmentEditor({
+    billId,
+    adjustmentCount: adjustments.length,
+    refresh: refreshAdjustments,
+    setActionError,
+  });
 
   useEffect(() => {
     (async () => {
       try {
-        const { billRow, itemRows, adjustmentRows } = await fetchReviewData(billId);
+        const { billRow, itemRows, adjustmentRows, participantRows } =
+          await fetchReviewData(billId);
         if (!billRow) {
           setState('error');
           return;
         }
         setBill(billRow);
         setItems(itemRows);
-        setAdjustmentTotalCentavos(adjustmentRows.reduce((sum, a) => sum + a.amountCentavos, 0));
+        setAdjustments(adjustmentRows);
+        setParticipants(participantRows);
         setMerchantName(billRow.merchantName ?? '');
         setReceiptDate(billRow.receiptDate ?? '');
         setState('ready');
@@ -152,12 +178,11 @@ export default function ReceiptReviewScreen() {
   const scrollContentStyle = useMemo(
     () => [
       styles.body,
-      // Keeps the last content (the "Add people" button) clear of the global
-      // BottomTabBar overlay. Screen's SafeAreaView skips the bottom edge, so
-      // the inset is added here explicitly.
-      { paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE + insets.bottom },
+      // No tab-bar clearance: the global BottomTabBar is hidden on every
+      // /bill/** screen, and Screen adds the bottom safe-area edge itself.
+      { paddingBottom: spacing.lg },
     ],
-    [styles.body, insets.bottom],
+    [styles.body],
   );
 
   // Straight back to Home rather than router.back(): after a scan the stack
@@ -171,6 +196,12 @@ export default function ReceiptReviewScreen() {
   async function refreshItems() {
     const itemRows = await lineItemsRepository.listByBillId(billId);
     setItems(itemRows);
+  }
+
+  // Errors propagate to useAdjustmentEditor's own catch (storage failure).
+  async function refreshAdjustments() {
+    const adjustmentRows = await adjustmentsRepository.listByBillId(billId);
+    setAdjustments(adjustmentRows);
   }
 
   async function handleMerchantBlur() {
@@ -328,7 +359,7 @@ export default function ReceiptReviewScreen() {
 
   if (state === 'loading') {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <LoadingState />
       </Screen>
     );
@@ -336,7 +367,7 @@ export default function ReceiptReviewScreen() {
 
   if (state === 'error' || !bill) {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <ErrorState
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
@@ -348,15 +379,12 @@ export default function ReceiptReviewScreen() {
   }
 
   const itemSubtotalCentavos = items.reduce((sum, item) => sum + item.lineTotalCentavos, 0);
+  const adjustmentTotalCentavos = adjustments.reduce((sum, a) => sum + a.amountCentavos, 0);
   const computedTotalCentavos = itemSubtotalCentavos + adjustmentTotalCentavos;
-  const hasDetectedTotal = bill.detectedReceiptTotalCentavos != null;
-  const totalDifference = hasDetectedTotal
-    ? computedTotalCentavos - bill.detectedReceiptTotalCentavos!
-    : 0;
+  const detectedTotalCentavos = bill.detectedReceiptTotalCentavos;
+  const totalsMatch = getTotalsMatch(computedTotalCentavos, detectedTotalCentavos);
 
   const ocrStatus = buildOcrStatus(ocrSource, fallbackReason, isTruncated);
-  const reconciliationMessage = buildReconciliationMessage(totalDifference, formatCentavos);
-  const reconciliationSpeech = buildReconciliationMessage(totalDifference, formatCentavosForSpeech);
   // Only for a gallery draft that arrived here straight from processing.
   // Status alone can't tell a fresh scan from a reopened bill: "Edit bill"
   // flips a COMPLETED bill back to DRAFT before opening this screen. But
@@ -369,13 +397,29 @@ export default function ReceiptReviewScreen() {
   // warns that people are cleared too.
   const canChooseAnother =
     bill.entryMethod === 'GALLERY' && bill.status === 'DRAFT' && ocrSource != null;
+  const totalHeadline = buildTotalHeadline(
+    computedTotalCentavos,
+    totalsMatch.status,
+    formatCentavos,
+  );
+  const totalHeadlineSpeech = buildTotalHeadline(
+    computedTotalCentavos,
+    totalsMatch.status,
+    formatCentavosForSpeech,
+    true,
+  );
+  const mismatchMessage = buildMismatchMessage(totalsMatch.differenceCentavos, formatCentavos);
+  const mismatchSpeech = buildMismatchMessage(
+    totalsMatch.differenceCentavos,
+    formatCentavosForSpeech,
+  );
   const textCaption =
     ocrSource === 'backend' && !fallbackReason
       ? copy.receiptReview.viewTextCaptionAi
       : copy.receiptReview.viewTextCaptionDevice;
 
   return (
-    <Screen scroll={false} padded={false}>
+    <Screen tabBarHidden scroll={false} padded={false}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={scrollContentStyle}
@@ -398,7 +442,8 @@ export default function ReceiptReviewScreen() {
           </AppText>
 
           {/* Shared by every write path below (merchant/date autosave, item
-              save/delete) — mirrors participants.tsx's own actionError. */}
+              and adjustment save/delete) — mirrors participants.tsx's own
+              actionError. */}
           {actionError ? <InlineError message={actionError} /> : null}
         </View>
 
@@ -588,73 +633,122 @@ export default function ReceiptReviewScreen() {
           </View>
         ) : null}
 
-        <SectionCard>
-          {bill.detectedSubtotalCentavos != null ? (
-            <View
-              style={styles.totalRow}
-              accessible
-              accessibilityLabel={`${copy.receiptReview.detectedSubtotalLabel}, ${formatCentavosForSpeech(bill.detectedSubtotalCentavos)}`}
-            >
-              <AppText color="textSecondary" style={styles.uniformText}>
-                {copy.receiptReview.detectedSubtotalLabel}
-              </AppText>
-              <AppText style={styles.uniformText}>
-                {formatCentavos(bill.detectedSubtotalCentavos)}
-              </AppText>
-            </View>
-          ) : null}
-          <View
-            style={styles.totalRow}
-            accessible
-            accessibilityLabel={`${copy.receiptReview.itemSubtotalLabel}, ${formatCentavosForSpeech(itemSubtotalCentavos)}`}
-          >
-            <AppText color="textSecondary" style={styles.uniformText}>
-              {copy.receiptReview.itemSubtotalLabel}
-            </AppText>
-            <AppText style={styles.uniformText}>{formatCentavos(itemSubtotalCentavos)}</AppText>
-          </View>
-          {hasDetectedTotal ? (
-            <View
-              style={styles.totalRow}
-              accessible
-              accessibilityLabel={`${copy.receiptReview.detectedTotalLabel}, ${formatCentavosForSpeech(bill.detectedReceiptTotalCentavos!)}`}
-            >
-              <AppText color="textSecondary" style={styles.uniformText}>
-                {copy.receiptReview.detectedTotalLabel}
-              </AppText>
-              <AppText style={styles.uniformText}>
-                {formatCentavos(bill.detectedReceiptTotalCentavos!)}
-              </AppText>
-            </View>
-          ) : null}
-          <Divider />
-          <View
-            style={styles.totalRow}
-            accessible
-            accessibilityLabel={`${copy.receiptReview.computedTotalLabel}, ${formatCentavosForSpeech(computedTotalCentavos)}`}
-          >
-            <AppText variant="subheading">{copy.receiptReview.computedTotalLabel}</AppText>
-            <AppText variant="amount" style={styles.currentTotalAmount}>
-              {formatCentavos(computedTotalCentavos)}
-            </AppText>
-          </View>
-
-          {hasDetectedTotal ? (
-            <View
-              accessible
-              accessibilityLabel={reconciliationSpeech}
-              style={[
-                styles.reconciliationRow,
-                totalDifference === 0 ? styles.success : styles.warning,
-              ]}
-            >
-              <Feather
-                name={totalDifference === 0 ? 'check-circle' : 'alert-triangle'}
-                size={18}
-                color={totalDifference === 0 ? colors.success : colors.warning}
+        {/* Fees, tax, and discounts — sits directly above the totals so the
+            gap between the items subtotal and the receipt total is visible.
+            A plain map (a handful of rows) rather than a second list. With
+            none yet, only a compact add action, no empty state. */}
+        {adjustments.length > 0 ? (
+          <View style={styles.itemsBlock}>
+            <View style={styles.itemsHeaderRow}>
+              <View style={styles.itemsHeaderText}>
+                <AppText variant="subheading" accessibilityRole="header">
+                  {copy.adjustments.sectionWithCount.replace('{count}', () =>
+                    String(adjustments.length),
+                  )}
+                </AppText>
+                <AppText variant="caption" color="textSecondary">
+                  {copy.adjustments.sectionCaption}
+                </AppText>
+              </View>
+              <AppButton
+                variant="secondary"
+                label={copy.adjustments.addAction}
+                icon={(color) => <Feather name="plus" size={16} color={color} />}
+                onPress={adjustmentEditor.openNewEditor}
               />
+            </View>
+            <GroupedCard>
+              {adjustments.map((adjustment, index) => (
+                <Fragment key={adjustment.id}>
+                  {index > 0 ? <GroupedSeparator /> : null}
+                  <AdjustmentRow adjustment={adjustment} onPress={adjustmentEditor.openEditor} />
+                </Fragment>
+              ))}
+            </GroupedCard>
+          </View>
+        ) : (
+          <AppButton
+            variant="text"
+            label={copy.receiptReview.addAdjustmentAction}
+            icon={(color) => <Feather name="plus" size={16} color={color} />}
+            onPress={adjustmentEditor.openNewEditor}
+          />
+        )}
+
+        <SectionCard>
+          {/* Collapsed by default to one line ("Total ₱X ✓ matches receipt");
+              the subtotal/receipt-total breakdown sits behind this toggle. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showBreakdown }}
+            accessibilityLabel={totalHeadlineSpeech}
+            accessibilityHint={copy.receiptReview.breakdownToggleHint}
+            onPress={() => setShowBreakdown((current) => !current)}
+            style={({ pressed }) => [styles.totalToggle, pressed && styles.pressed]}
+          >
+            <AppText variant="subheading" style={styles.totalHeadline}>
+              {totalHeadline}
+            </AppText>
+            <Feather
+              name={showBreakdown ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={colors.textSecondary}
+            />
+          </Pressable>
+
+          {showBreakdown ? (
+            <View style={styles.breakdown}>
+              {bill.detectedSubtotalCentavos != null ? (
+                <View
+                  style={styles.totalRow}
+                  accessible
+                  accessibilityLabel={`${copy.receiptReview.detectedSubtotalLabel}, ${formatCentavosForSpeech(bill.detectedSubtotalCentavos)}`}
+                >
+                  <AppText color="textSecondary" style={styles.uniformText}>
+                    {copy.receiptReview.detectedSubtotalLabel}
+                  </AppText>
+                  <AppText style={styles.uniformText}>
+                    {formatCentavos(bill.detectedSubtotalCentavos)}
+                  </AppText>
+                </View>
+              ) : null}
+              <View
+                style={styles.totalRow}
+                accessible
+                accessibilityLabel={`${copy.receiptReview.itemSubtotalLabel}, ${formatCentavosForSpeech(itemSubtotalCentavos)}`}
+              >
+                <AppText color="textSecondary" style={styles.uniformText}>
+                  {copy.receiptReview.itemSubtotalLabel}
+                </AppText>
+                <AppText style={styles.uniformText}>{formatCentavos(itemSubtotalCentavos)}</AppText>
+              </View>
+              {detectedTotalCentavos != null ? (
+                <View
+                  style={styles.totalRow}
+                  accessible
+                  accessibilityLabel={`${copy.receiptReview.detectedTotalLabel}, ${formatCentavosForSpeech(detectedTotalCentavos)}`}
+                >
+                  <AppText color="textSecondary" style={styles.uniformText}>
+                    {copy.receiptReview.detectedTotalLabel}
+                  </AppText>
+                  <AppText style={styles.uniformText}>
+                    {formatCentavos(detectedTotalCentavos)}
+                  </AppText>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          {/* A mismatch stays visible without expanding the breakdown. */}
+          {totalsMatch.status === 'mismatch' ? (
+            <View
+              accessible
+              accessibilityLabel={mismatchSpeech}
+              style={[styles.reconciliationRow, styles.warning]}
+            >
+              <Feather name="alert-triangle" size={18} color={colors.warning} />
               <AppText variant="caption" style={styles.reconciliationText}>
-                {reconciliationMessage}
+                {mismatchMessage}
               </AppText>
             </View>
           ) : null}
@@ -685,6 +779,27 @@ export default function ReceiptReviewScreen() {
         }
         onSave={handleSaveItem}
         onCancel={() => setEditingItem(null)}
+      />
+
+      <AdjustmentEditorSheet
+        visible={adjustmentEditor.isEditorVisible}
+        initial={adjustmentEditor.editingInitial}
+        initialCustomAllocations={adjustmentEditor.editingCustomAllocations}
+        participants={participants}
+        onSave={adjustmentEditor.saveAdjustment}
+        onDelete={adjustmentEditor.editingInitial ? adjustmentEditor.requestDelete : undefined}
+        onCancel={adjustmentEditor.cancelEditor}
+      />
+
+      <ConfirmationDialog
+        visible={adjustmentEditor.isDeleteConfirmVisible}
+        heading={copy.adjustmentEditor.deleteConfirmHeading}
+        body={copy.adjustmentEditor.deleteConfirmBody}
+        confirmLabel={copy.adjustmentEditor.deleteAction}
+        cancelLabel={copy.global.cancelAction}
+        destructive
+        onConfirm={adjustmentEditor.confirmDelete}
+        onCancel={adjustmentEditor.cancelDelete}
       />
 
       {/* Opened by the row trash icon. */}
@@ -720,7 +835,7 @@ export default function ReceiptReviewScreen() {
         animationType="slide"
         onRequestClose={() => setShowReceiptImage(false)}
       >
-        <Screen scroll={false}>
+        <Screen tabBarHidden scroll={false}>
           <AppButton
             variant="text"
             label={copy.global.closeAccessibilityLabel}
@@ -742,7 +857,7 @@ export default function ReceiptReviewScreen() {
         animationType="slide"
         onRequestClose={() => setShowRawText(false)}
       >
-        <Screen scroll>
+        <Screen tabBarHidden scroll>
           <AppButton
             variant="text"
             label={copy.global.closeAccessibilityLabel}
@@ -757,20 +872,6 @@ export default function ReceiptReviewScreen() {
       </Modal>
     </Screen>
   );
-}
-
-// Match/mismatch text for the totals card — one builder for both the visible
-// label (formatCentavos) and its screen-reader label (formatCentavosForSpeech).
-function buildReconciliationMessage(
-  totalDifference: number,
-  formatMoney: (centavos: number) => string,
-): string {
-  if (totalDifference === 0) return copy.receiptReview.matchSuccess;
-  return copy.receiptReview.mismatchWarning
-    .replace('{difference}', () => formatMoney(Math.abs(totalDifference)))
-    .replace('{higherOrLower}', () =>
-      totalDifference > 0 ? copy.receiptReview.higherWord : copy.receiptReview.lowerWord,
-    );
 }
 
 // Low-alpha wash of a tone token — the same `${token}26` convention
@@ -875,9 +976,19 @@ function createStyles(colors: ColorTokens) {
       alignItems: 'center',
       gap: spacing.sm,
     },
-    currentTotalAmount: {
-      fontSize: 20,
-      lineHeight: 26,
+    totalToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      minHeight: touchTarget.preferred,
+      borderRadius: radius.md,
+      borderCurve: 'continuous',
+    },
+    totalHeadline: {
+      flex: 1,
+    },
+    breakdown: {
+      gap: spacing.sm,
     },
     reconciliationRow: {
       flexDirection: 'row',

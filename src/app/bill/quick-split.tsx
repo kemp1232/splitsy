@@ -7,7 +7,6 @@ import { AmountInput } from '@/components/ui/AmountInput';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
-import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { InlineError } from '@/components/ui/InlineError';
 import { Screen } from '@/components/ui/Screen';
 import { copy } from '@/constants/copy';
@@ -58,7 +57,7 @@ export default function QuickSplitScreen() {
   }
 
   return (
-    <Screen scroll>
+    <Screen tabBarHidden scroll>
       <View style={styles.body}>
         <View style={styles.headingGroup}>
           <AppText variant="heading">{copy.quickSplit.heading}</AppText>
@@ -108,10 +107,8 @@ const styles = StyleSheet.create({
   body: {
     // Section-to-section rhythm: heading, field group, actions.
     gap: spacing.xl,
-    // The Continue button used to sit in a sticky footer, which Screen.tsx
-    // pads above the global nav bar automatically — now that it's plain
-    // in-flow content, this screen reserves that space itself.
-    paddingBottom: TAB_BAR_CONTENT_CLEARANCE,
+    // No tab-bar clearance: the global BottomTabBar is hidden on /bill/**
+    // (Screen's own padding already spaces the last button from the edge).
   },
   headingGroup: {
     gap: spacing.xs,

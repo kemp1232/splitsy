@@ -26,9 +26,20 @@ export type ParticipantDraft = {
   name: string;
 };
 
+// Copy for each validateParticipantName failure reason — shared with
+// participants.tsx's inline "Add a name" field so both show identical errors.
+export const PARTICIPANT_NAME_ERROR_BY_REASON = {
+  required: copy.participantEditor.requiredNameError,
+  tooLong: copy.participantEditor.tooLongNameError,
+  duplicate: copy.participantEditor.duplicateNameError,
+} as const;
+
 type Props = {
   visible: boolean;
-  initial: ParticipantDraft | null; // null = adding a new participant
+  // The participant being edited. participants.tsx only opens this sheet to
+  // edit an existing person (new people are added via its inline field);
+  // null just means "no participant yet" and starts the form empty.
+  initial: ParticipantDraft | null;
   // Every other participant's name currently in the bill (excluding the one
   // being edited, if editing) — used for the case-insensitive duplicate check.
   // Reading from the repository/store and passing names down keeps this
@@ -66,12 +77,7 @@ export function ParticipantEditorSheet({
   function handleSave() {
     const result = validateParticipantName(name, existingNames);
     if (!result.valid) {
-      const errorByReason = {
-        required: copy.participantEditor.requiredNameError,
-        tooLong: copy.participantEditor.tooLongNameError,
-        duplicate: copy.participantEditor.duplicateNameError,
-      } as const;
-      setNameError(errorByReason[result.reason]);
+      setNameError(PARTICIPANT_NAME_ERROR_BY_REASON[result.reason]);
       return;
     }
 

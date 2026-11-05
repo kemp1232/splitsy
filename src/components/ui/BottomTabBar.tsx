@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import { AppText } from '@/components/ui/AppText';
+import { isTabBarHiddenForPath } from '@/components/ui/tabBarVisibility';
 import { copy } from '@/constants/copy';
 import type { ColorTokens } from '@/theme/tokens';
 import { CONTENT_MAX_WIDTH, radius, spacing, touchTarget } from '@/theme/tokens';
@@ -188,9 +189,8 @@ function buildBarPath(width: number, height: number): string {
 // (tabs) route group covering only Home/Settings; see the 2026-08-27 "show
 // the nav bar on all views" change). Home/Settings are still its only two
 // real destinations, tracked via `usePathname()` rather than a navigator's
-// own route list — every other screen (bill/**, trip/**) shows this bar too,
-// just with neither tab highlighted, and stacks its own footer (if any)
-// above it (Screen.tsx). Renders a real SVG background (not a plain
+// own route list — trip/** screens show this bar too, just with neither tab
+// highlighted; bill/** screens hide it entirely (tabBarVisibility.ts). Renders a real SVG background (not a plain
 // rectangle with a button floating over it) so the concave cutout around the
 // center "+" reads as one continuous shape, cradling the button with a
 // visible gap rather than the bar touching it. The curve is built from the
@@ -214,6 +214,10 @@ export function BottomTabBar() {
   function handleLayout(event: LayoutChangeEvent) {
     setBarWidth(event.nativeEvent.layout.width);
   }
+
+  // Hidden (including the "+") on every /bill/** screen — see
+  // tabBarVisibility.ts. After the hooks above, so hook order never changes.
+  if (isTabBarHiddenForPath(pathname)) return null;
 
   return (
     <View style={styles.wrapper}>

@@ -1,6 +1,5 @@
 import { eq } from 'drizzle-orm';
 
-import { copy } from '@/constants/copy';
 import { db } from '@/db/client';
 import type { Bill } from '@/db/repositories/bills.repository';
 import type { Trip } from '@/db/repositories/trips.repository';
@@ -82,7 +81,8 @@ export async function createBillInTrip(tripId: string, input: CreateDraftBillInp
       .insert(bills)
       .values({
         id: createId(),
-        title: copy.home.unknownMerchantTitle,
+        // Empty — named at display time (getBillDisplayTitle).
+        title: '',
         currency: 'PHP',
         status: 'DRAFT',
         tripId,

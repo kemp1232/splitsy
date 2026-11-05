@@ -1,7 +1,14 @@
 import type { PropsWithChildren } from 'react';
 import { useMemo } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  type ScrollViewProps,
+  StyleSheet,
+  View,
+} from 'react-native';
+import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 
 import type { ColorTokens } from '@/theme/tokens';
 import { CONTENT_MAX_WIDTH, spacing } from '@/theme/tokens';
@@ -10,6 +17,16 @@ import { useTheme } from '@/theme/ThemeProvider';
 type Props = PropsWithChildren<{
   scroll?: boolean;
   padded?: boolean;
+  // Set by every /bill/** screen, where the global BottomTabBar is hidden
+  // (tabBarVisibility.ts) — see the edges note below. An explicit,
+  // route-local prop rather than reading the global pathname here, so a
+  // screen lower in the stack never re-renders or flips its inset just
+  // because a bill screen is pushed on top of it.
+  tabBarHidden?: boolean;
+  // Forwarded to the `scroll` ScrollView — e.g. "handled" so a tap on a
+  // button with the keyboard open presses it instead of only dismissing
+  // the keyboard. Unset keeps ScrollView's own default.
+  keyboardShouldPersistTaps?: ScrollViewProps['keyboardShouldPersistTaps'];
 }>;
 
 // Used to have a `footer` prop for a sticky bottom action bar
@@ -19,12 +36,26 @@ type Props = PropsWithChildren<{
 // pass one now renders its action button(s) as regular scrollable content
 // instead, reserving space for the global BottomTabBar itself via
 // TAB_BAR_CONTENT_CLEARANCE where needed.
-export function Screen({ scroll = false, padded = true, children }: Props) {
+//
+// The bottom safe-area edge is normally left to the BottomTabBar (which pads
+// itself by insets.bottom); on /bill/** the bar is hidden, so `tabBarHidden`
+// makes this apply the bottom edge itself there instead.
+const EDGES_WITH_TAB_BAR: Edge[] = ['top', 'left', 'right'];
+const EDGES_WITHOUT_TAB_BAR: Edge[] = ['top', 'left', 'right', 'bottom'];
+
+export function Screen({
+  scroll = false,
+  padded = true,
+  tabBarHidden = false,
+  keyboardShouldPersistTaps,
+  children,
+}: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const edges = tabBarHidden ? EDGES_WITHOUT_TAB_BAR : EDGES_WITH_TAB_BAR;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={edges}>
       {/* Web desktop widening (see theme/tokens.ts's own CONTENT_MAX_WIDTH
           comment) — a plain flex child of `safeArea`, centered via
           `alignSelf` rather than any absolute-positioning trick, so it's
@@ -51,7 +82,10 @@ export function Screen({ scroll = false, padded = true, children }: Props) {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           {scroll ? (
-            <ScrollView contentContainerStyle={[styles.grow, padded && styles.padded]}>
+            <ScrollView
+              contentContainerStyle={[styles.grow, padded && styles.padded]}
+              keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+            >
               {children}
             </ScrollView>
           ) : (

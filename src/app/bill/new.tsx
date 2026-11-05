@@ -56,7 +56,7 @@ export default function NewBillScreen() {
   const { pickFromGallery, startManual } = useBillSourceActions();
 
   return (
-    <Screen>
+    <Screen tabBarHidden>
       <AppText variant="heading">{copy.newBill.heading}</AppText>
       <AppText variant="body" color="textSecondary" style={styles.body}>
         {copy.newBill.body}

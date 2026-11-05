@@ -1,14 +1,14 @@
 import Feather from '@expo/vector-icons/Feather';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Fragment, memo, useCallback, useMemo, useRef, useState } from 'react';
 import { Modal, StyleSheet, Switch, View } from 'react-native';
 
 import { AssignmentStatus } from '@/components/bill/AssignmentStatus';
+import { ParticipantChip } from '@/components/bill/ParticipantChip';
 import { ParticipantPickerSheet } from '@/components/bill/ParticipantPickerSheet';
 import { ActionRow } from '@/components/ui/ActionRow';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
-import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { GroupedCard, GroupedSeparator, SectionHeader } from '@/components/ui/GroupedSection';
 import { InlineError } from '@/components/ui/InlineError';
@@ -17,6 +17,8 @@ import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { copy } from '@/constants/copy';
+import type { Adjustment } from '@/db/repositories/adjustments.repository';
+import { adjustmentsRepository } from '@/db/repositories/adjustments.repository';
 import type { Bill } from '@/db/repositories/bills.repository';
 import { billsRepository } from '@/db/repositories/bills.repository';
 import type { ItemAssignment } from '@/db/repositories/itemAssignments.repository';
@@ -26,13 +28,21 @@ import { lineItemsRepository } from '@/db/repositories/lineItems.repository';
 import type { Participant } from '@/db/repositories/participants.repository';
 import { participantsRepository } from '@/db/repositories/participants.repository';
 import { computeEqualSplitAssignmentUpdates } from '@/features/assignments/computeEqualSplitAssignmentUpdates';
+import { createSerialQueue } from '@/features/assignments/createSerialQueue';
 import {
   groupAssignedParticipantIdsByLineItem,
   partitionLineItemsByAssignment,
 } from '@/features/assignments/partitionLineItemsByAssignment';
 import {
-  normalizeParticipantName,
-  QUICK_ADD_ME_NAME,
+  buildEqualSplitAssignmentRows,
+  hasSameIds,
+  mergeRefreshedAssignments,
+  replaceLineItemAssignments,
+  toggleParticipantId,
+} from '@/features/assignments/toggleParticipantAssignment';
+import { resolvePostAssignmentsRoute } from '@/features/bills/resolvePostAssignmentsRoute';
+import {
+  findMeParticipant,
   resolveQuickAddMeName,
 } from '@/features/participants/validateParticipantName';
 import { authClient } from '@/lib/authClient';
@@ -45,19 +55,28 @@ import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
-type PickerState =
-  | { mode: 'single'; lineItem: LineItem; initialSelectedIds: string[] }
-  | { mode: 'bulk'; lineItemIds: string[]; initialSelectedIds: string[] }
-  | null;
+// The picker sheet is only used for the bulk "Assign all unassigned" pass
+// when the bill has no "Me" participant — single items are assigned by
+// tapping chips directly on their row.
+type PickerState = { lineItemIds: string[] } | null;
+
+const EMPTY_IDS: string[] = [];
+
+function idsForLineItem(rows: ItemAssignment[], lineItemId: string): string[] {
+  return rows.filter((row) => row.lineItemId === lineItemId).map((row) => row.participantId);
+}
 
 async function fetchAssignmentsData(billId: string) {
-  const [billRow, itemRows, participantRows, assignmentRows] = await Promise.all([
+  // Adjustments are only read here to decide where Continue goes (see
+  // resolvePostAssignmentsRoute) — this screen never edits them.
+  const [billRow, itemRows, participantRows, assignmentRows, adjustmentRows] = await Promise.all([
     billsRepository.getById(billId),
     lineItemsRepository.listByBillId(billId),
     participantsRepository.listByBillId(billId),
     itemAssignmentsRepository.listByBillId(billId),
+    adjustmentsRepository.listByBillId(billId),
   ]);
-  return { billRow, itemRows, participantRows, assignmentRows };
+  return { billRow, itemRows, participantRows, assignmentRows, adjustmentRows };
 }
 
 // Not from the spec — the post-MVP "split evenly" toggle's self-healing
@@ -105,31 +124,109 @@ async function loadAssignmentsData(billId: string) {
 }
 
 type ItemRowProps = {
-  item: LineItem;
-  assignedNames: string[];
-  onAssign: () => void;
+  lineItemId: string;
+  name: string;
+  lineTotalCentavos: number;
+  // Assigned participant ids joined with ',' — a primitive so memo() only
+  // re-renders the row whose assignment actually changed (ids are UUIDs, so
+  // they never contain a comma).
+  assignedIdsKey: string;
+  participants: Participant[];
+  onToggle: (lineItemId: string, participantId: string) => void;
 };
 
-function AssignmentItemRow({ item, assignedNames, onAssign }: ItemRowProps) {
+type AssignmentChipProps = {
+  lineItemId: string;
+  participantId: string;
+  name: string;
+  itemName: string;
+  selected: boolean;
+  onToggle: (lineItemId: string, participantId: string) => void;
+};
+
+// Memoized wrapper (RN perf rule) taking only primitives plus the one stable
+// onToggle, so ParticipantChip's own memo() isn't defeated by a fresh inline
+// onPress/label on every row render — only the tapped chip re-renders.
+const AssignmentChip = memo(function AssignmentChip({
+  lineItemId,
+  participantId,
+  name,
+  itemName,
+  selected,
+  onToggle,
+}: AssignmentChipProps) {
+  const handlePress = useCallback(
+    () => onToggle(lineItemId, participantId),
+    [lineItemId, participantId, onToggle],
+  );
+  const accessibilityLabel = useMemo(
+    () =>
+      copy.assignments.chipAccessibilityLabel
+        .replace('{name}', () => name)
+        .replace('{item}', () => itemName),
+    [name, itemName],
+  );
+  return (
+    <ParticipantChip
+      name={name}
+      selected={selected}
+      onPress={handlePress}
+      accessibilityLabel={accessibilityLabel}
+    />
+  );
+});
+
+// Memoized (RN perf rule) — one per line item, every participant shown as a
+// tappable chip; a tap toggles that person for this item.
+const AssignmentItemRow = memo(function AssignmentItemRow({
+  lineItemId,
+  name,
+  lineTotalCentavos,
+  assignedIdsKey,
+  participants,
+  onToggle,
+}: ItemRowProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const assignedIdSet = useMemo(
+    () => new Set(assignedIdsKey === '' ? [] : assignedIdsKey.split(',')),
+    [assignedIdsKey],
+  );
+  const assignedNames = participants
+    .filter((participant) => assignedIdSet.has(participant.id))
+    .map((participant) => participant.name);
+
   return (
     <View style={styles.itemRow}>
       <View style={styles.itemMain}>
         <AppText variant="body" numberOfLines={1} style={styles.uniformText}>
-          {item.name}
+          {name}
         </AppText>
         <View style={styles.itemMeta}>
           <AppText variant="caption" color="textSecondary" style={styles.uniformText}>
-            {formatCentavos(item.lineTotalCentavos)}
+            {formatCentavos(lineTotalCentavos)}
           </AppText>
           <AssignmentStatus names={assignedNames} />
         </View>
       </View>
-      <AppButton variant="secondary" label={copy.assignments.assignAction} onPress={onAssign} />
+      {participants.length > 0 ? (
+        <View style={styles.chipWrap}>
+          {participants.map((participant) => (
+            <AssignmentChip
+              key={participant.id}
+              lineItemId={lineItemId}
+              participantId={participant.id}
+              name={participant.name}
+              itemName={name}
+              selected={assignedIdSet.has(participant.id)}
+              onToggle={onToggle}
+            />
+          ))}
+        </View>
+      ) : null}
     </View>
   );
-}
+});
 
 export default function AssignmentsScreen() {
   const router = useRouter();
@@ -144,126 +241,263 @@ export default function AssignmentsScreen() {
   const [items, setItems] = useState<LineItem[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [assignmentRows, setAssignmentRows] = useState<ItemAssignment[]>([]);
+  const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [picker, setPicker] = useState<PickerState>(null);
   const [showBlockingError, setShowBlockingError] = useState(false);
   const [showReceiptImage, setShowReceiptImage] = useState(false);
-  // One shared error slot for this screen's own write path (the "Split
-  // everything equally" toggle) — mirrors participants.tsx's/adjustments.tsx's
-  // own actionError.
+  // One shared error slot for this screen's own write paths (chip taps, bulk
+  // assign, the "Split everything equally" toggle) — mirrors
+  // participants.tsx's/adjustments.tsx's own actionError.
   const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const {
-          billRow,
-          itemRows,
-          participantRows,
-          assignmentRows: rows,
-        } = await loadAssignmentsData(billId);
-        if (!billRow) {
-          setState('error');
-          return;
+  // Every write on this screen goes through this one serial queue so chip
+  // taps, bulk assigns, split-mode changes and refreshes never overlap (web's
+  // setForLineItem is an async delete-then-insert) and land in tap order.
+  const [writeQueue] = useState(createSerialQueue);
+  // Synchronous mirrors of the state above, so quick successive taps and
+  // queued writes always read the latest optimistic values instead of a
+  // stale render's closure.
+  const billRef = useRef<Bill | null>(null);
+  const itemsRef = useRef<LineItem[]>([]);
+  const participantsRef = useRef<Participant[]>([]);
+  const rowsRef = useRef<ItemAssignment[]>([]);
+  // Last participant ids confirmed written to the DB per line item — what a
+  // failed write reverts that item back to.
+  const persistedIdsRef = useRef<Map<string, string[]>>(new Map());
+  // Queued-but-unfinished writes per line item; its keys are the "dirty"
+  // items a refresh must not overwrite.
+  const pendingWritesRef = useRef<Map<string, number>>(new Map());
+  // Queued-but-unfinished splitMode writes; while > 0 a refresh keeps the
+  // optimistic splitMode instead of the DB's.
+  const pendingSplitModeWritesRef = useRef(0);
+  const isContinuingRef = useRef(false);
+
+  const commitBill = useCallback((next: Bill) => {
+    billRef.current = next;
+    setBill(next);
+  }, []);
+
+  const commitRows = useCallback((next: ItemAssignment[]) => {
+    rowsRef.current = next;
+    setAssignmentRows(next);
+  }, []);
+
+  const commitLoadedData = useCallback(
+    (
+      billRow: Bill,
+      itemRows: LineItem[],
+      participantRows: Participant[],
+      rows: ItemAssignment[],
+      adjustmentRows: Adjustment[],
+    ) => {
+      commitBill(
+        pendingSplitModeWritesRef.current > 0 && billRef.current
+          ? { ...billRow, splitMode: billRef.current.splitMode }
+          : billRow,
+      );
+      itemsRef.current = itemRows;
+      setItems(itemRows);
+      participantsRef.current = participantRows;
+      setParticipants(participantRows);
+      setAdjustments(adjustmentRows);
+      persistedIdsRef.current = groupAssignedParticipantIdsByLineItem(rows);
+      commitRows(
+        mergeRefreshedAssignments(rows, rowsRef.current, new Set(pendingWritesRef.current.keys())),
+      );
+    },
+    [commitBill, commitRows],
+  );
+
+  // Queued behind every write already enqueued, so it reads what those
+  // writes left in the DB; line items with taps still queued behind it keep
+  // their optimistic rows (see mergeRefreshedAssignments).
+  const enqueueRefresh = useCallback(
+    () =>
+      writeQueue.enqueue(async () => {
+        try {
+          const {
+            billRow,
+            itemRows,
+            participantRows,
+            assignmentRows: rows,
+            adjustmentRows,
+          } = await loadAssignmentsData(billId);
+          if (!billRow) {
+            setState('error');
+            return;
+          }
+          commitLoadedData(billRow, itemRows, participantRows, rows, adjustmentRows);
+          setState('ready');
+        } catch {
+          // Nothing to show before the first successful load; after it, keep
+          // the screen and surface the failure inline instead.
+          if (billRef.current) {
+            setActionError(copy.global.storageFailure);
+          } else {
+            setState('error');
+          }
         }
-        setBill(billRow);
-        setItems(itemRows);
-        setParticipants(participantRows);
-        setAssignmentRows(rows);
-        setState('ready');
-      } catch {
-        setState('error');
-      }
-    })();
-  }, [billId]);
+      }),
+    [billId, commitLoadedData, writeQueue],
+  );
 
-  async function refreshAssignments() {
-    const {
-      billRow,
-      itemRows,
-      participantRows,
-      assignmentRows: rows,
-    } = await loadAssignmentsData(billId);
-    if (!billRow) {
-      setState('error');
-      return;
-    }
-    setBill(billRow);
-    setItems(itemRows);
-    setParticipants(participantRows);
-    setAssignmentRows(rows);
-  }
+  // Runs on every focus, not just mount: the adjustments screen (opened via
+  // "Edit fees and discounts") can change the adjustments that decide where
+  // Continue goes, so coming back re-reads them instead of keeping a stale
+  // label/route. Goes through the write queue like every other refresh, so
+  // it never overlaps (or clobbers) chip-tap writes still in flight.
+  useFocusEffect(
+    useCallback(() => {
+      void enqueueRefresh();
+    }, [enqueueRefresh]),
+  );
 
-  async function handleToggleSplitEqually(nextEnabled: boolean) {
-    setActionError(null);
-    try {
-      await billsRepository.update(billId, {
-        splitMode: nextEnabled ? 'EQUAL' : 'ITEMIZED',
-        updatedAt: nowIso(),
+  // On failure, a refresh puts the screen back on the DB's real splitMode
+  // (and, if that's still EQUAL, re-runs the equal-split sync).
+  const persistSplitMode = useCallback(
+    (splitMode: Bill['splitMode']) => {
+      pendingSplitModeWritesRef.current += 1;
+      void writeQueue.enqueue(async () => {
+        try {
+          await billsRepository.update(billId, { splitMode, updatedAt: nowIso() });
+        } catch {
+          setActionError(copy.global.storageFailure);
+          void enqueueRefresh();
+        } finally {
+          pendingSplitModeWritesRef.current -= 1;
+        }
       });
-      // Turning it ON: refreshAssignments -> loadAssignmentsData sees the
-      // now-EQUAL splitMode and runs syncEqualSplitAssignments itself, so
-      // every current item gets assigned to every current participant
-      // without this handler needing its own duplicate sync logic. Turning
-      // it OFF: splitMode goes back to ITEMIZED and refreshAssignments just
-      // re-reads whatever assignments already exist, unmodified — turning
-      // the toggle off never clears anyone's existing item assignments.
-      await refreshAssignments();
-    } catch {
-      setActionError(copy.global.storageFailure);
+    },
+    [billId, enqueueRefresh, writeQueue],
+  );
+
+  // Writes whatever the line item's latest optimistic assignment is when the
+  // task actually runs — so a burst of taps on one item collapses into
+  // writes of the final state, and later no-op tasks skip the DB entirely.
+  const persistLineItem = useCallback(
+    (lineItemId: string) => {
+      const pending = pendingWritesRef.current;
+      pending.set(lineItemId, (pending.get(lineItemId) ?? 0) + 1);
+      void writeQueue.enqueue(async () => {
+        const desiredIds = idsForLineItem(rowsRef.current, lineItemId);
+        const persistedIds = persistedIdsRef.current.get(lineItemId) ?? [];
+        try {
+          if (!hasSameIds(desiredIds, persistedIds)) {
+            await itemAssignmentsRepository.setForLineItem(lineItemId, desiredIds);
+            persistedIdsRef.current.set(lineItemId, desiredIds);
+          }
+        } catch {
+          // Reverted inside the task (not in a caller-side .catch) so the
+          // next queued task already sees the reverted rows.
+          commitRows(replaceLineItemAssignments(rowsRef.current, lineItemId, persistedIds));
+          setActionError(copy.global.storageFailure);
+        } finally {
+          const remaining = (pending.get(lineItemId) ?? 1) - 1;
+          if (remaining > 0) {
+            pending.set(lineItemId, remaining);
+          } else {
+            pending.delete(lineItemId);
+          }
+        }
+      });
+    },
+    [commitRows, writeQueue],
+  );
+
+  // Optimistic: the row updates in place right away, then the write queues.
+  // Any per-item assignment change (chip tap, bulk assign, picker save) on
+  // an equally-split bill means the user wants to itemize: switch splitMode
+  // to ITEMIZED first (queued ahead of the assignment write) and apply the
+  // change on top of the current all-participants assignment. Existing
+  // assignments are kept, same as turning the toggle off.
+  const applyAssignment = useCallback(
+    (lineItemId: string, participantIds: string[]) => {
+      const currentBill = billRef.current;
+      if (currentBill?.splitMode === 'EQUAL') {
+        commitBill({ ...currentBill, splitMode: 'ITEMIZED' });
+        persistSplitMode('ITEMIZED');
+      }
+      commitRows(replaceLineItemAssignments(rowsRef.current, lineItemId, participantIds));
+      persistLineItem(lineItemId);
+    },
+    [commitBill, commitRows, persistLineItem, persistSplitMode],
+  );
+
+  // One stable callback for every chip on every row (RN perf rule).
+  const handleToggleParticipant = useCallback(
+    (lineItemId: string, participantId: string) => {
+      setActionError(null);
+      const nextIds = toggleParticipantId(
+        idsForLineItem(rowsRef.current, lineItemId),
+        participantId,
+        participantsRef.current.map((participant) => participant.id),
+      );
+      applyAssignment(lineItemId, nextIds);
+    },
+    [applyAssignment],
+  );
+
+  function handleToggleSplitEqually(nextEnabled: boolean) {
+    setActionError(null);
+    const currentBill = billRef.current;
+    if (!currentBill) return;
+    const splitMode = nextEnabled ? 'EQUAL' : 'ITEMIZED';
+    commitBill({ ...currentBill, splitMode });
+    if (nextEnabled) {
+      // Optimistically show what the queued refresh's equal-split sync will
+      // write (every item x every participant), so the chips, unassigned
+      // count and an immediate chip tap all work on those rows right away.
+      // A tap made before the refresh lands marks its item dirty, so the
+      // refresh's merge keeps that tap rather than clobbering it.
+      commitRows(
+        buildEqualSplitAssignmentRows(
+          itemsRef.current.map((item) => item.id),
+          participantsRef.current.map((participant) => participant.id),
+        ),
+      );
     }
+    persistSplitMode(splitMode);
+    // Turning it ON: the refresh -> loadAssignmentsData sees the now-EQUAL
+    // splitMode and runs syncEqualSplitAssignments itself, so every current
+    // item gets assigned to every current participant without this handler
+    // needing its own duplicate sync logic. Turning it OFF: splitMode goes
+    // back to ITEMIZED and the refresh just re-reads whatever assignments
+    // already exist, unmodified — turning the toggle off never clears
+    // anyone's existing item assignments.
+    void enqueueRefresh();
   }
 
-  async function handleOpenItemPicker(item: LineItem) {
-    const rows = await itemAssignmentsRepository.listByLineItemId(item.id);
-    setPicker({
-      mode: 'single',
-      lineItem: item,
-      initialSelectedIds: rows.map((row) => row.participantId),
-    });
-  }
-
-  async function handleBulkAssign(unassignedItemIds: string[]) {
+  function handleBulkAssign(unassignedItemIds: string[]) {
     if (unassignedItemIds.length === 0) return;
 
     // Prefer the user's name; fall back to the legacy 'Me' from older bills.
-    const findByName = (name: string) =>
-      participants.find(
-        (participant) =>
-          normalizeParticipantName(participant.name) === normalizeParticipantName(name),
-      );
-    const meParticipant = findByName(meName) ?? findByName(QUICK_ADD_ME_NAME);
+    const meParticipant = findMeParticipant(participants, meName);
 
+    setActionError(null);
     if (meParticipant) {
-      await Promise.all(
-        unassignedItemIds.map((lineItemId) =>
-          itemAssignmentsRepository.setForLineItem(lineItemId, [meParticipant.id]),
-        ),
-      );
-      await refreshAssignments();
+      for (const lineItemId of unassignedItemIds) {
+        applyAssignment(lineItemId, [meParticipant.id]);
+      }
       return;
     }
 
-    setPicker({ mode: 'bulk', lineItemIds: unassignedItemIds, initialSelectedIds: [] });
+    setPicker({ lineItemIds: unassignedItemIds });
   }
 
-  async function handleSavePicker(selectedParticipantIds: string[]) {
+  function handleSavePicker(selectedParticipantIds: string[]) {
     if (!picker) return;
-    if (picker.mode === 'single') {
-      await itemAssignmentsRepository.setForLineItem(picker.lineItem.id, selectedParticipantIds);
-    } else {
-      await Promise.all(
-        picker.lineItemIds.map((lineItemId) =>
-          itemAssignmentsRepository.setForLineItem(lineItemId, selectedParticipantIds),
-        ),
-      );
+    const selectedIds = participants
+      .map((participant) => participant.id)
+      .filter((id) => selectedParticipantIds.includes(id));
+    for (const lineItemId of picker.lineItemIds) {
+      applyAssignment(lineItemId, selectedIds);
     }
     setPicker(null);
-    await refreshAssignments();
   }
 
   if (state === 'loading') {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <LoadingState />
       </Screen>
     );
@@ -271,7 +505,7 @@ export default function AssignmentsScreen() {
 
   if (state === 'error' || !bill) {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <ErrorState
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
@@ -283,7 +517,7 @@ export default function AssignmentsScreen() {
   }
 
   const assignedIdsByItem = groupAssignedParticipantIdsByLineItem(assignmentRows);
-  const { unassignedItems, assignedItems } = partitionLineItemsByAssignment(items, assignmentRows);
+  const { unassignedItems } = partitionLineItemsByAssignment(items, assignmentRows);
   const unassignedCount = unassignedItems.length;
   const isBlocked = unassignedCount > 0;
 
@@ -298,24 +532,48 @@ export default function AssignmentsScreen() {
     .replace('{itemWord}', itemWord)
     .replace('{assignmentWord}', assignmentWord);
 
-  function handleContinue() {
-    if (isBlocked) {
-      setShowBlockingError(true);
-      return;
-    }
-    setShowBlockingError(false);
-    router.push(`/bill/${billId}/adjustments`);
-  }
+  // Skips the adjustments screen when there's no unresolved receipt
+  // discrepancy — the same rule payments.tsx's own guard enforces, so a
+  // skipped bill is never bounced back.
+  const nextRoute = resolvePostAssignmentsRoute({
+    items,
+    adjustments,
+    detectedReceiptTotalCentavos: bill.detectedReceiptTotalCentavos,
+    discrepancyAcknowledged: bill.discrepancyAcknowledged,
+  });
+  const skipsAdjustments = nextRoute === 'payments';
 
-  function assignedNamesFor(item: LineItem): string[] {
-    const assignedIds = assignedIdsByItem.get(item.id) ?? [];
-    return participants
-      .filter((participant) => assignedIds.includes(participant.id))
-      .map((participant) => participant.name);
+  async function handleContinue() {
+    // Guards against a second press while the drain below is still awaiting.
+    if (isContinuingRef.current) return;
+    isContinuingRef.current = true;
+    try {
+      // Let every queued write land first — including taps made while this
+      // is awaiting — so the next screen never reads a pre-tap snapshot;
+      // then re-check from the latest rows (a failed write may have
+      // reverted an item back to unassigned).
+      do {
+        await writeQueue.whenIdle();
+      } while (pendingWritesRef.current.size > 0 || pendingSplitModeWritesRef.current > 0);
+      const { unassignedItems: stillUnassigned } = partitionLineItemsByAssignment(
+        itemsRef.current,
+        rowsRef.current,
+      );
+      if (stillUnassigned.length > 0) {
+        setShowBlockingError(true);
+        return;
+      }
+      setShowBlockingError(false);
+      // nextRoute depends only on items, adjustments and the bill's
+      // receipt-total fields — none of which a chip tap changes.
+      router.push(`/bill/${billId}/${nextRoute}`);
+    } finally {
+      isContinuingRef.current = false;
+    }
   }
 
   return (
-    <Screen scroll padded={false}>
+    <Screen tabBarHidden scroll padded={false}>
       <View style={styles.body}>
         <ScreenHeader icon="trello" heading={copy.assignments.heading} body={copy.assignments.body}>
           <AppText variant="caption" color="textSecondary" style={styles.uniformText}>
@@ -345,53 +603,42 @@ export default function AssignmentsScreen() {
           />
         </View>
 
-        {unassignedItems.length > 0 ? (
+        {/* One card, every item in receipt order (sortOrder) — rows never
+            move or change card while people are being toggled; unassigned
+            rows just show their "Not assigned" status in place. */}
+        {items.length > 0 ? (
           <View style={styles.section}>
             <SectionHeader
-              title={copy.assignments.unassignedSectionWithCount.replace('{count}', () =>
-                String(unassignedItems.length),
-              )}
-              caption={copy.assignments.unassignedCaption}
+              title={
+                unassignedCount > 0
+                  ? copy.assignments.itemsSectionWithUnassignedCount.replace('{count}', () =>
+                      String(unassignedCount),
+                    )
+                  : copy.assignments.itemsSectionTitle
+              }
+              caption={copy.assignments.itemsCaption}
               action={
-                <AppButton
-                  variant="text"
-                  label={copy.assignments.bulkAssignAction}
-                  icon={(color) => <Feather name="users" size={18} color={color} />}
-                  onPress={() => handleBulkAssign(unassignedItems.map((item) => item.id))}
-                />
+                unassignedCount > 0 ? (
+                  <AppButton
+                    variant="text"
+                    label={copy.assignments.bulkAssignAction}
+                    icon={(color) => <Feather name="users" size={18} color={color} />}
+                    onPress={() => handleBulkAssign(unassignedItems.map((item) => item.id))}
+                  />
+                ) : null
               }
             />
             <GroupedCard>
-              {unassignedItems.map((item, index) => (
+              {items.map((item, index) => (
                 <Fragment key={item.id}>
                   {index > 0 ? <GroupedSeparator /> : null}
                   <AssignmentItemRow
-                    item={item}
-                    assignedNames={assignedNamesFor(item)}
-                    onAssign={() => handleOpenItemPicker(item)}
-                  />
-                </Fragment>
-              ))}
-            </GroupedCard>
-          </View>
-        ) : null}
-
-        {assignedItems.length > 0 ? (
-          <View style={styles.section}>
-            <SectionHeader
-              title={copy.assignments.assignedSectionWithCount.replace('{count}', () =>
-                String(assignedItems.length),
-              )}
-              caption={copy.assignments.assignedCaption}
-            />
-            <GroupedCard>
-              {assignedItems.map((item, index) => (
-                <Fragment key={item.id}>
-                  {index > 0 ? <GroupedSeparator /> : null}
-                  <AssignmentItemRow
-                    item={item}
-                    assignedNames={assignedNamesFor(item)}
-                    onAssign={() => handleOpenItemPicker(item)}
+                    lineItemId={item.id}
+                    name={item.name}
+                    lineTotalCentavos={item.lineTotalCentavos}
+                    assignedIdsKey={(assignedIdsByItem.get(item.id) ?? EMPTY_IDS).join(',')}
+                    participants={participants}
+                    onToggle={handleToggleParticipant}
                   />
                 </Fragment>
               ))}
@@ -436,19 +683,34 @@ export default function AssignmentsScreen() {
           ) : null}
           <AppButton
             large
-            label={copy.assignments.continueButton}
+            label={
+              skipsAdjustments
+                ? copy.assignments.continueToPaymentsButton
+                : copy.assignments.continueButton
+            }
             icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
             iconPosition="trailing"
             onPress={handleContinue}
           />
+          {/* Keeps the skipped adjustments screen reachable. Hidden while
+              items are unassigned — its own guard would just send the user
+              straight back here. */}
+          {skipsAdjustments && !isBlocked ? (
+            <AppButton
+              variant="secondary"
+              label={copy.assignments.editAdjustmentsAction}
+              icon={(color) => <Feather name="percent" size={16} color={color} />}
+              onPress={() => router.push(`/bill/${billId}/adjustments`)}
+            />
+          ) : null}
         </View>
       </View>
 
       <ParticipantPickerSheet
         visible={picker !== null}
-        mode={picker?.mode ?? 'single'}
+        mode="bulk"
         participants={participants}
-        initialSelectedIds={picker?.initialSelectedIds ?? []}
+        initialSelectedIds={EMPTY_IDS}
         onSave={handleSavePicker}
         onCancel={() => setPicker(null)}
       />
@@ -459,7 +721,7 @@ export default function AssignmentsScreen() {
         animationType="slide"
         onRequestClose={() => setShowReceiptImage(false)}
       >
-        <Screen scroll={false}>
+        <Screen tabBarHidden scroll={false}>
           <AppButton
             variant="text"
             label={copy.global.closeAccessibilityLabel}
@@ -492,14 +754,12 @@ function createStyles(colors: ColorTokens) {
     },
     body: {
       padding: spacing.lg,
-      // Section-to-section rhythm (header / toggle row / unassigned section /
-      // assigned section / receipt row / actionsBlock) — spacing.lg, the same
+      // Section-to-section rhythm (header / toggle row / items section /
+      // receipt row / actionsBlock) — spacing.lg, the same
       // rhythm receipt-review.tsx uses between its blocks.
       gap: spacing.lg,
-      // The Continue button used to sit in a sticky footer, which Screen.tsx
-      // pads above the global nav bar automatically — now that it's plain
-      // in-flow content, this screen reserves that space itself.
-      paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+      // No tab-bar clearance: the global BottomTabBar is hidden on /bill/**.
+      paddingBottom: spacing.lg,
     },
     actionsBlock: {
       gap: spacing.md,
@@ -533,19 +793,23 @@ function createStyles(colors: ColorTokens) {
       gap: spacing.sm,
     },
     // Borderless — the section's GroupedCard draws the card and the
-    // hairline separators between rows.
+    // hairline separators between rows. Stacked: item name/price/status on
+    // top, the wrapping row of person chips underneath.
     itemRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: spacing.md,
+      gap: spacing.sm,
       minHeight: touchTarget.preferred,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
     },
     itemMain: {
-      flex: 1,
       gap: spacing.xs,
+    },
+    // Same wrapping chip layout as ParticipantPickerSheet's chip list; each
+    // ParticipantChip already meets touchTarget.min on its own.
+    chipWrap: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
     },
     itemMeta: {
       flexDirection: 'row',
