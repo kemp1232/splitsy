@@ -58,3 +58,19 @@ export function validateParticipantName(
   }
   return { valid: true, name: trimmed };
 }
+
+// The participant who is "me" (the signed-in user): matched by `meName`
+// (resolveQuickAddMeName's output — what "Add me" creates), falling back to
+// the legacy 'Me' name older bills may contain. Used by assignments.tsx's
+// bulk-assign-to-me and the Payments screen's pre-fill.
+export function findMeParticipant<T extends { name: string }>(
+  participants: T[],
+  meName: string,
+): T | undefined {
+  const findByName = (name: string) =>
+    participants.find(
+      (participant) =>
+        normalizeParticipantName(participant.name) === normalizeParticipantName(name),
+    );
+  return findByName(meName) ?? findByName(QUICK_ADD_ME_NAME);
+}

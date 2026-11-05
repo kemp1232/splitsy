@@ -8,7 +8,6 @@ import { ParticipantPickerSheet } from '@/components/bill/ParticipantPickerSheet
 import { ActionRow } from '@/components/ui/ActionRow';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
-import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { GroupedCard, GroupedSeparator, SectionHeader } from '@/components/ui/GroupedSection';
 import { InlineError } from '@/components/ui/InlineError';
@@ -31,8 +30,7 @@ import {
   partitionLineItemsByAssignment,
 } from '@/features/assignments/partitionLineItemsByAssignment';
 import {
-  normalizeParticipantName,
-  QUICK_ADD_ME_NAME,
+  findMeParticipant,
   resolveQuickAddMeName,
 } from '@/features/participants/validateParticipantName';
 import { authClient } from '@/lib/authClient';
@@ -226,12 +224,7 @@ export default function AssignmentsScreen() {
     if (unassignedItemIds.length === 0) return;
 
     // Prefer the user's name; fall back to the legacy 'Me' from older bills.
-    const findByName = (name: string) =>
-      participants.find(
-        (participant) =>
-          normalizeParticipantName(participant.name) === normalizeParticipantName(name),
-      );
-    const meParticipant = findByName(meName) ?? findByName(QUICK_ADD_ME_NAME);
+    const meParticipant = findMeParticipant(participants, meName);
 
     if (meParticipant) {
       await Promise.all(
@@ -263,7 +256,7 @@ export default function AssignmentsScreen() {
 
   if (state === 'loading') {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <LoadingState />
       </Screen>
     );
@@ -271,7 +264,7 @@ export default function AssignmentsScreen() {
 
   if (state === 'error' || !bill) {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <ErrorState
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
@@ -315,7 +308,7 @@ export default function AssignmentsScreen() {
   }
 
   return (
-    <Screen scroll padded={false}>
+    <Screen tabBarHidden scroll padded={false}>
       <View style={styles.body}>
         <ScreenHeader icon="trello" heading={copy.assignments.heading} body={copy.assignments.body}>
           <AppText variant="caption" color="textSecondary" style={styles.uniformText}>
@@ -459,7 +452,7 @@ export default function AssignmentsScreen() {
         animationType="slide"
         onRequestClose={() => setShowReceiptImage(false)}
       >
-        <Screen scroll={false}>
+        <Screen tabBarHidden scroll={false}>
           <AppButton
             variant="text"
             label={copy.global.closeAccessibilityLabel}
@@ -496,10 +489,8 @@ function createStyles(colors: ColorTokens) {
       // assigned section / receipt row / actionsBlock) — spacing.lg, the same
       // rhythm receipt-review.tsx uses between its blocks.
       gap: spacing.lg,
-      // The Continue button used to sit in a sticky footer, which Screen.tsx
-      // pads above the global nav bar automatically — now that it's plain
-      // in-flow content, this screen reserves that space itself.
-      paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+      // No tab-bar clearance: the global BottomTabBar is hidden on /bill/**.
+      paddingBottom: spacing.lg,
     },
     actionsBlock: {
       gap: spacing.md,

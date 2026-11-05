@@ -9,24 +9,22 @@ describe('buildOcrStatus', () => {
     expect(buildOcrStatus(undefined, undefined, false)).toBeNull();
   });
 
-  it('shows the AI-checked success card with the handwriting note for a full backend read', () => {
+  it('shows a single short AI line with no body or notes for a full backend read', () => {
     expect(buildOcrStatus('backend', undefined, false)).toEqual({
       tone: 'success',
       title: r.aiCheckedTitle,
-      body: r.aiCheckedBody,
-      notes: [{ text: r.handwritingNote, tone: 'textSecondary' }],
+      body: null,
+      notes: [],
     });
+    expect(r.aiCheckedTitle).toBe('Read by AI — double-check items and prices.');
   });
 
-  it('shows a warning card with handwriting and truncated notes for a truncated backend read', () => {
+  it('shows a warning card with only the truncated note for a truncated backend read', () => {
     expect(buildOcrStatus('backend', undefined, true)).toEqual({
       tone: 'warning',
       title: r.ocrSourceBackend,
       body: null,
-      notes: [
-        { text: r.handwritingNote, tone: 'textSecondary' },
-        { text: r.truncatedNote, tone: 'warning' },
-      ],
+      notes: [{ text: r.truncatedNote, tone: 'warning' }],
     });
   });
 

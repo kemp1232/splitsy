@@ -9,7 +9,6 @@ import { PersonTotalCard } from '@/components/bill/PersonTotalCard';
 import { SettlementCard } from '@/components/bill/SettlementCard';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
-import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { GroupedCard, GroupedSeparator, SectionHeader } from '@/components/ui/GroupedSection';
 import { InlineError } from '@/components/ui/InlineError';
@@ -38,6 +37,7 @@ import {
   groupAssignedParticipantIdsByLineItem,
   partitionLineItemsByAssignment,
 } from '@/features/assignments/partitionLineItemsByAssignment';
+import { getBillCustomName, getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
 import {
   buildParticipantAdjustmentShareDisplay,
@@ -68,8 +68,8 @@ type LoadState = 'loading' | 'ready' | 'error';
 // yet, so this screen builds the smallest thing that works rather than
 // pulling in a new dependency).
 const TOAST_VISIBLE_MS = 2000;
-// How long "Bill saved." stays on screen before navigating to the saved-bill
-// detail screen — short enough not to feel like a stall, long enough that
+// How long "Bill saved." stays on screen before navigating back to Home —
+// short enough not to feel like a stall, long enough that
 // the confirmation is actually readable before the screen changes.
 const SAVE_NAVIGATE_DELAY_MS = 700;
 
@@ -252,7 +252,7 @@ export default function SummaryScreen() {
 
   if (state === 'loading') {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <LoadingState />
       </Screen>
     );
@@ -260,7 +260,7 @@ export default function SummaryScreen() {
 
   if (state === 'error' || !bill || !splitResult || !reconciliation) {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <ErrorState
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
@@ -271,7 +271,10 @@ export default function SummaryScreen() {
     );
   }
 
-  const title = bill.merchantName ?? bill.title;
+  const title = getBillDisplayTitle(bill);
+  // A date-based default title ("Bill · Nov 5") already carries the date,
+  // so the caption only appends the receipt date to a real bill name.
+  const hasCustomName = getBillCustomName(bill) !== null;
   const hasDetectedTotal = reconciliation.detectedReceiptTotalCentavos !== null;
 
   const assignedIdsByItem = groupAssignedParticipantIdsByLineItem(assignmentRows);
@@ -346,8 +349,11 @@ export default function SummaryScreen() {
         updatedAt: timestamp,
       });
       showToast(copy.summary.savedToast);
+      // Back to Home, where the saved bill is listed and still openable.
+      // dismissTo (not replace) pops the whole bill flow off the stack — same
+      // as receipt-review.tsx's/index.tsx's own back-to-Home handling.
       setTimeout(() => {
-        router.replace(`/bill/${billId}`);
+        router.dismissTo('/');
       }, SAVE_NAVIGATE_DELAY_MS);
     } catch {
       // No spec-mandated copy for a bill-save failure on this screen (spec
@@ -391,7 +397,7 @@ export default function SummaryScreen() {
   }
 
   return (
-    <Screen scroll padded={false}>
+    <Screen tabBarHidden scroll padded={false}>
       <View style={styles.headerRow}>
         <ScreenHeader icon="share-2" heading={copy.summary.heading} body={copy.summary.body} />
       </View>
@@ -404,7 +410,11 @@ export default function SummaryScreen() {
         <BillTotalCard
           totalCentavos={splitResult.computedTotalCentavos}
           matchStatus={hasDetectedTotal ? (reconciliation.matches ? 'matches' : 'mismatch') : null}
-          caption={bill.receiptDate ? `${title} · ${formatBillListDate(bill.receiptDate)}` : title}
+          caption={
+            bill.receiptDate && hasCustomName
+              ? `${title} · ${formatBillListDate(bill.receiptDate)}`
+              : title
+          }
         />
 
         <View style={styles.statusBlock}>
@@ -545,10 +555,8 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     body: {
       padding: spacing.lg,
-      // The Save button used to sit in a sticky footer, which Screen.tsx
-      // pads above the global nav bar automatically — now that it's plain
-      // in-flow content, this screen reserves that space itself.
-      paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+      // No tab-bar clearance: the global BottomTabBar is hidden on /bill/**.
+      paddingBottom: spacing.lg,
       // Section-to-section rhythm: the first gap here separates the totals
       // card from the trip-link block, then that from the share/copy/edit
       // block, then that from the person cards, the settlement card, and the finishing (payments

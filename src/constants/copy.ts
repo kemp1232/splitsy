@@ -26,7 +26,10 @@ export const copy = {
     emptyCta: 'Split a bill',
     draftBadge: 'Draft',
     completedBadge: 'Completed',
-    unknownMerchantTitle: 'Untitled bill',
+    // Default name for a bill with no merchant name or title (see
+    // getBillDisplayTitle) — {date} is the receipt date, else the date the bill
+    // was created, e.g. "Bill · Nov 5".
+    defaultBillTitle: 'Bill · {date}',
     resumeAction: 'Continue',
     openAction: 'View split',
     overflowEdit: 'Edit bill',
@@ -169,7 +172,12 @@ export const copy = {
   processing: {
     heading: 'Reading your receipt…',
     body: 'This can take a few seconds.',
-    privacyNote: 'Text extraction happens on this device.',
+    // Chosen by getProcessingPrivacyNote from the same OCR_BACKEND_URL the
+    // OCR engine uses: no backend → on-device; https backend → "securely";
+    // plain http backend (local dev/LAN) → sent, without the security claim.
+    privacyNoteOnDevice: 'Text extraction happens on this device.',
+    privacyNoteBackend: 'Your photo is sent securely to be read.',
+    privacyNoteBackendUnencrypted: 'Your photo is sent to be read.',
     stagePreparing: 'Preparing image',
     stageReading: 'Finding text',
     stageOrganizing: 'Organizing items and totals',
@@ -227,8 +235,12 @@ export const copy = {
     detectedSubtotalLabel: 'Receipt subtotal',
     itemSubtotalLabel: 'Items subtotal',
     detectedTotalLabel: 'Receipt total',
-    computedTotalLabel: 'Current total',
-    matchSuccess: 'The current total matches the receipt.',
+    // Collapsed totals headline (buildTotalHeadline); the ✓ "matches" claim
+    // only appears when a detected receipt total equals the current total.
+    totalHeadline: 'Total {amount}',
+    totalHeadlineMatches: 'Total {amount} ✓ matches receipt',
+    totalHeadlineMatchesSpeech: 'Total {amount}, matches receipt',
+    breakdownToggleHint: 'Shows or hides the totals breakdown',
     mismatchWarning: 'The current total is {difference} {higherOrLower} than the receipt.',
     higherWord: 'higher',
     lowerWord: 'lower',
@@ -245,12 +257,9 @@ export const copy = {
     viewTextCaptionAi: 'AI-extracted receipt text',
     viewTextCaptionDevice: 'Text read from the receipt',
     backAccessibilityLabel: 'Go back',
-    aiCheckedTitle: 'AI-checked (high accuracy)',
-    aiCheckedBody: 'Processed using AI for higher accuracy. Please review the items and prices.',
+    aiCheckedTitle: 'Read by AI — double-check items and prices.',
     ocrSourceBackend: 'Read online (higher accuracy)',
     ocrSourceOnDevice: 'Read on-device (offline)',
-    handwritingNote:
-      'Handwritten receipts are read on a best-effort basis and may be less accurate — please double-check items and prices.',
     rateLimitedNote:
       'Online scanning was too busy just now, so this receipt was read on-device instead — please double-check items and prices, or try again in a minute for higher accuracy.',
     truncatedNote:
@@ -286,6 +295,9 @@ export const copy = {
     heading: "Who's splitting this bill?",
     body: 'Add everyone who should receive a share.',
     addAction: 'Add person',
+    // Always-visible inline field on the participants screen — submitting
+    // adds the person and keeps the field focused for the next name.
+    inlineAddPlaceholder: 'Add a name',
     quickAddMe: 'Add me',
     continueButton: 'Assign items',
     minimumError: 'Add at least 2 people to continue.',
@@ -427,7 +439,7 @@ export const copy = {
   payments: {
     heading: 'Who paid?',
     body: 'Add how much each person actually paid. Splitsy will work out who owes who.',
-    fullAmountAction: 'Paid in full',
+    fullAmountAction: 'Paid the whole bill',
     skipAction: 'Skip for now',
     continueButton: 'Continue',
     unaccountedNote: "{amount} of the bill hasn't been marked as paid yet.",
@@ -495,6 +507,9 @@ export const copy = {
     matchSuccess: 'Matches the receipt',
     mismatchStatus: 'Does not match the receipt',
     participantOwes: '{name} owes',
+    // Shown instead of "{name} owes ₱share · Paid in full" for someone who
+    // paid more than their own share (computeGetsBackCentavos).
+    participantPaidAndGetsBack: 'Paid {paid} · gets back {refund}',
     itemsSubheading: 'Items',
     adjustmentsSubheading: 'Fees and discounts',
     sharedSuffix: 'shared',

@@ -10,16 +10,13 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LineItemEditorSheet, type LineItemDraft } from '@/components/bill/LineItemEditorSheet';
 import { LineItemRow } from '@/components/bill/LineItemRow';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
-import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
-import { Divider } from '@/components/ui/Divider';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { IconButton } from '@/components/ui/IconButton';
@@ -35,6 +32,11 @@ import { adjustmentsRepository } from '@/db/repositories/adjustments.repository'
 import type { LineItem } from '@/db/repositories/lineItems.repository';
 import { lineItemsRepository } from '@/db/repositories/lineItems.repository';
 import { buildOcrStatus, type OcrStatusTone } from '@/features/receipt-review/buildOcrStatus';
+import {
+  buildMismatchMessage,
+  buildTotalHeadline,
+  getTotalsMatch,
+} from '@/features/receipt-review/buildTotalsSummary';
 import { nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
 import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
@@ -77,7 +79,6 @@ const separatorStyles = StyleSheet.create({
 export default function ReceiptReviewScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { billId, ocrSource, fallbackReason, truncated } = useLocalSearchParams<{
     billId: string;
@@ -101,6 +102,8 @@ export default function ReceiptReviewScreen() {
   const [pendingDelete, setPendingDelete] = useState<LineItem | null>(null);
   const [showRawText, setShowRawText] = useState(false);
   const [showReceiptImage, setShowReceiptImage] = useState(false);
+  // Totals card breakdown (subtotals/receipt total) — collapsed by default.
+  const [showBreakdown, setShowBreakdown] = useState(false);
   const [dateError, setDateError] = useState<string | null>(null);
   // One shared error slot for this screen's write paths (merchant/date
   // autosave, item save/delete) — mirrors participants.tsx's own
@@ -140,12 +143,11 @@ export default function ReceiptReviewScreen() {
   const scrollContentStyle = useMemo(
     () => [
       styles.body,
-      // Keeps the last content (the "Add people" button) clear of the global
-      // BottomTabBar overlay. Screen's SafeAreaView skips the bottom edge, so
-      // the inset is added here explicitly.
-      { paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE + insets.bottom },
+      // No tab-bar clearance: the global BottomTabBar is hidden on every
+      // /bill/** screen, and Screen adds the bottom safe-area edge itself.
+      { paddingBottom: spacing.lg },
     ],
-    [styles.body, insets.bottom],
+    [styles.body],
   );
 
   // Straight back to Home rather than router.back(): after a scan the stack
@@ -252,7 +254,7 @@ export default function ReceiptReviewScreen() {
 
   if (state === 'loading') {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <LoadingState />
       </Screen>
     );
@@ -260,7 +262,7 @@ export default function ReceiptReviewScreen() {
 
   if (state === 'error' || !bill) {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <ErrorState
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
@@ -273,21 +275,33 @@ export default function ReceiptReviewScreen() {
 
   const itemSubtotalCentavos = items.reduce((sum, item) => sum + item.lineTotalCentavos, 0);
   const computedTotalCentavos = itemSubtotalCentavos + adjustmentTotalCentavos;
-  const hasDetectedTotal = bill.detectedReceiptTotalCentavos != null;
-  const totalDifference = hasDetectedTotal
-    ? computedTotalCentavos - bill.detectedReceiptTotalCentavos!
-    : 0;
+  const detectedTotalCentavos = bill.detectedReceiptTotalCentavos;
+  const totalsMatch = getTotalsMatch(computedTotalCentavos, detectedTotalCentavos);
 
   const ocrStatus = buildOcrStatus(ocrSource, fallbackReason, isTruncated);
-  const reconciliationMessage = buildReconciliationMessage(totalDifference, formatCentavos);
-  const reconciliationSpeech = buildReconciliationMessage(totalDifference, formatCentavosForSpeech);
+  const totalHeadline = buildTotalHeadline(
+    computedTotalCentavos,
+    totalsMatch.status,
+    formatCentavos,
+  );
+  const totalHeadlineSpeech = buildTotalHeadline(
+    computedTotalCentavos,
+    totalsMatch.status,
+    formatCentavosForSpeech,
+    true,
+  );
+  const mismatchMessage = buildMismatchMessage(totalsMatch.differenceCentavos, formatCentavos);
+  const mismatchSpeech = buildMismatchMessage(
+    totalsMatch.differenceCentavos,
+    formatCentavosForSpeech,
+  );
   const textCaption =
     ocrSource === 'backend' && !fallbackReason
       ? copy.receiptReview.viewTextCaptionAi
       : copy.receiptReview.viewTextCaptionDevice;
 
   return (
-    <Screen scroll={false} padded={false}>
+    <Screen tabBarHidden scroll={false} padded={false}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={scrollContentStyle}
@@ -471,72 +485,79 @@ export default function ReceiptReviewScreen() {
         ) : null}
 
         <SectionCard>
-          {bill.detectedSubtotalCentavos != null ? (
-            <View
-              style={styles.totalRow}
-              accessible
-              accessibilityLabel={`${copy.receiptReview.detectedSubtotalLabel}, ${formatCentavosForSpeech(bill.detectedSubtotalCentavos)}`}
-            >
-              <AppText color="textSecondary" style={styles.uniformText}>
-                {copy.receiptReview.detectedSubtotalLabel}
-              </AppText>
-              <AppText style={styles.uniformText}>
-                {formatCentavos(bill.detectedSubtotalCentavos)}
-              </AppText>
-            </View>
-          ) : null}
-          <View
-            style={styles.totalRow}
-            accessible
-            accessibilityLabel={`${copy.receiptReview.itemSubtotalLabel}, ${formatCentavosForSpeech(itemSubtotalCentavos)}`}
+          {/* Collapsed by default to one line ("Total ₱X ✓ matches receipt");
+              the subtotal/receipt-total breakdown sits behind this toggle. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showBreakdown }}
+            accessibilityLabel={totalHeadlineSpeech}
+            accessibilityHint={copy.receiptReview.breakdownToggleHint}
+            onPress={() => setShowBreakdown((current) => !current)}
+            style={({ pressed }) => [styles.totalToggle, pressed && styles.pressed]}
           >
-            <AppText color="textSecondary" style={styles.uniformText}>
-              {copy.receiptReview.itemSubtotalLabel}
+            <AppText variant="subheading" style={styles.totalHeadline}>
+              {totalHeadline}
             </AppText>
-            <AppText style={styles.uniformText}>{formatCentavos(itemSubtotalCentavos)}</AppText>
-          </View>
-          {hasDetectedTotal ? (
-            <View
-              style={styles.totalRow}
-              accessible
-              accessibilityLabel={`${copy.receiptReview.detectedTotalLabel}, ${formatCentavosForSpeech(bill.detectedReceiptTotalCentavos!)}`}
-            >
-              <AppText color="textSecondary" style={styles.uniformText}>
-                {copy.receiptReview.detectedTotalLabel}
-              </AppText>
-              <AppText style={styles.uniformText}>
-                {formatCentavos(bill.detectedReceiptTotalCentavos!)}
-              </AppText>
-            </View>
-          ) : null}
-          <Divider />
-          <View
-            style={styles.totalRow}
-            accessible
-            accessibilityLabel={`${copy.receiptReview.computedTotalLabel}, ${formatCentavosForSpeech(computedTotalCentavos)}`}
-          >
-            <AppText variant="subheading">{copy.receiptReview.computedTotalLabel}</AppText>
-            <AppText variant="amount" style={styles.currentTotalAmount}>
-              {formatCentavos(computedTotalCentavos)}
-            </AppText>
-          </View>
+            <Feather
+              name={showBreakdown ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={colors.textSecondary}
+            />
+          </Pressable>
 
-          {hasDetectedTotal ? (
+          {showBreakdown ? (
+            <View style={styles.breakdown}>
+              {bill.detectedSubtotalCentavos != null ? (
+                <View
+                  style={styles.totalRow}
+                  accessible
+                  accessibilityLabel={`${copy.receiptReview.detectedSubtotalLabel}, ${formatCentavosForSpeech(bill.detectedSubtotalCentavos)}`}
+                >
+                  <AppText color="textSecondary" style={styles.uniformText}>
+                    {copy.receiptReview.detectedSubtotalLabel}
+                  </AppText>
+                  <AppText style={styles.uniformText}>
+                    {formatCentavos(bill.detectedSubtotalCentavos)}
+                  </AppText>
+                </View>
+              ) : null}
+              <View
+                style={styles.totalRow}
+                accessible
+                accessibilityLabel={`${copy.receiptReview.itemSubtotalLabel}, ${formatCentavosForSpeech(itemSubtotalCentavos)}`}
+              >
+                <AppText color="textSecondary" style={styles.uniformText}>
+                  {copy.receiptReview.itemSubtotalLabel}
+                </AppText>
+                <AppText style={styles.uniformText}>{formatCentavos(itemSubtotalCentavos)}</AppText>
+              </View>
+              {detectedTotalCentavos != null ? (
+                <View
+                  style={styles.totalRow}
+                  accessible
+                  accessibilityLabel={`${copy.receiptReview.detectedTotalLabel}, ${formatCentavosForSpeech(detectedTotalCentavos)}`}
+                >
+                  <AppText color="textSecondary" style={styles.uniformText}>
+                    {copy.receiptReview.detectedTotalLabel}
+                  </AppText>
+                  <AppText style={styles.uniformText}>
+                    {formatCentavos(detectedTotalCentavos)}
+                  </AppText>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          {/* A mismatch stays visible without expanding the breakdown. */}
+          {totalsMatch.status === 'mismatch' ? (
             <View
               accessible
-              accessibilityLabel={reconciliationSpeech}
-              style={[
-                styles.reconciliationRow,
-                totalDifference === 0 ? styles.success : styles.warning,
-              ]}
+              accessibilityLabel={mismatchSpeech}
+              style={[styles.reconciliationRow, styles.warning]}
             >
-              <Feather
-                name={totalDifference === 0 ? 'check-circle' : 'alert-triangle'}
-                size={18}
-                color={totalDifference === 0 ? colors.success : colors.warning}
-              />
+              <Feather name="alert-triangle" size={18} color={colors.warning} />
               <AppText variant="caption" style={styles.reconciliationText}>
-                {reconciliationMessage}
+                {mismatchMessage}
               </AppText>
             </View>
           ) : null}
@@ -588,7 +609,7 @@ export default function ReceiptReviewScreen() {
         animationType="slide"
         onRequestClose={() => setShowReceiptImage(false)}
       >
-        <Screen scroll={false}>
+        <Screen tabBarHidden scroll={false}>
           <AppButton
             variant="text"
             label={copy.global.closeAccessibilityLabel}
@@ -610,7 +631,7 @@ export default function ReceiptReviewScreen() {
         animationType="slide"
         onRequestClose={() => setShowRawText(false)}
       >
-        <Screen scroll>
+        <Screen tabBarHidden scroll>
           <AppButton
             variant="text"
             label={copy.global.closeAccessibilityLabel}
@@ -625,20 +646,6 @@ export default function ReceiptReviewScreen() {
       </Modal>
     </Screen>
   );
-}
-
-// Match/mismatch text for the totals card — one builder for both the visible
-// label (formatCentavos) and its screen-reader label (formatCentavosForSpeech).
-function buildReconciliationMessage(
-  totalDifference: number,
-  formatMoney: (centavos: number) => string,
-): string {
-  if (totalDifference === 0) return copy.receiptReview.matchSuccess;
-  return copy.receiptReview.mismatchWarning
-    .replace('{difference}', () => formatMoney(Math.abs(totalDifference)))
-    .replace('{higherOrLower}', () =>
-      totalDifference > 0 ? copy.receiptReview.higherWord : copy.receiptReview.lowerWord,
-    );
 }
 
 // Low-alpha wash of a tone token — the same `${token}26` convention
@@ -743,9 +750,19 @@ function createStyles(colors: ColorTokens) {
       alignItems: 'center',
       gap: spacing.sm,
     },
-    currentTotalAmount: {
-      fontSize: 20,
-      lineHeight: 26,
+    totalToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      minHeight: touchTarget.preferred,
+      borderRadius: radius.md,
+      borderCurve: 'continuous',
+    },
+    totalHeadline: {
+      flex: 1,
+    },
+    breakdown: {
+      gap: spacing.sm,
     },
     reconciliationRow: {
       flexDirection: 'row',

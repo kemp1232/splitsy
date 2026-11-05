@@ -9,7 +9,6 @@ import { SettlementCard } from '@/components/bill/SettlementCard';
 import { ActionRow } from '@/components/ui/ActionRow';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
-import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { GroupedCard, GroupedSeparator, SectionHeader } from '@/components/ui/GroupedSection';
@@ -38,6 +37,7 @@ import {
 } from '@/features/adjustments/buildSplitInputs';
 import { groupAssignedParticipantIdsByLineItem } from '@/features/assignments/partitionLineItemsByAssignment';
 import { deleteBill } from '@/features/bills/bill.service';
+import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
 import { computeSettlement } from '@/features/splitting/settlement';
@@ -192,7 +192,7 @@ export default function SavedBillDetailScreen() {
 
   if (state === 'loading') {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <LoadingState />
       </Screen>
     );
@@ -200,7 +200,7 @@ export default function SavedBillDetailScreen() {
 
   if (state === 'error' || !bill || !splitResult || !reconciliation) {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <ErrorState
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
@@ -211,7 +211,7 @@ export default function SavedBillDetailScreen() {
     );
   }
 
-  const title = bill.merchantName ?? bill.title;
+  const title = getBillDisplayTitle(bill);
   const hasDetectedTotal = reconciliation.detectedReceiptTotalCentavos !== null;
   const hasReceiptImage = bill.receiptImageUri != null;
   const hasRawOcrText = bill.rawOcrText != null;
@@ -338,7 +338,7 @@ export default function SavedBillDetailScreen() {
   }
 
   return (
-    <Screen scroll padded={false}>
+    <Screen tabBarHidden scroll padded={false}>
       <View style={styles.body}>
         <View style={styles.headerBlock}>
           <ScreenHeader
@@ -484,7 +484,7 @@ export default function SavedBillDetailScreen() {
         animationType="slide"
         onRequestClose={() => setShowReceiptImage(false)}
       >
-        <Screen scroll={false}>
+        <Screen tabBarHidden scroll={false}>
           <AppButton
             variant="text"
             label={copy.global.closeAccessibilityLabel}
@@ -507,7 +507,7 @@ export default function SavedBillDetailScreen() {
         animationType="slide"
         onRequestClose={() => setShowRawText(false)}
       >
-        <Screen scroll>
+        <Screen tabBarHidden scroll>
           <AppButton
             variant="text"
             label={copy.global.closeAccessibilityLabel}
@@ -540,10 +540,8 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     body: {
       padding: spacing.lg,
-      // The Share button used to sit in a sticky footer, which Screen.tsx
-      // pads above the global nav bar automatically — now that it's plain
-      // in-flow content, this screen reserves that space itself.
-      paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+      // No tab-bar clearance: the global BottomTabBar is hidden on /bill/**.
+      paddingBottom: spacing.lg,
       // Section-to-section rhythm: header block / edit+delete actions /
       // receipt+raw-text links / person cards each read as their own
       // distinct block. spacing.md/sm stays reserved for tight,

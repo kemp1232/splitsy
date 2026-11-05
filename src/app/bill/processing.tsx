@@ -8,12 +8,14 @@ import { AppText } from '@/components/ui/AppText';
 import { FadeImageStatus } from '@/components/ui/FadeImageStatus';
 import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
+import { OCR_BACKEND_URL } from '@/constants/config';
 import { copy } from '@/constants/copy';
 import { billsRepository } from '@/db/repositories/bills.repository';
 import { saveParsedReceiptDraft } from '@/features/bills/bill.service';
 import { createOcrDerivative } from '@/features/receipt-capture/receiptImage.service';
 import { BackendReceiptOcrService } from '@/features/receipt-ocr/BackendReceiptOcrService';
 import { FallbackReceiptOcrService } from '@/features/receipt-ocr/FallbackReceiptOcrService';
+import { getProcessingPrivacyNote } from '@/features/receipt-ocr/getProcessingPrivacyNote';
 import { MlKitReceiptOcrService } from '@/features/receipt-ocr/MlKitReceiptOcrService';
 import {
   OcrQueuedError,
@@ -184,7 +186,7 @@ export default function ProcessingScreen() {
 
   if (stage === 'error') {
     return (
-      <Screen scroll>
+      <Screen tabBarHidden scroll>
         <View style={styles.failureBody}>
           {/* Spec §17: announce processing completion/failure — matches
               ErrorState's own live-region treatment used everywhere else in
@@ -257,7 +259,7 @@ export default function ProcessingScreen() {
       : null;
 
   return (
-    <Screen>
+    <Screen tabBarHidden>
       <View style={styles.centered}>
         {/* Both panels share this positioned area and crossfade over each
             other (see panelHeight's own comment above for why) — grouped
@@ -283,7 +285,7 @@ export default function ProcessingScreen() {
                 </AppText>
               ) : null}
               <AppText variant="caption" color="textSecondary" style={styles.centerText}>
-                {copy.processing.privacyNote}
+                {getProcessingPrivacyNote(OCR_BACKEND_URL)}
               </AppText>
               {/* Lets the user glance at the actual photo being scanned —
                   this screen no longer shows it as an always-visible
@@ -334,7 +336,7 @@ export default function ProcessingScreen() {
         animationType="slide"
         onRequestClose={() => setShowReceiptImage(false)}
       >
-        <Screen scroll={false}>
+        <Screen tabBarHidden scroll={false}>
           <AppButton
             variant="text"
             label={copy.global.closeAccessibilityLabel}

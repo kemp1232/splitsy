@@ -32,6 +32,7 @@ import {
   buildSplitLineItems,
 } from '@/features/adjustments/buildSplitInputs';
 import { groupAssignedParticipantIdsByLineItem } from '@/features/assignments/partitionLineItemsByAssignment';
+import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import {
   buildTripParticipantItemShareDisplay,
@@ -174,8 +175,7 @@ async function fetchTripSettlementData(tripId: string): Promise<LoadedTripSettle
       const nameByParticipantId = new Map(
         participantRows.map((participant) => [participant.id, participant.name]),
       );
-      const billLabel =
-        entry.bill.merchantName ?? entry.bill.title ?? copy.home.unknownMerchantTitle;
+      const billLabel = getBillDisplayTitle(entry.bill);
 
       const personItems = participantRows.map((participant) => {
         const share = billSplit.participantShares.find((s) => s.participantId === participant.id);
