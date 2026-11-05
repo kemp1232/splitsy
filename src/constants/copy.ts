@@ -209,7 +209,7 @@ export const copy = {
     // Web-only: the backend scan was cut off by its token cap and there's no
     // on-device fallback (processing.tsx).
     truncatedNote:
-      'This receipt was too long to read in one go on the free tier — try a closer photo of just the items, or enter them manually.',
+      'This receipt is too long to read on the free tier. Try a closer photo of just the items, or enter them manually.',
   },
 
   // Section 13.9 — Receipt review
@@ -267,7 +267,7 @@ export const copy = {
     rateLimitedNote:
       'Online scanning was too busy just now, so this receipt was read on-device instead — please double-check items and prices, or try again in a minute for higher accuracy.',
     truncatedNote:
-      'This receipt hit the free-tier scan limit before finishing, so some items or the total may be missing — please check everything carefully.',
+      "The free tier couldn't read the whole receipt, so some items or the total may be missing. Please check them.",
     continueButton: 'Add people',
     noItemsHeading: 'No items found',
     noItemsBody: 'Add the receipt items manually to continue.',

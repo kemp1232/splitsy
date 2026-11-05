@@ -41,6 +41,10 @@ import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
 import { computeSettlement } from '@/features/splitting/settlement';
+import {
+  displayParticipantName,
+  resolveQuickAddMeName,
+} from '@/features/participants/validateParticipantName';
 import { buildShareText } from '@/features/splitting/shareText';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import type {
@@ -54,6 +58,7 @@ import {
   type SummaryItemInfo,
 } from '@/features/summary/buildParticipantShareDisplay';
 import { nowIso } from '@/lib/date';
+import { authClient } from '@/lib/authClient';
 import { shareText } from '@/lib/share';
 import type { ColorTokens } from '@/theme/tokens';
 import { spacing } from '@/theme/tokens';
@@ -112,6 +117,8 @@ async function fetchSavedBillDetailData(billId: string): Promise<LoadedData> {
 // is always safe to call against it as-is.
 export default function SavedBillDetailScreen() {
   const router = useRouter();
+  const { data: session } = authClient.useSession();
+  const meName = resolveQuickAddMeName(session?.user.name);
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { billId } = useLocalSearchParams<{ billId: string }>();
@@ -227,7 +234,10 @@ export default function SavedBillDetailScreen() {
     adjustments.map((adjustment) => [adjustment.id, { label: adjustment.label }]),
   );
   const nameByParticipantId = new Map(
-    participants.map((participant) => [participant.id, participant.name]),
+    participants.map((participant) => [
+      participant.id,
+      displayParticipantName(participant.name, meName),
+    ]),
   );
 
   // Post-MVP settlement display (see settlement.ts's header comment) —
@@ -266,7 +276,7 @@ export default function SavedBillDetailScreen() {
         billTitle: title,
         participants: participants.map((participant) => ({
           participantId: participant.id,
-          name: participant.name,
+          name: displayParticipantName(participant.name, meName),
           paidCentavos: hasAnyContribution ? participant.contributedCentavos : undefined,
         })),
         items: items.map((item) => ({ lineItemId: item.id, name: item.name })),

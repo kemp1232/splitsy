@@ -1,7 +1,7 @@
 import Feather from '@expo/vector-icons/Feather';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { BillListItem } from '@/components/bill/BillListItem';
@@ -107,11 +107,11 @@ async function computeTripTotalCentavos(tripId: string): Promise<number> {
   return totals.reduce((sum, total) => sum + total, 0);
 }
 
-// Shared by both of this screen's own load call sites below (the first-load
+// Shared by both of this screen's own load call sites below (the focus-load
 // effect and the pull-to-refresh `load` callback) — pure data assembly, no
 // setState of its own, so each caller keeps its own try/catch and state
 // transition (this file's existing convention; see the comment on the
-// first-load effect for why it isn't just `useEffect(() => { load(); }, [load])`).
+// focus-load effect for why it isn't just `useEffect(() => { load(); }, [load])`).
 async function buildHomeEntries(): Promise<HomeEntry[]> {
   const [billRows, tripRows] = await Promise.all([
     billsRepository.listAllWithParticipantCounts(),
@@ -298,17 +298,22 @@ export default function HomeScreen() {
   // an effect trips the react-hooks/set-state-in-effect lint rule. This
   // inline IIFE with its own independent try/catch is this codebase's
   // existing convention for a screen's first load (see e.g. the trip hub/
-  // settlement screens' own copies of this same shape).
-  useEffect(() => {
-    (async () => {
-      try {
-        setEntries(await buildHomeEntries());
-        setState('ready');
-      } catch {
-        setState('error');
-      }
-    })();
-  }, []);
+  // settlement screens' own copies of this same shape). Runs on every focus,
+  // not just mount: summary "Finish and save" / bill delete flows dismissTo('/')
+  // back to this already-mounted screen, so it must re-read. State is not reset
+  // to 'loading' on refocus, so the list stays visible while it refreshes.
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        try {
+          setEntries(await buildHomeEntries());
+          setState('ready');
+        } catch {
+          setState('error');
+        }
+      })();
+    }, []),
+  );
 
   async function handleRefresh() {
     setRefreshing(true);

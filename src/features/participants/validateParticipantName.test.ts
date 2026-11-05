@@ -1,4 +1,5 @@
 import {
+  displayParticipantName,
   isDuplicateParticipantName,
   MAX_PARTICIPANT_NAME_LENGTH,
   normalizeParticipantName,
@@ -92,5 +93,17 @@ describe('resolveQuickAddMeName', () => {
   it('truncates to the maximum participant name length', () => {
     const result = resolveQuickAddMeName('a'.repeat(MAX_PARTICIPANT_NAME_LENGTH + 10));
     expect(result).toBe('a'.repeat(MAX_PARTICIPANT_NAME_LENGTH));
+  });
+});
+
+describe('displayParticipantName', () => {
+  it("shows the signed-in user's name for a stored 'Me' participant", () => {
+    expect(displayParticipantName('Me', 'Kemp')).toBe('Kemp');
+    expect(displayParticipantName('  me ', 'Kemp')).toBe('Kemp');
+  });
+
+  it('leaves every other name unchanged', () => {
+    expect(displayParticipantName('Sam', 'Kemp')).toBe('Sam');
+    expect(displayParticipantName('Meg', 'Kemp')).toBe('Meg');
   });
 });

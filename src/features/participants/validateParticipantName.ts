@@ -74,3 +74,13 @@ export function findMeParticipant<T extends { name: string }>(
     );
   return findByName(meName) ?? findByName(QUICK_ADD_ME_NAME);
 }
+
+// Name to show for a participant: a stored legacy/fallback 'Me' reads as the
+// signed-in user's name (`meName`, resolveQuickAddMeName's output) on the
+// Summary and saved-bill screens and in their shared text. Display-only — the
+// stored name is unchanged.
+export function displayParticipantName(name: string, meName: string): string {
+  return normalizeParticipantName(name) === normalizeParticipantName(QUICK_ADD_ME_NAME)
+    ? meName
+    : name;
+}
