@@ -13,11 +13,20 @@ type Props = {
   // ParticipantPickerSheet's multi-select list.
   selected?: boolean;
   onPress?: () => void;
+  // Spoken label for an interactive chip. Defaults to `name`; screens that
+  // render the same names in many rows (e.g. the assignments screen) pass
+  // extra context such as the item name.
+  accessibilityLabel?: string;
 };
 
 // Memoized (RN perf rule) — rendered in a loop wherever a bill's/trip's
 // participant list is shown as chips.
-export const ParticipantChip = memo(function ParticipantChip({ name, selected, onPress }: Props) {
+export const ParticipantChip = memo(function ParticipantChip({
+  name,
+  selected,
+  onPress,
+  accessibilityLabel,
+}: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const isInteractive = typeof onPress === 'function';
@@ -28,7 +37,7 @@ export const ParticipantChip = memo(function ParticipantChip({ name, selected, o
       disabled={!isInteractive}
       accessibilityRole={isInteractive ? 'checkbox' : undefined}
       accessibilityState={isInteractive ? { checked: !!selected } : undefined}
-      accessibilityLabel={isInteractive ? name : undefined}
+      accessibilityLabel={isInteractive ? (accessibilityLabel ?? name) : undefined}
       style={({ pressed }) => [
         styles.chip,
         selected && styles.chipSelected,

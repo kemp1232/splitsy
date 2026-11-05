@@ -316,13 +316,12 @@ export const copy = {
   // Section 13.13 — Item assignment
   assignments: {
     heading: 'Who had what?',
-    body: 'Choose one or more people for every item.',
+    body: 'Tap the names of everyone who had each item.',
     sharedNote: 'Items assigned to more than one person are split equally.',
     // Not from the spec — the post-MVP "split evenly" toggle (see PLAN.md):
     // lets an itemized bill switch to an equal split, and reflects a
     // quick-split bill's already-equal split back to the user.
     splitEquallyToggleLabel: 'Split everything equally',
-    assignAction: 'Choose people',
     multiPersonState: 'Shared by {count}',
     noAssignmentState: 'Not assigned',
     bulkAssignAction: 'Assign all unassigned',
@@ -333,10 +332,12 @@ export const copy = {
     itemWordPlural: 'items',
     assignmentWordSingular: 'an assignment',
     assignmentWordPlural: 'assignments',
-    unassignedSectionWithCount: 'Unassigned ({count})',
-    assignedSectionWithCount: 'Assigned ({count})',
-    unassignedCaption: 'Choose who had each of these items.',
-    assignedCaption: 'Tap Choose people to change who shared an item.',
+    itemsSectionTitle: 'Items',
+    itemsSectionWithUnassignedCount: 'Items ({count} unassigned)',
+    itemsCaption: 'Tap a name to add or remove that person.',
+    // Spoken label for each person chip on an item row, so screen readers
+    // hear which item a name belongs to.
+    chipAccessibilityLabel: '{name}, {item}',
   },
 
   // Section 13.14 — Participant picker sheet
