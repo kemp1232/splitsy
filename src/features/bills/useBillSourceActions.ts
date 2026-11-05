@@ -1,4 +1,3 @@
-import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Alert } from 'react-native';
 
@@ -6,14 +5,14 @@ import { copy } from '@/constants/copy';
 import { createBillInTrip } from '@/features/trips/trip.service';
 
 import { createDraftBill } from './bill.service';
+import { createGalleryBill, pickGalleryImageUri } from './galleryBill';
 
 type BillSourceActionsParams = {
   // Trip feature addition (not from the numbered MVP spec): when this hook
   // is reached from a trip's "add bill" entry point, /bill/new and
   // /bill/capture (this hook's two callers) both forward their own
-  // `tripId` route param down to here unchanged, the same way
-  // /bill/preview already threads `imageUri`/`entryMethod` through
-  // router.push/useLocalSearchParams.
+  // `tripId` route param down to here unchanged, so a gallery pick or
+  // manual start creates its bill inside that trip.
   tripId?: string;
 };
 
@@ -24,27 +23,24 @@ export function useBillSourceActions() {
   const router = useRouter();
   const { tripId } = useLocalSearchParams<BillSourceActionsParams>();
 
+  // Gallery picks skip /bill/preview ("Check the photo") and go straight to
+  // processing; rotating and re-picking there were the only things preview
+  // offered, and receipt-review now has its own "Choose another" instead.
+  // router.push (not replace) keeps the caller under processing, so its
+  // "Use another photo" (router.back()) still lands back here, the same
+  // place it did when preview replaced itself with processing.
   async function pickFromGallery() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert(copy.cameraPermission.heading, copy.cameraPermission.permanentDenialBody);
-      return;
-    }
+    const imageUri = await pickGalleryImageUri();
+    if (!imageUri) return;
 
-    const result = await ImagePicker.launchImageLibraryAsync({ quality: 1 });
-    const asset = result.assets?.[0];
-    if (result.canceled || !asset) return;
-    if (!asset.uri) {
-      Alert.alert(copy.global.genericErrorHeading, copy.global.unsupportedImage);
-      return;
+    try {
+      const bill = await createGalleryBill(imageUri, tripId);
+      router.push({ pathname: '/bill/processing', params: { billId: bill.id } });
+    } catch {
+      // Same failure Alert preview.tsx's "Use this photo" shows for this
+      // exact copy-then-create step.
+      Alert.alert(copy.global.genericErrorHeading, copy.global.imageCopyFailure);
     }
-
-    router.push({
-      pathname: '/bill/preview',
-      // Forwards tripId (if any) on to /bill/preview so its own
-      // "Use this photo" action can create the bill inside the same trip.
-      params: { imageUri: asset.uri, entryMethod: 'GALLERY', ...(tripId ? { tripId } : {}) },
-    });
   }
 
   async function startManual() {

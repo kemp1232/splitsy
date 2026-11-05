@@ -17,6 +17,10 @@ type Props = {
   destructive?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  // Forwarded to RN's Modal, which only calls it on iOS, once the dialog has
+  // fully dismissed — for callers that must open another native screen
+  // (e.g. the image picker) only after this one is gone.
+  onDismiss?: () => void;
 };
 
 export function ConfirmationDialog({
@@ -28,12 +32,19 @@ export function ConfirmationDialog({
   destructive,
   onConfirm,
   onCancel,
+  onDismiss,
 }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onCancel}
+      onDismiss={onDismiss}
+    >
       {/* Tapping the dimmed area outside the dialog dismisses it, same as
           Cancel — see BillOverflowSheet's identical treatment for why the
           inner Pressable needs its own no-op onPress. */}
