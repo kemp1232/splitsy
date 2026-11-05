@@ -5,7 +5,6 @@ import { FlatList, StyleSheet, View } from 'react-native';
 
 import { PaymentContributionRow } from '@/components/bill/PaymentContributionRow';
 import { AppButton } from '@/components/ui/AppButton';
-import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { GroupedCard, GroupedSeparator, SectionHeader } from '@/components/ui/GroupedSection';
 import { InlineError } from '@/components/ui/InlineError';
@@ -31,6 +30,8 @@ import {
 } from '@/features/adjustments/buildSplitInputs';
 import { partitionLineItemsByAssignment } from '@/features/assignments/partitionLineItemsByAssignment';
 import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
+import { resolveQuickAddMeName } from '@/features/participants/validateParticipantName';
+import { buildInitialContributions } from '@/features/payments/buildInitialContributions';
 import { computeContributionUpdates } from '@/features/payments/computeContributionUpdates';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
@@ -38,6 +39,7 @@ import type {
   ReconciliationResult,
   SplitCalculationResult,
 } from '@/features/splitting/split.types';
+import { authClient } from '@/lib/authClient';
 import { nowIso } from '@/lib/date';
 import { spacing } from '@/theme/tokens';
 
@@ -130,6 +132,10 @@ function computeSplitAndReconciliation(data: LoadedData): {
 export default function PaymentsScreen() {
   const router = useRouter();
   const { billId } = useLocalSearchParams<{ billId: string }>();
+  // Identifies the signed-in user's participant for the "nothing paid yet"
+  // pre-fill — same name rule as participants.tsx's "Add me".
+  const { data: session, isPending: isSessionPending } = authClient.useSession();
+  const meName = resolveQuickAddMeName(session?.user.name);
 
   const [state, setState] = useState<LoadState>('loading');
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -142,7 +148,7 @@ export default function PaymentsScreen() {
   // AmountInput deliberately only seeds its displayed text from valueCentavos
   // once, at mount — it never re-syncs on a later prop change, so typing
   // isn't fought mid-keystroke by a value bouncing back from the parent.
-  // "Paid in full" needs the opposite: every row's field must visibly update
+  // "Paid the whole bill" needs the opposite: every row's field must visibly update
   // to reflect the new externally-set amount. Bumping this on every
   // full-amount press and folding it into the FlatList's key forces every
   // PaymentContributionRow (and its AmountInput) to remount, so each one
@@ -155,6 +161,10 @@ export default function PaymentsScreen() {
   // save) — mirrors participants.tsx's/adjustments.tsx's own actionError
   // convention from the Milestone 7 hardening pass.
   const [actionError, setActionError] = useState<string | null>(null);
+  // "Nothing paid yet" pre-fill bookkeeping: applied at most once per mount,
+  // and never over the user's own edits.
+  const [prefillChecked, setPrefillChecked] = useState(false);
+  const [hasEdited, setHasEdited] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -216,16 +226,40 @@ export default function PaymentsScreen() {
     })();
   }, [billId, router]);
 
+  // Once the data is loaded and the session has resolved (so meName is the
+  // real user, not the pending-state 'Me' fallback): if nothing is saved yet,
+  // pre-fill the signed-in user as having paid the whole bill. Local only —
+  // computeContributionUpdates persists it on Continue. Done during render
+  // (React's "adjust state on change" pattern) rather than in an effect, and
+  // kept out of the load effect so a session refresh never reloads the
+  // screen over unsaved edits. Bumping resetToken re-seeds the AmountInputs.
+  if (!prefillChecked && state === 'ready' && !isSessionPending) {
+    setPrefillChecked(true);
+    if (!hasEdited) {
+      const prefilled = buildInitialContributions(participants, computedTotalCentavos, meName);
+      if (
+        participants.some(
+          (participant) => prefilled[participant.id] !== contributions[participant.id],
+        )
+      ) {
+        setContributions(prefilled);
+        setResetToken((token) => token + 1);
+      }
+    }
+  }
+
   function handleAmountChange(participantId: string, centavos: number) {
+    setHasEdited(true);
     setContributions((current) => ({ ...current, [participantId]: centavos }));
   }
 
-  // "Paid in full": this participant covers the whole bill, so everyone
+  // "Paid the whole bill": this participant covers the whole bill, so everyone
   // else's contribution resets to zero in local form state — the "one person
   // paid it all" shortcut, distinct from manually entering a partial/split
   // payment per person. Nothing is persisted yet; Continue still owns the
   // actual save.
   function handleFullAmount(participantId: string) {
+    setHasEdited(true);
     setContributions(() => {
       const next: Record<string, number> = {};
       for (const participant of participants) {
@@ -271,7 +305,7 @@ export default function PaymentsScreen() {
 
   if (state === 'loading') {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <LoadingState />
       </Screen>
     );
@@ -279,7 +313,7 @@ export default function PaymentsScreen() {
 
   if (state === 'error') {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <ErrorState
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
@@ -291,7 +325,7 @@ export default function PaymentsScreen() {
   }
 
   return (
-    <Screen scroll padded={false}>
+    <Screen tabBarHidden scroll padded={false}>
       <View style={styles.body}>
         <ScreenHeader
           icon="credit-card"
@@ -359,10 +393,8 @@ export default function PaymentsScreen() {
 const styles = StyleSheet.create({
   body: {
     padding: spacing.lg,
-    // The Skip/Continue buttons used to sit in a sticky footer, which
-    // Screen.tsx pads above the global nav bar automatically — now that
-    // they're plain in-flow content, this screen reserves that space itself.
-    paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+    // No tab-bar clearance: the global BottomTabBar is hidden on /bill/**.
+    paddingBottom: spacing.lg,
     // Section-to-section rhythm (header / the contribution rows list /
     // the skip+continue actions) — spacing.lg, the same rhythm
     // receipt-review.tsx uses between its blocks.

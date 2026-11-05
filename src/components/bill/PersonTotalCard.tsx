@@ -10,6 +10,7 @@ import type {
   ParticipantAdjustmentShareDisplay,
   ParticipantItemShareDisplay,
 } from '@/features/summary/buildParticipantShareDisplay';
+import { computeGetsBackCentavos } from '@/features/summary/computeGetsBackCentavos';
 import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
 import { spacing, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -56,6 +57,9 @@ export const PersonTotalCard = memo(function PersonTotalCard({
   const hasPaymentInfo = paidCentavos !== undefined;
   const fraction = hasPaymentInfo && finalTotalCentavos > 0 ? paidCentavos / finalTotalCentavos : 0;
   const isPaidInFull = hasPaymentInfo && paidCentavos >= finalTotalCentavos;
+  // Paid more than their own share: the header reads "Paid ₱X · gets back
+  // ₱Y" instead of "owes ₱share", and the progress bar is dropped.
+  const getsBackCentavos = computeGetsBackCentavos(paidCentavos, finalTotalCentavos);
 
   return (
     <View style={styles.container}>
@@ -72,19 +76,36 @@ export const PersonTotalCard = memo(function PersonTotalCard({
         <InitialsAvatar name={name} size={36} />
         <View style={styles.headerText}>
           <AppText variant="subheading" style={styles.uniformText}>
-            {copy.summary.participantOwes.replace('{name}', name)}
+            {getsBackCentavos !== null
+              ? name
+              : copy.summary.participantOwes.replace('{name}', name)}
           </AppText>
           {/* accessibilityLabel is the spoken form (spec section 17's "520
               pesos and 25 centavos" example) — distinct from the visible
               formatCentavos text, which a screen reader would otherwise read
               out character-by-character (e.g. "peso sign five two zero"). */}
-          <AppText
-            variant="amount"
-            style={styles.totalAmount}
-            accessibilityLabel={formatCentavosForSpeech(finalTotalCentavos)}
-          >
-            {formatCentavos(finalTotalCentavos)}
-          </AppText>
+          {getsBackCentavos !== null ? (
+            <AppText
+              variant="subheading"
+              color="success"
+              style={styles.uniformText}
+              accessibilityLabel={buildPaidAndGetsBack(
+                paidCentavos ?? 0,
+                getsBackCentavos,
+                formatCentavosForSpeech,
+              )}
+            >
+              {buildPaidAndGetsBack(paidCentavos ?? 0, getsBackCentavos, formatCentavos)}
+            </AppText>
+          ) : (
+            <AppText
+              variant="amount"
+              style={styles.totalAmount}
+              accessibilityLabel={formatCentavosForSpeech(finalTotalCentavos)}
+            >
+              {formatCentavos(finalTotalCentavos)}
+            </AppText>
+          )}
         </View>
         {/* Decorative only, and hidden from screen readers — the row's own
             visible text already fully describes what pressing it does (spec
@@ -100,7 +121,7 @@ export const PersonTotalCard = memo(function PersonTotalCard({
         </View>
       </Pressable>
 
-      {hasPaymentInfo ? (
+      {hasPaymentInfo && getsBackCentavos === null ? (
         <ProgressBar
           fraction={fraction}
           tone={isPaidInFull ? 'success' : 'primary'}
@@ -164,6 +185,16 @@ export const PersonTotalCard = memo(function PersonTotalCard({
     </View>
   );
 });
+
+function buildPaidAndGetsBack(
+  paidCentavos: number,
+  getsBackCentavos: number,
+  formatMoney: (centavos: number) => string,
+): string {
+  return copy.summary.participantPaidAndGetsBack
+    .replace('{paid}', () => formatMoney(paidCentavos))
+    .replace('{refund}', () => formatMoney(getsBackCentavos));
+}
 
 const styles = StyleSheet.create({
   container: {

@@ -7,6 +7,7 @@ import { FoodIconBadge } from '@/components/ui/FoodIconBadge';
 import { IconButton } from '@/components/ui/IconButton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { copy } from '@/constants/copy';
+import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { formatBillListDate } from '@/lib/date';
 import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
 import type { ColorTokens } from '@/theme/tokens';
@@ -72,7 +73,7 @@ export const BillListItem = memo(function BillListItem({
   // during render, however safe this particular usage is.
   const [pressAnimation] = useState(() => new Animated.Value(0));
   const { bill, participantCount } = entry;
-  const title = bill.merchantName ?? bill.title ?? copy.home.unknownMerchantTitle;
+  const title = getBillDisplayTitle(bill);
   const total =
     bill.detectedReceiptTotalCentavos != null
       ? formatCentavos(bill.detectedReceiptTotalCentavos)

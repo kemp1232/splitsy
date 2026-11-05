@@ -42,6 +42,7 @@ import {
 } from '@/features/adjustments/buildSplitInputs';
 import { partitionLineItemsByAssignment } from '@/features/assignments/partitionLineItemsByAssignment';
 import { deleteBill } from '@/features/bills/bill.service';
+import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { useBillSourceActions } from '@/features/bills/useBillSourceActions';
 import { resolveNextRoute, type NextRoute } from '@/features/bills/resolveNextRoute';
 import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
@@ -209,7 +210,7 @@ async function buildShareTextForBill(bill: Bill): Promise<string> {
     : undefined;
 
   return buildShareText({
-    billTitle: bill.merchantName ?? bill.title,
+    billTitle: getBillDisplayTitle(bill),
     participants: participantRows.map((participant) => ({
       participantId: participant.id,
       name: participant.name,

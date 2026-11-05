@@ -11,7 +11,6 @@ import { AdjustmentRow } from '@/components/bill/AdjustmentRow';
 import { ReconciliationCard } from '@/components/bill/ReconciliationCard';
 import { ActionRow } from '@/components/ui/ActionRow';
 import { AppButton } from '@/components/ui/AppButton';
-import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -365,7 +364,7 @@ export default function AdjustmentsScreen() {
 
   if (state === 'loading') {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <LoadingState />
       </Screen>
     );
@@ -373,7 +372,7 @@ export default function AdjustmentsScreen() {
 
   if (state === 'error' || !bill || !splitResult || !reconciliation) {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <ErrorState
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
@@ -395,7 +394,7 @@ export default function AdjustmentsScreen() {
       : null;
 
   return (
-    <Screen scroll padded={false}>
+    <Screen tabBarHidden scroll padded={false}>
       <View style={styles.body}>
         <ScreenHeader
           icon="percent"
@@ -534,7 +533,7 @@ export default function AdjustmentsScreen() {
         animationType="slide"
         onRequestClose={() => setShowReceiptImage(false)}
       >
-        <Screen scroll={false}>
+        <Screen tabBarHidden scroll={false}>
           <AppButton
             variant="text"
             label={copy.global.closeAccessibilityLabel}
@@ -557,10 +556,8 @@ export default function AdjustmentsScreen() {
 const styles = StyleSheet.create({
   body: {
     padding: spacing.lg,
-    // The Continue button used to sit in a sticky footer, which Screen.tsx
-    // pads above the global nav bar automatically — now that it's plain
-    // in-flow content, this screen reserves that space itself.
-    paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+    // No tab-bar clearance: the global BottomTabBar is hidden on /bill/**.
+    paddingBottom: spacing.lg,
     // Section-to-section rhythm (header / adjustments list / the
     // reconciliation card / the continue block) — spacing.lg, the same
     // rhythm receipt-review.tsx uses between its blocks.

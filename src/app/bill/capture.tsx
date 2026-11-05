@@ -46,7 +46,7 @@ export default function CaptureScreen() {
 
   if (!permission) {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <LoadingState />
       </Screen>
     );
@@ -54,7 +54,7 @@ export default function CaptureScreen() {
 
   if (!permission.granted) {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <AppText variant="heading">{copy.cameraPermission.heading}</AppText>
         <AppText variant="body" color="textSecondary" style={styles.spacedBelow}>
           {copy.cameraPermission.body}
