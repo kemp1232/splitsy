@@ -1,10 +1,12 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   type ListRenderItem,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -38,6 +40,8 @@ import { lineItemsRepository } from '@/db/repositories/lineItems.repository';
 import type { Participant } from '@/db/repositories/participants.repository';
 import { participantsRepository } from '@/db/repositories/participants.repository';
 import { useAdjustmentEditor } from '@/features/adjustments/useAdjustmentEditor';
+import { deleteBill } from '@/features/bills/bill.service';
+import { createGalleryBill, pickGalleryImageUri } from '@/features/bills/galleryBill';
 import { buildOcrStatus, type OcrStatusTone } from '@/features/receipt-review/buildOcrStatus';
 import {
   buildMismatchMessage,
@@ -122,6 +126,14 @@ export default function ReceiptReviewScreen() {
   // actionError, and is distinct from dateError above, which is a field
   // validation message, not a storage failure.
   const [actionError, setActionError] = useState<string | null>(null);
+  // "Choose another" (gallery bills only): the confirm dialog's visibility,
+  // and a busy flag held from confirm until this screen is replaced (or the
+  // attempt is abandoned) so a second tap can't start a second pick.
+  const [confirmChooseAnother, setConfirmChooseAnother] = useState(false);
+  const [choosingAnother, setChoosingAnother] = useState(false);
+  // Set on confirm, consumed by startChooseAnother — lets the dialog's iOS
+  // onDismiss (which also fires after Cancel) tell a confirm from a cancel.
+  const chooseAnotherPending = useRef(false);
   // Add/edit/delete an adjustment (shared with the adjustments screen), so
   // the gap between the items subtotal and the receipt total can be
   // explained right here.
@@ -281,6 +293,70 @@ export default function ReceiptReviewScreen() {
     }
   }
 
+  // Confirm only closes the dialog and marks the pick as pending; the picker
+  // itself is opened by startChooseAnother. On iOS that has to wait for the
+  // dialog's Modal to finish dismissing (its onDismiss): iOS won't present
+  // the picker while another view controller is still dismissing, so
+  // launching it in the same tick can silently never show it. onDismiss
+  // only fires on iOS (RN's Modal implements it there only), and Android
+  // and web have no such conflict, so they start straight away.
+  function handleConfirmChooseAnother() {
+    setConfirmChooseAnother(false);
+    if (choosingAnother) return;
+    chooseAnotherPending.current = true;
+    setChoosingAnother(true);
+    if (Platform.OS !== 'ios') void startChooseAnother();
+  }
+
+  function handleChooseAnotherDialogDismiss() {
+    if (chooseAnotherPending.current) void startChooseAnother();
+  }
+
+  // Replaces this draft with a brand-new one built from a freshly picked
+  // photo, rather than re-running OCR on this bill: saveParsedReceiptDraft
+  // appends line items, so re-scanning in place would stack the new
+  // receipt's items on top of the old ones. Order matters — the new bill is
+  // created before the old one is deleted, so a cancelled pick or a failed
+  // pick/copy/create leaves this bill exactly as it was.
+  async function startChooseAnother() {
+    chooseAnotherPending.current = false;
+    if (!bill) {
+      setChoosingAnother(false);
+      return;
+    }
+    setActionError(null);
+
+    let newBill: Bill;
+    try {
+      // Permission-denied / unsupported-image Alerts are raised inside
+      // pickGalleryImageUri itself; null means there's nothing to do.
+      const imageUri = await pickGalleryImageUri();
+      if (!imageUri) {
+        setChoosingAnother(false);
+        return;
+      }
+      // Same trip as the bill being replaced, if it belongs to one.
+      newBill = await createGalleryBill(imageUri, bill.tripId);
+    } catch {
+      // The screen's shared inline error slot, like its other write paths
+      // (an Alert would show nothing on web), with the same message
+      // preview.tsx's "Use this photo" uses for this copy-then-create step.
+      setActionError(copy.global.imageCopyFailure);
+      setChoosingAnother(false);
+      return;
+    }
+
+    try {
+      // Awaited: native deleteBill is synchronous, the web one is async.
+      await deleteBill(bill);
+    } catch (error) {
+      // The new bill already exists, so carry on to it regardless. The old
+      // draft stays in the bill list, where it can still be deleted by hand.
+      if (__DEV__) console.error('[ReceiptReviewScreen] deleteBill failed:', error);
+    }
+    router.replace({ pathname: '/bill/processing', params: { billId: newBill.id } });
+  }
+
   if (state === 'loading') {
     return (
       <Screen tabBarHidden>
@@ -309,6 +385,18 @@ export default function ReceiptReviewScreen() {
   const totalsMatch = getTotalsMatch(computedTotalCentavos, detectedTotalCentavos);
 
   const ocrStatus = buildOcrStatus(ocrSource, fallbackReason, isTruncated);
+  // Only for a gallery draft that arrived here straight from processing.
+  // Status alone can't tell a fresh scan from a reopened bill: "Edit bill"
+  // flips a COMPLETED bill back to DRAFT before opening this screen. But
+  // ocrSource is a one-time param that only processing.tsx's success path
+  // sets — every other way in (summary, adjustments, Edit bill, Home) pushes
+  // this screen without it, so reopened and completed bills never get the
+  // option. Known, accepted gap: going on to participants and then back
+  // returns to this same screen instance, params intact, so the option is
+  // still offered after people may have been added — the confirm text
+  // warns that people are cleared too.
+  const canChooseAnother =
+    bill.entryMethod === 'GALLERY' && bill.status === 'DRAFT' && ocrSource != null;
   const totalHeadline = buildTotalHeadline(
     computedTotalCentavos,
     totalsMatch.status,
@@ -489,6 +577,36 @@ export default function ReceiptReviewScreen() {
                   </AppText>
                 </View>
                 <Feather name="chevron-right" size={20} color={colors.textSecondary} />
+              </Pressable>
+            ) : null}
+            {/* Sits with "View receipt photo" since it acts on that photo.
+                A gallery bill always has receiptImageUri, so this block is
+                always rendered when canChooseAnother is true. */}
+            {canChooseAnother ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${copy.preview.chooseAnotherAction}, ${copy.receiptReview.chooseAnotherCaption}`}
+                accessibilityState={{ busy: choosingAnother, disabled: choosingAnother }}
+                disabled={choosingAnother}
+                onPress={() => setConfirmChooseAnother(true)}
+                style={({ pressed }) => [styles.viewActionRow, pressed && styles.pressed]}
+              >
+                <View style={styles.viewActionIcon}>
+                  <Feather name="refresh-cw" size={18} color={colors.primary} />
+                </View>
+                <View style={styles.viewActionText}>
+                  <AppText variant="subheading" style={styles.uniformText}>
+                    {copy.preview.chooseAnotherAction}
+                  </AppText>
+                  <AppText variant="caption" color="textSecondary">
+                    {copy.receiptReview.chooseAnotherCaption}
+                  </AppText>
+                </View>
+                {choosingAnother ? (
+                  <ActivityIndicator color={colors.textSecondary} />
+                ) : (
+                  <Feather name="chevron-right" size={20} color={colors.textSecondary} />
+                )}
               </Pressable>
             ) : null}
             {bill.rawOcrText ? (
@@ -694,6 +812,20 @@ export default function ReceiptReviewScreen() {
         destructive
         onConfirm={handleConfirmDelete}
         onCancel={() => setPendingDelete(null)}
+      />
+
+      {/* A ConfirmationDialog rather than Alert.alert: Alert's buttons do
+          nothing on react-native-web, so the confirm would never fire there. */}
+      <ConfirmationDialog
+        visible={confirmChooseAnother}
+        heading={copy.receiptReview.chooseAnotherConfirmHeading}
+        body={copy.receiptReview.chooseAnotherConfirmBody}
+        confirmLabel={copy.preview.chooseAnotherAction}
+        cancelLabel={copy.global.cancelAction}
+        destructive
+        onConfirm={handleConfirmChooseAnother}
+        onCancel={() => setConfirmChooseAnother(false)}
+        onDismiss={handleChooseAnotherDialogDismiss}
       />
 
       {/* Mirrors bill/[billId]/index.tsx's own receipt-image modal — same

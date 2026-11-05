@@ -271,6 +271,11 @@ export const copy = {
     continueButton: 'Add people',
     noItemsHeading: 'No items found',
     noItemsBody: 'Add the receipt items manually to continue.',
+    // "Choose another" on a fresh gallery bill (the action label itself
+    // reuses copy.preview.chooseAnotherAction).
+    chooseAnotherCaption: 'Scan a different photo instead',
+    chooseAnotherConfirmHeading: 'Choose another photo?',
+    chooseAnotherConfirmBody: 'The items and people on this bill will be cleared.',
   },
 
   // Section 13.10 — Add/edit item sheet
