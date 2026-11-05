@@ -79,6 +79,8 @@ export const copy = {
     backConfirmBody: 'Your progress has not been saved yet.',
     stayAction: 'Keep editing',
     leaveAction: 'Leave',
+    backAccessibilityLabel: 'Go back',
+    cameraBadge: 'Recommended',
   },
 
   // Not from the spec — the Trip feature's own screens: trip creation
