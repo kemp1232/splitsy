@@ -224,6 +224,10 @@ export const copy = {
     editItemHint: 'Opens the item editor',
     deleteItemAccessibilityLabel: 'Delete {name}',
     addItem: 'Add item',
+    // Not from the spec — the compact add action shown on this screen when
+    // the bill has no adjustments yet (adjustments are listed here too, so
+    // the gap between the items subtotal and the receipt total is explained).
+    addAdjustmentAction: 'Add fee, tax, or discount',
     detectedSubtotalLabel: 'Receipt subtotal',
     itemSubtotalLabel: 'Items subtotal',
     detectedTotalLabel: 'Receipt total',
@@ -327,6 +331,12 @@ export const copy = {
     noAssignmentState: 'Not assigned',
     bulkAssignAction: 'Assign all unassigned',
     continueButton: 'Review fees and discounts',
+    // Not from the spec — Continue skips the "Fees, tax, and discounts"
+    // screen when the bill already matches the receipt (or the difference
+    // was acknowledged), going straight to Payments; the secondary action
+    // keeps that screen reachable.
+    continueToPaymentsButton: 'Add who paid',
+    editAdjustmentsAction: 'Edit fees and discounts',
     blockingErrorHeading: 'Assign every item',
     blockingErrorBody: '{count} {itemWord} still need {assignmentWord}.',
     itemWordSingular: 'item',

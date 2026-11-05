@@ -1,12 +1,9 @@
 import Feather from '@expo/vector-icons/Feather';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { FlatList, Modal, StyleSheet, View } from 'react-native';
 
-import {
-  AdjustmentEditorSheet,
-  type AdjustmentDraft,
-} from '@/components/bill/AdjustmentEditorSheet';
+import { AdjustmentEditorSheet } from '@/components/bill/AdjustmentEditorSheet';
 import { AdjustmentRow } from '@/components/bill/AdjustmentRow';
 import { ReconciliationCard } from '@/components/bill/ReconciliationCard';
 import { ActionRow } from '@/components/ui/ActionRow';
@@ -39,6 +36,7 @@ import {
   buildSplitAdjustments,
   buildSplitLineItems,
 } from '@/features/adjustments/buildSplitInputs';
+import { useAdjustmentEditor } from '@/features/adjustments/useAdjustmentEditor';
 import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
@@ -135,69 +133,79 @@ export default function AdjustmentsScreen() {
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [splitResult, setSplitResult] = useState<SplitCalculationResult | null>(null);
   const [reconciliation, setReconciliation] = useState<ReconciliationResult | null>(null);
-  const [editingAdjustment, setEditingAdjustment] = useState<Adjustment | 'new' | null>(null);
-  const [editingCustomAllocations, setEditingCustomAllocations] = useState<AdjustmentAllocation[]>(
-    [],
-  );
-  const [deletingAdjustment, setDeletingAdjustment] = useState<Adjustment | null>(null);
   const [showContinueWithDifference, setShowContinueWithDifference] = useState(false);
   const [showReceiptImage, setShowReceiptImage] = useState(false);
   // One shared error slot for this screen's write paths (save/delete an
   // adjustment, add the reconciliation difference) — mirrors participants.tsx
   // and receipt-review.tsx's own actionError.
   const [actionError, setActionError] = useState<string | null>(null);
+  // Add/edit/delete an adjustment (shared with receipt-review.tsx).
+  const adjustmentEditor = useAdjustmentEditor({
+    billId,
+    adjustmentCount: adjustments.length,
+    refresh,
+    setActionError,
+  });
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await fetchAdjustmentsData(billId);
-        if (!data.billRow) {
+  // Runs on every focus, not just mount: "Review items" pushes
+  // receipt-review.tsx on top of this screen, and that screen can now add,
+  // edit, or delete adjustments (and items) too — so coming back must
+  // re-read everything (guards included) rather than show a stale
+  // reconciliation that "Add difference" or "Continue with difference"
+  // would then act on.
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        try {
+          const data = await fetchAdjustmentsData(billId);
+          if (!data.billRow) {
+            setState('error');
+            return;
+          }
+
+          // Draft-progression guard (spec section 15): this screen assumes
+          // items exist, at least two participants exist, and every item is
+          // already assigned — exactly what F-013's assignments screen already
+          // blocks continuing without. If any of that isn't true yet (e.g. a
+          // stale or direct deep link), send the user back to the earliest
+          // incomplete step instead of rendering — and, just as importantly,
+          // instead of ever calling calculateSplit with data it isn't ready
+          // for (an unassigned item would throw).
+          if (data.itemRows.length === 0) {
+            router.replace(`/bill/${billId}/receipt-review`);
+            return;
+          }
+          if (!hasMinimumParticipants(data.participantRows.length)) {
+            router.replace(`/bill/${billId}/participants`);
+            return;
+          }
+          const { unassignedItems } = partitionLineItemsByAssignment(
+            data.itemRows,
+            data.assignmentRows,
+          );
+          if (unassignedItems.length > 0) {
+            router.replace(`/bill/${billId}/assignments`);
+            return;
+          }
+
+          const { splitResult: nextSplitResult, reconciliation: nextReconciliation } =
+            computeSplitAndReconciliation(data);
+          setBill(data.billRow);
+          setParticipants(data.participantRows);
+          setAdjustments(data.adjustmentRows);
+          setSplitResult(nextSplitResult);
+          setReconciliation(nextReconciliation);
+          setState('ready');
+        } catch {
+          // Covers both a genuine load failure and calculateSplit's
+          // SplitInvariantError (spec 10.7) — either way this is not a
+          // user-fixable validation case, so it surfaces as the same generic
+          // error state as any other unexpected failure, never silently.
           setState('error');
-          return;
         }
-
-        // Draft-progression guard (spec section 15): this screen assumes
-        // items exist, at least two participants exist, and every item is
-        // already assigned — exactly what F-013's assignments screen already
-        // blocks continuing without. If any of that isn't true yet (e.g. a
-        // stale or direct deep link), send the user back to the earliest
-        // incomplete step instead of rendering — and, just as importantly,
-        // instead of ever calling calculateSplit with data it isn't ready
-        // for (an unassigned item would throw).
-        if (data.itemRows.length === 0) {
-          router.replace(`/bill/${billId}/receipt-review`);
-          return;
-        }
-        if (!hasMinimumParticipants(data.participantRows.length)) {
-          router.replace(`/bill/${billId}/participants`);
-          return;
-        }
-        const { unassignedItems } = partitionLineItemsByAssignment(
-          data.itemRows,
-          data.assignmentRows,
-        );
-        if (unassignedItems.length > 0) {
-          router.replace(`/bill/${billId}/assignments`);
-          return;
-        }
-
-        const { splitResult: nextSplitResult, reconciliation: nextReconciliation } =
-          computeSplitAndReconciliation(data);
-        setBill(data.billRow);
-        setParticipants(data.participantRows);
-        setAdjustments(data.adjustmentRows);
-        setSplitResult(nextSplitResult);
-        setReconciliation(nextReconciliation);
-        setState('ready');
-      } catch {
-        // Covers both a genuine load failure and calculateSplit's
-        // SplitInvariantError (spec 10.7) — either way this is not a
-        // user-fixable validation case, so it surfaces as the same generic
-        // error state as any other unexpected failure, never silently.
-        setState('error');
-      }
-    })();
-  }, [billId, router]);
+      })();
+    }, [billId, router]),
+  );
 
   // Reloads everything and recomputes the split after an adjustment is
   // added, edited, or deleted. Deliberately re-fetches participants/items/
@@ -221,92 +229,6 @@ export default function AdjustmentsScreen() {
       setReconciliation(nextReconciliation);
     } catch {
       setState('error');
-    }
-  }
-
-  // useCallback (RN list-performance rule): one stable reference passed to
-  // every memoized AdjustmentRow, which calls it with its own adjustment.
-  // Only touches state setters and a module-level repository, so no deps.
-  const handleOpenEditor = useCallback(async (adjustment: Adjustment) => {
-    const allocations =
-      adjustment.allocationMethod === 'CUSTOM'
-        ? await adjustmentAllocationsRepository.listByAdjustmentId(adjustment.id)
-        : [];
-    setEditingCustomAllocations(allocations);
-    setEditingAdjustment(adjustment);
-  }, []);
-
-  function handleOpenNewEditor() {
-    setEditingCustomAllocations([]);
-    setEditingAdjustment('new');
-  }
-
-  async function handleSaveAdjustment(draft: AdjustmentDraft) {
-    setActionError(null);
-    try {
-      const timestamp = nowIso();
-      let adjustmentId: string;
-
-      if (editingAdjustment === 'new') {
-        const created = await adjustmentsRepository.create({
-          id: createId(),
-          billId,
-          sortOrder: adjustments.length,
-          type: draft.type,
-          label: draft.label,
-          amountCentavos: draft.amountCentavos,
-          allocationMethod: draft.allocationMethod,
-          source: 'MANUAL',
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        });
-        adjustmentId = created.id;
-      } else if (editingAdjustment) {
-        adjustmentId = editingAdjustment.id;
-        await adjustmentsRepository.update(adjustmentId, {
-          type: draft.type,
-          label: draft.label,
-          amountCentavos: draft.amountCentavos,
-          allocationMethod: draft.allocationMethod,
-          updatedAt: timestamp,
-        });
-      } else {
-        return;
-      }
-
-      // Custom allocations only ever exist for a CUSTOM adjustment (spec 9.6) —
-      // clearing them out here whenever the saved method isn't CUSTOM keeps a
-      // stale set from lingering if the user switches an adjustment away from
-      // custom allocation.
-      await adjustmentAllocationsRepository.setForAdjustment(
-        adjustmentId,
-        draft.allocationMethod === 'CUSTOM' ? (draft.customAllocations ?? []) : [],
-      );
-
-      setEditingAdjustment(null);
-      await refresh();
-    } catch {
-      setEditingAdjustment(null);
-      setActionError(copy.global.storageFailure);
-    }
-  }
-
-  function handleRequestDelete() {
-    if (editingAdjustment && editingAdjustment !== 'new') {
-      setDeletingAdjustment(editingAdjustment);
-    }
-    setEditingAdjustment(null);
-  }
-
-  async function handleConfirmDelete() {
-    if (!deletingAdjustment) return;
-    setDeletingAdjustment(null);
-    setActionError(null);
-    try {
-      await adjustmentsRepository.remove(deletingAdjustment.id);
-      await refresh();
-    } catch {
-      setActionError(copy.global.storageFailure);
     }
   }
 
@@ -384,16 +306,6 @@ export default function AdjustmentsScreen() {
     );
   }
 
-  const editingInitial =
-    editingAdjustment && editingAdjustment !== 'new'
-      ? {
-          type: editingAdjustment.type,
-          label: editingAdjustment.label,
-          amountCentavos: editingAdjustment.amountCentavos,
-          allocationMethod: editingAdjustment.allocationMethod,
-        }
-      : null;
-
   return (
     <Screen scroll padded={false}>
       <View style={styles.body}>
@@ -422,7 +334,7 @@ export default function AdjustmentsScreen() {
                 <AppButton
                   variant="secondary"
                   label={copy.adjustments.addAction}
-                  onPress={handleOpenNewEditor}
+                  onPress={adjustmentEditor.openNewEditor}
                   icon={(color) => <Feather name="plus" size={16} color={color} />}
                 />
               ) : null
@@ -433,7 +345,7 @@ export default function AdjustmentsScreen() {
               heading={copy.adjustments.emptyHeading}
               body={copy.adjustments.emptyBody}
               actionLabel={copy.adjustments.addAction}
-              onAction={handleOpenNewEditor}
+              onAction={adjustmentEditor.openNewEditor}
             />
           ) : (
             <GroupedCard>
@@ -443,7 +355,7 @@ export default function AdjustmentsScreen() {
                 scrollEnabled={false}
                 ItemSeparatorComponent={GroupedSeparator}
                 renderItem={({ item }) => (
-                  <AdjustmentRow adjustment={item} onPress={handleOpenEditor} />
+                  <AdjustmentRow adjustment={item} onPress={adjustmentEditor.openEditor} />
                 )}
               />
             </GroupedCard>
@@ -493,24 +405,24 @@ export default function AdjustmentsScreen() {
       </View>
 
       <AdjustmentEditorSheet
-        visible={editingAdjustment !== null}
-        initial={editingInitial}
-        initialCustomAllocations={editingCustomAllocations}
+        visible={adjustmentEditor.isEditorVisible}
+        initial={adjustmentEditor.editingInitial}
+        initialCustomAllocations={adjustmentEditor.editingCustomAllocations}
         participants={participants}
-        onSave={handleSaveAdjustment}
-        onDelete={editingInitial ? handleRequestDelete : undefined}
-        onCancel={() => setEditingAdjustment(null)}
+        onSave={adjustmentEditor.saveAdjustment}
+        onDelete={adjustmentEditor.editingInitial ? adjustmentEditor.requestDelete : undefined}
+        onCancel={adjustmentEditor.cancelEditor}
       />
 
       <ConfirmationDialog
-        visible={deletingAdjustment !== null}
+        visible={adjustmentEditor.isDeleteConfirmVisible}
         heading={copy.adjustmentEditor.deleteConfirmHeading}
         body={copy.adjustmentEditor.deleteConfirmBody}
         confirmLabel={copy.adjustmentEditor.deleteAction}
         cancelLabel={copy.global.cancelAction}
         destructive
-        onConfirm={handleConfirmDelete}
-        onCancel={() => setDeletingAdjustment(null)}
+        onConfirm={adjustmentEditor.confirmDelete}
+        onCancel={adjustmentEditor.cancelDelete}
       />
 
       <ConfirmationDialog
