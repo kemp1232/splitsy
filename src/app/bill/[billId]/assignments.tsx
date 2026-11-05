@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Fragment, memo, useCallback, useMemo, useRef, useState } from 'react';
 import { Modal, StyleSheet, Switch, View } from 'react-native';
 
 import { AssignmentStatus } from '@/components/bill/AssignmentStatus';
@@ -9,7 +9,6 @@ import { ParticipantPickerSheet } from '@/components/bill/ParticipantPickerSheet
 import { ActionRow } from '@/components/ui/ActionRow';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
-import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { GroupedCard, GroupedSeparator, SectionHeader } from '@/components/ui/GroupedSection';
 import { InlineError } from '@/components/ui/InlineError';
@@ -18,6 +17,8 @@ import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { copy } from '@/constants/copy';
+import type { Adjustment } from '@/db/repositories/adjustments.repository';
+import { adjustmentsRepository } from '@/db/repositories/adjustments.repository';
 import type { Bill } from '@/db/repositories/bills.repository';
 import { billsRepository } from '@/db/repositories/bills.repository';
 import type { ItemAssignment } from '@/db/repositories/itemAssignments.repository';
@@ -39,9 +40,9 @@ import {
   replaceLineItemAssignments,
   toggleParticipantId,
 } from '@/features/assignments/toggleParticipantAssignment';
+import { resolvePostAssignmentsRoute } from '@/features/bills/resolvePostAssignmentsRoute';
 import {
-  normalizeParticipantName,
-  QUICK_ADD_ME_NAME,
+  findMeParticipant,
   resolveQuickAddMeName,
 } from '@/features/participants/validateParticipantName';
 import { authClient } from '@/lib/authClient';
@@ -66,13 +67,16 @@ function idsForLineItem(rows: ItemAssignment[], lineItemId: string): string[] {
 }
 
 async function fetchAssignmentsData(billId: string) {
-  const [billRow, itemRows, participantRows, assignmentRows] = await Promise.all([
+  // Adjustments are only read here to decide where Continue goes (see
+  // resolvePostAssignmentsRoute) — this screen never edits them.
+  const [billRow, itemRows, participantRows, assignmentRows, adjustmentRows] = await Promise.all([
     billsRepository.getById(billId),
     lineItemsRepository.listByBillId(billId),
     participantsRepository.listByBillId(billId),
     itemAssignmentsRepository.listByBillId(billId),
+    adjustmentsRepository.listByBillId(billId),
   ]);
-  return { billRow, itemRows, participantRows, assignmentRows };
+  return { billRow, itemRows, participantRows, assignmentRows, adjustmentRows };
 }
 
 // Not from the spec — the post-MVP "split evenly" toggle's self-healing
@@ -237,6 +241,7 @@ export default function AssignmentsScreen() {
   const [items, setItems] = useState<LineItem[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [assignmentRows, setAssignmentRows] = useState<ItemAssignment[]>([]);
+  const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [picker, setPicker] = useState<PickerState>(null);
   const [showBlockingError, setShowBlockingError] = useState(false);
   const [showReceiptImage, setShowReceiptImage] = useState(false);
@@ -283,6 +288,7 @@ export default function AssignmentsScreen() {
       itemRows: LineItem[],
       participantRows: Participant[],
       rows: ItemAssignment[],
+      adjustmentRows: Adjustment[],
     ) => {
       commitBill(
         pendingSplitModeWritesRef.current > 0 && billRef.current
@@ -293,6 +299,7 @@ export default function AssignmentsScreen() {
       setItems(itemRows);
       participantsRef.current = participantRows;
       setParticipants(participantRows);
+      setAdjustments(adjustmentRows);
       persistedIdsRef.current = groupAssignedParticipantIdsByLineItem(rows);
       commitRows(
         mergeRefreshedAssignments(rows, rowsRef.current, new Set(pendingWritesRef.current.keys())),
@@ -300,27 +307,6 @@ export default function AssignmentsScreen() {
     },
     [commitBill, commitRows],
   );
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const {
-          billRow,
-          itemRows,
-          participantRows,
-          assignmentRows: rows,
-        } = await loadAssignmentsData(billId);
-        if (!billRow) {
-          setState('error');
-          return;
-        }
-        commitLoadedData(billRow, itemRows, participantRows, rows);
-        setState('ready');
-      } catch {
-        setState('error');
-      }
-    })();
-  }, [billId, commitLoadedData]);
 
   // Queued behind every write already enqueued, so it reads what those
   // writes left in the DB; line items with taps still queued behind it keep
@@ -334,17 +320,36 @@ export default function AssignmentsScreen() {
             itemRows,
             participantRows,
             assignmentRows: rows,
+            adjustmentRows,
           } = await loadAssignmentsData(billId);
           if (!billRow) {
             setState('error');
             return;
           }
-          commitLoadedData(billRow, itemRows, participantRows, rows);
+          commitLoadedData(billRow, itemRows, participantRows, rows, adjustmentRows);
+          setState('ready');
         } catch {
-          setActionError(copy.global.storageFailure);
+          // Nothing to show before the first successful load; after it, keep
+          // the screen and surface the failure inline instead.
+          if (billRef.current) {
+            setActionError(copy.global.storageFailure);
+          } else {
+            setState('error');
+          }
         }
       }),
     [billId, commitLoadedData, writeQueue],
+  );
+
+  // Runs on every focus, not just mount: the adjustments screen (opened via
+  // "Edit fees and discounts") can change the adjustments that decide where
+  // Continue goes, so coming back re-reads them instead of keeping a stale
+  // label/route. Goes through the write queue like every other refresh, so
+  // it never overlaps (or clobbers) chip-tap writes still in flight.
+  useFocusEffect(
+    useCallback(() => {
+      void enqueueRefresh();
+    }, [enqueueRefresh]),
   );
 
   // On failure, a refresh puts the screen back on the DB's real splitMode
@@ -466,12 +471,7 @@ export default function AssignmentsScreen() {
     if (unassignedItemIds.length === 0) return;
 
     // Prefer the user's name; fall back to the legacy 'Me' from older bills.
-    const findByName = (name: string) =>
-      participants.find(
-        (participant) =>
-          normalizeParticipantName(participant.name) === normalizeParticipantName(name),
-      );
-    const meParticipant = findByName(meName) ?? findByName(QUICK_ADD_ME_NAME);
+    const meParticipant = findMeParticipant(participants, meName);
 
     setActionError(null);
     if (meParticipant) {
@@ -497,7 +497,7 @@ export default function AssignmentsScreen() {
 
   if (state === 'loading') {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <LoadingState />
       </Screen>
     );
@@ -505,7 +505,7 @@ export default function AssignmentsScreen() {
 
   if (state === 'error' || !bill) {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <ErrorState
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
@@ -532,6 +532,17 @@ export default function AssignmentsScreen() {
     .replace('{itemWord}', itemWord)
     .replace('{assignmentWord}', assignmentWord);
 
+  // Skips the adjustments screen when there's no unresolved receipt
+  // discrepancy — the same rule payments.tsx's own guard enforces, so a
+  // skipped bill is never bounced back.
+  const nextRoute = resolvePostAssignmentsRoute({
+    items,
+    adjustments,
+    detectedReceiptTotalCentavos: bill.detectedReceiptTotalCentavos,
+    discrepancyAcknowledged: bill.discrepancyAcknowledged,
+  });
+  const skipsAdjustments = nextRoute === 'payments';
+
   async function handleContinue() {
     // Guards against a second press while the drain below is still awaiting.
     if (isContinuingRef.current) return;
@@ -553,14 +564,16 @@ export default function AssignmentsScreen() {
         return;
       }
       setShowBlockingError(false);
-      router.push(`/bill/${billId}/adjustments`);
+      // nextRoute depends only on items, adjustments and the bill's
+      // receipt-total fields — none of which a chip tap changes.
+      router.push(`/bill/${billId}/${nextRoute}`);
     } finally {
       isContinuingRef.current = false;
     }
   }
 
   return (
-    <Screen scroll padded={false}>
+    <Screen tabBarHidden scroll padded={false}>
       <View style={styles.body}>
         <ScreenHeader icon="trello" heading={copy.assignments.heading} body={copy.assignments.body}>
           <AppText variant="caption" color="textSecondary" style={styles.uniformText}>
@@ -670,11 +683,26 @@ export default function AssignmentsScreen() {
           ) : null}
           <AppButton
             large
-            label={copy.assignments.continueButton}
+            label={
+              skipsAdjustments
+                ? copy.assignments.continueToPaymentsButton
+                : copy.assignments.continueButton
+            }
             icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
             iconPosition="trailing"
             onPress={handleContinue}
           />
+          {/* Keeps the skipped adjustments screen reachable. Hidden while
+              items are unassigned — its own guard would just send the user
+              straight back here. */}
+          {skipsAdjustments && !isBlocked ? (
+            <AppButton
+              variant="secondary"
+              label={copy.assignments.editAdjustmentsAction}
+              icon={(color) => <Feather name="percent" size={16} color={color} />}
+              onPress={() => router.push(`/bill/${billId}/adjustments`)}
+            />
+          ) : null}
         </View>
       </View>
 
@@ -693,7 +721,7 @@ export default function AssignmentsScreen() {
         animationType="slide"
         onRequestClose={() => setShowReceiptImage(false)}
       >
-        <Screen scroll={false}>
+        <Screen tabBarHidden scroll={false}>
           <AppButton
             variant="text"
             label={copy.global.closeAccessibilityLabel}
@@ -730,10 +758,8 @@ function createStyles(colors: ColorTokens) {
       // receipt row / actionsBlock) — spacing.lg, the same
       // rhythm receipt-review.tsx uses between its blocks.
       gap: spacing.lg,
-      // The Continue button used to sit in a sticky footer, which Screen.tsx
-      // pads above the global nav bar automatically — now that it's plain
-      // in-flow content, this screen reserves that space itself.
-      paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+      // No tab-bar clearance: the global BottomTabBar is hidden on /bill/**.
+      paddingBottom: spacing.lg,
     },
     actionsBlock: {
       gap: spacing.md,

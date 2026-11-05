@@ -8,7 +8,6 @@ import { Alert, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
-import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ReceiptTornEdge } from '@/components/ui/ReceiptTornEdge';
 import { Screen } from '@/components/ui/Screen';
 import { copy } from '@/constants/copy';
@@ -80,7 +79,7 @@ export default function PreviewScreen() {
   }
 
   return (
-    <Screen scroll padded={false}>
+    <Screen tabBarHidden scroll padded={false}>
       <View style={styles.body}>
         <View style={styles.headingGroup}>
           <AppText variant="heading">{copy.preview.heading}</AppText>
@@ -141,10 +140,8 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     body: {
       padding: spacing.lg,
-      // The action buttons used to sit in a sticky footer, which Screen.tsx
-      // pads above the global nav bar automatically — now that they're plain
-      // in-flow content, this screen reserves that space itself.
-      paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+      // No tab-bar clearance: the global BottomTabBar is hidden on /bill/**.
+      paddingBottom: spacing.lg,
       // Section-to-section rhythm: heading block, image block, actions block.
       gap: spacing.xl,
     },

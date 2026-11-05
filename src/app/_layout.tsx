@@ -107,9 +107,10 @@ function SessionGate({ migrationsReady }: { migrationsReady: boolean }) {
               </Stack.Protected>
             </Stack>
             {/* Persistent overlay above whichever screen the Stack above is
-                currently showing — every `bill/**`/`trip/**` route included,
-                not just Home/Settings (those two are just this bar's own
-                highlighted destinations, see BottomTabBar.tsx). Rendered here
+                currently showing — `trip/**` routes included, not just
+                Home/Settings (those two are just this bar's own highlighted
+                destinations, see BottomTabBar.tsx); it hides itself on
+                `bill/**` (tabBarVisibility.ts). Rendered here
                 rather than inside the Stack.Screen for "index"/"settings" so
                 it survives across pushes to other routes instead of
                 unmounting/remounting. */}

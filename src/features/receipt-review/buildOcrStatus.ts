@@ -18,11 +18,10 @@ export type OcrStatus = {
 
 /**
  * Derives receipt-review's non-interactive AI/OCR status card purely from the
- * one-time route params processing.tsx passes along. Mirrors the screen's
- * previous badge + notes logic exactly: the handwriting note shows for every
- * backend result, the rate-limit note only for an on-device rate-limit
- * fallback, and the truncated note for either a truncated backend result or
- * an on-device token-limit fallback. Returns null when there's no source
+ * one-time route params processing.tsx passes along. A full backend read is a
+ * single short success line with no extra notes; the rate-limit note shows
+ * only for an on-device rate-limit fallback, and the truncated note for
+ * either a truncated backend result or an on-device token-limit fallback. Returns null when there's no source
  * (e.g. a reopened draft), so nothing is shown.
  */
 export function buildOcrStatus(
@@ -33,9 +32,6 @@ export function buildOcrStatus(
   if (!ocrSource) return null;
 
   const notes: OcrStatusNote[] = [];
-  if (ocrSource === 'backend') {
-    notes.push({ text: copy.receiptReview.handwritingNote, tone: 'textSecondary' });
-  }
   if (fallbackReason === 'rate_limited') {
     notes.push({ text: copy.receiptReview.rateLimitedNote, tone: 'warning' });
   }
@@ -49,7 +45,7 @@ export function buildOcrStatus(
       : {
           tone: 'success',
           title: copy.receiptReview.aiCheckedTitle,
-          body: copy.receiptReview.aiCheckedBody,
+          body: null,
           notes,
         };
   }

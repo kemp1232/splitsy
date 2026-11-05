@@ -1,6 +1,5 @@
 import { and, eq } from 'drizzle-orm';
 
-import { copy } from '@/constants/copy';
 import { db } from '@/db/client';
 import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
 import type { Adjustment } from '@/db/repositories/adjustments.repository';
@@ -47,7 +46,9 @@ export async function createDraftBill(input: CreateDraftBillInput): Promise<Bill
   const timestamp = nowIso();
   return billsRepository.create({
     id: createId(),
-    title: copy.home.unknownMerchantTitle,
+    // Empty, not a placeholder: an untitled bill's name is derived at
+    // display time (getBillDisplayTitle → "Bill · Nov 5").
+    title: '',
     currency: 'PHP',
     status: 'DRAFT',
     entryMethod: input.entryMethod,
@@ -65,7 +66,7 @@ export async function createQuickSplitBill(input: {
 }): Promise<Bill> {
   const id = createId();
   const timestamp = nowIso();
-  const title = input.title.trim() || copy.home.unknownMerchantTitle;
+  const title = input.title.trim();
 
   return db.transaction(async (tx) => {
     const [bill] = await tx

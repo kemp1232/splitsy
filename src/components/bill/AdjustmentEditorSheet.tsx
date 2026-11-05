@@ -26,6 +26,7 @@ import {
   type AllocationMethod,
 } from '@/features/adjustments/defaultAllocationMethod';
 import { isValidAdjustmentAmount } from '@/features/adjustments/validateAdjustmentAmount';
+import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
 import { validateCustomAllocation } from '@/features/splitting/allocation';
 import { formatCentavos } from '@/lib/money';
 import type { ColorTokens } from '@/theme/tokens';
@@ -138,6 +139,14 @@ export function AdjustmentEditorSheet({
   >({});
   const [amountError, setAmountError] = useState<string | null>(null);
   const [customError, setCustomError] = useState<string | null>(null);
+  // Custom amounts need people to split between — on receipt-review.tsx (which
+  // comes before the participants step) there may be none yet, so the option
+  // is hidden there. An adjustment already saved as CUSTOM keeps it, so it
+  // stays editable either way.
+  const allocationOptions =
+    hasMinimumParticipants(participants.length) || initial?.allocationMethod === 'CUSTOM'
+      ? ALLOCATION_OPTIONS
+      : ALLOCATION_OPTIONS.filter((option) => option.value !== 'CUSTOM');
 
   // Re-seeds local state every time the sheet opens (mirrors
   // LineItemEditorSheet / ParticipantEditorSheet), so reopening for a
@@ -319,7 +328,7 @@ export function AdjustmentEditorSheet({
                     {copy.adjustmentEditor.allocationField}
                   </AppText>
                   <View accessibilityRole="radiogroup" style={styles.allocationList}>
-                    {ALLOCATION_OPTIONS.map((option) => (
+                    {allocationOptions.map((option) => (
                       <AllocationOptionRow
                         key={option.value}
                         label={option.label}

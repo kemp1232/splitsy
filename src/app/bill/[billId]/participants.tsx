@@ -1,15 +1,16 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
+  PARTICIPANT_NAME_ERROR_BY_REASON,
   ParticipantEditorSheet,
   type ParticipantDraft,
 } from '@/components/bill/ParticipantEditorSheet';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
-import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
+import { AppTextInput } from '@/components/ui/AppTextInput';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -23,8 +24,10 @@ import { participantsRepository } from '@/db/repositories/participants.repositor
 import { removeParticipant } from '@/features/bills/bill.service';
 import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
 import {
+  MAX_PARTICIPANT_NAME_LENGTH,
   normalizeParticipantName,
   resolveQuickAddMeName,
+  validateParticipantName,
 } from '@/features/participants/validateParticipantName';
 import { authClient } from '@/lib/authClient';
 import { nowIso } from '@/lib/date';
@@ -45,7 +48,8 @@ export default function ParticipantsScreen() {
 
   const [state, setState] = useState<LoadState>('loading');
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [editingParticipant, setEditingParticipant] = useState<Participant | 'new' | null>(null);
+  // The sheet is edit-only now — new people are added via the inline field.
+  const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null);
   const [removingParticipant, setRemovingParticipant] = useState<Participant | null>(null);
   // One shared error slot for this screen's three write paths below (save,
   // quick-add, remove) rather than one state variable per handler — none of
@@ -53,6 +57,13 @@ export default function ParticipantsScreen() {
   // sheet/dialog being open), so there is never a case where two would need
   // to be shown at once.
   const [actionError, setActionError] = useState<string | null>(null);
+  // Inline "Add a name" field — always visible; submitting adds the person,
+  // clears the field and keeps it focused (submitBehavior="submit").
+  const [newName, setNewName] = useState('');
+  const [newNameError, setNewNameError] = useState<string | null>(null);
+  // In-flight guard for inline adds — a ref, not state, so a rapid double
+  // submit (before the next render) can't slip past it and add twice.
+  const addingRef = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -79,23 +90,28 @@ export default function ParticipantsScreen() {
     setParticipants(rows);
   }
 
+  // The one create path for a new participant — shared by the inline
+  // "Add a name" field and "Add me".
+  async function createParticipant(name: string) {
+    const timestamp = nowIso();
+    await participantsRepository.create({
+      id: createId(),
+      billId,
+      sortOrder: participants.length,
+      name,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+    await refreshParticipants();
+  }
+
   async function handleSaveParticipant(draft: ParticipantDraft) {
     setActionError(null);
     try {
-      const timestamp = nowIso();
-      if (editingParticipant === 'new') {
-        await participantsRepository.create({
-          id: createId(),
-          billId,
-          sortOrder: participants.length,
-          name: draft.name,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        });
-      } else if (editingParticipant) {
+      if (editingParticipant) {
         await participantsRepository.update(editingParticipant.id, {
           name: draft.name,
-          updatedAt: timestamp,
+          updatedAt: nowIso(),
         });
       }
       setEditingParticipant(null);
@@ -106,19 +122,56 @@ export default function ParticipantsScreen() {
     }
   }
 
+  // Adds whatever is typed in the inline field. Resolves true when there was
+  // nothing to add or it was added; false when validation or storage failed
+  // (the error is shown) or another add is still in flight.
+  async function addTypedName(): Promise<boolean> {
+    // A blank field is nothing to add (keeps focus, no error) — the field is
+    // always visible, so pressing return on it empty isn't a mistake.
+    if (!newName.trim()) return true;
+    if (addingRef.current) return false;
+    const result = validateParticipantName(
+      newName,
+      participants.map((participant) => participant.name),
+    );
+    if (!result.valid) {
+      setNewNameError(PARTICIPANT_NAME_ERROR_BY_REASON[result.reason]);
+      return false;
+    }
+    setNewNameError(null);
+    setActionError(null);
+    addingRef.current = true;
+    try {
+      await createParticipant(result.name);
+      setNewName('');
+      return true;
+    } catch {
+      setActionError(copy.global.storageFailure);
+      return false;
+    } finally {
+      addingRef.current = false;
+    }
+  }
+
+  async function handleInlineAdd() {
+    await addTypedName();
+  }
+
+  // A typed-but-unsubmitted name is added first rather than silently
+  // dropped; if it can't be (e.g. duplicate), its error shows and we stay.
+  async function handleContinue() {
+    if (await addTypedName()) router.push(`/bill/${billId}/assignments`);
+  }
+
+  function handleNewNameChange(text: string) {
+    setNewName(text);
+    if (newNameError) setNewNameError(null);
+  }
+
   async function handleQuickAddMe() {
     setActionError(null);
     try {
-      const timestamp = nowIso();
-      await participantsRepository.create({
-        id: createId(),
-        billId,
-        sortOrder: participants.length,
-        name: meName,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      });
-      await refreshParticipants();
+      await createParticipant(meName);
     } catch {
       setActionError(copy.global.storageFailure);
     }
@@ -141,7 +194,7 @@ export default function ParticipantsScreen() {
 
   if (state === 'loading') {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <LoadingState />
       </Screen>
     );
@@ -149,7 +202,7 @@ export default function ParticipantsScreen() {
 
   if (state === 'error') {
     return (
-      <Screen>
+      <Screen tabBarHidden>
         <ErrorState
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
@@ -165,8 +218,7 @@ export default function ParticipantsScreen() {
     (participant) => normalizeParticipantName(participant.name) === normalizedMeName,
   );
   const meetsMinimumParticipants = hasMinimumParticipants(participants.length);
-  const editingParticipantId =
-    editingParticipant && editingParticipant !== 'new' ? editingParticipant.id : null;
+  const editingParticipantId = editingParticipant ? editingParticipant.id : null;
   const existingNamesForEditor = participants
     .filter((participant) => participant.id !== editingParticipantId)
     .map((participant) => participant.name);
@@ -175,7 +227,9 @@ export default function ParticipantsScreen() {
   const countText = String(participants.length);
 
   return (
-    <Screen scroll padded={false}>
+    // "handled": with the inline name field focused, the first tap on "+",
+    // Continue, Add me or a row acts instead of only dismissing the keyboard.
+    <Screen tabBarHidden scroll padded={false} keyboardShouldPersistTaps="handled">
       <View style={styles.body}>
         <View style={styles.headerBlock}>
           <View style={styles.headingRow}>
@@ -199,13 +253,35 @@ export default function ParticipantsScreen() {
           {actionError ? <InlineError message={actionError} /> : null}
         </View>
 
+        <AppTextInput
+          value={newName}
+          onChangeText={handleNewNameChange}
+          placeholder={copy.participants.inlineAddPlaceholder}
+          accessibilityLabel={copy.participants.inlineAddPlaceholder}
+          maxLength={MAX_PARTICIPANT_NAME_LENGTH}
+          autoCapitalize="words"
+          autoCorrect={false}
+          returnKeyType="done"
+          submitBehavior="submit"
+          onSubmitEditing={handleInlineAdd}
+          error={newNameError ?? undefined}
+          trailingIcon={(color) => (
+            <Pressable
+              onPress={handleInlineAdd}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={copy.participants.addAction}
+            >
+              <Feather name="plus-circle" size={20} color={color} />
+            </Pressable>
+          )}
+        />
+
         <View style={styles.sectionCard}>
           {isEmpty ? (
             <EmptyState
               heading={copy.participants.emptyHeading}
               body={copy.participants.emptyBody}
-              actionLabel={copy.participants.addAction}
-              onAction={() => setEditingParticipant('new')}
             />
           ) : (
             <>
@@ -221,17 +297,6 @@ export default function ParticipantsScreen() {
                 >
                   {copy.participants.sectionWithCount.replace('{count}', countText)}
                 </AppText>
-                <Pressable
-                  onPress={() => setEditingParticipant('new')}
-                  accessibilityRole="button"
-                  accessibilityLabel={copy.participants.addAction}
-                  style={({ pressed }) => [styles.addPersonButton, pressed && styles.pressed]}
-                >
-                  <Feather name="plus" size={16} color={colors.primary} />
-                  <AppText variant="body" color="primary" style={styles.addPersonText}>
-                    {copy.participants.addAction}
-                  </AppText>
-                </Pressable>
               </View>
               {participants.map((item) => (
                 <View key={item.id} style={styles.row}>
@@ -282,18 +347,14 @@ export default function ParticipantsScreen() {
             disabled={!meetsMinimumParticipants}
             icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
             iconPosition="trailing"
-            onPress={() => router.push(`/bill/${billId}/assignments`)}
+            onPress={handleContinue}
           />
         </View>
       </View>
 
       <ParticipantEditorSheet
         visible={editingParticipant !== null}
-        initial={
-          editingParticipant && editingParticipant !== 'new'
-            ? { name: editingParticipant.name }
-            : null
-        }
+        initial={editingParticipant ? { name: editingParticipant.name } : null}
         existingNames={existingNamesForEditor}
         onSave={handleSaveParticipant}
         onCancel={() => setEditingParticipant(null)}
@@ -332,10 +393,7 @@ function createStyles(colors: ColorTokens) {
       // block): spacing.xl between each distinct block, spacing.md/sm
       // within one — see each block's own style below.
       gap: spacing.xl,
-      // The Continue button used to sit in a sticky footer, which Screen.tsx
-      // pads above the global nav bar automatically — now that it's plain
-      // in-flow content, this screen reserves that space itself.
-      paddingBottom: spacing.lg + TAB_BAR_CONTENT_CLEARANCE,
+      // No tab-bar clearance: the global BottomTabBar is hidden on /bill/**.
     },
     headerBlock: {
       gap: spacing.md,
@@ -363,21 +421,11 @@ function createStyles(colors: ColorTokens) {
       gap: spacing.md,
       paddingLeft: spacing.md,
       paddingRight: spacing.sm,
+      // Was sized by the (removed) "Add person" button beside the title.
+      minHeight: touchTarget.min,
     },
     sectionTitle: {
       flexShrink: 1,
-    },
-    addPersonButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.xs,
-      minHeight: touchTarget.min,
-      paddingHorizontal: spacing.sm,
-    },
-    addPersonText: {
-      fontSize: 14,
-      lineHeight: 19,
-      fontWeight: '600',
     },
     continueBlock: {
       gap: spacing.md,

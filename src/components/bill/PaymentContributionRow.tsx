@@ -14,7 +14,7 @@ type Props = {
   name: string;
   valueCentavos: number;
   onChangeCentavos: (centavos: number) => void;
-  // "Paid in full" (spec-adjacent copy.payments.fullAmountAction) — the
+  // "Paid the whole bill" (copy.payments.fullAmountAction) — the
   // Payments screen sets *this* participant's contribution to the bill's
   // full computed total and zeroes everyone else's in local form state; this
   // row only ever reports the press, never computes the amount itself.
@@ -95,7 +95,7 @@ function createStyles(colors: ColorTokens) {
     row: {
       flexDirection: 'row',
       // The amount field has no label above it any more, but stays
-      // flex-end (rather than center) so the "Paid in full" button lines up
+      // flex-end (rather than center) so the "Paid the whole bill" button lines up
       // with the bottom of the input even if the field ever grows taller
       // (e.g. a validation error appearing beneath it).
       alignItems: 'flex-end',
