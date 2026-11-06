@@ -241,11 +241,15 @@ export const copy = {
     detectedSubtotalLabel: 'Receipt subtotal',
     itemSubtotalLabel: 'Items subtotal',
     detectedTotalLabel: 'Receipt total',
-    // Collapsed totals headline (buildTotalHeadline); the ✓ "matches" claim
-    // only appears when a detected receipt total equals the current total.
-    totalHeadline: 'Total {amount}',
-    totalHeadlineMatches: 'Total {amount} ✓ matches receipt',
-    totalHeadlineMatchesSpeech: 'Total {amount}, matches receipt',
+    // Totals card header: label, amount, and a reconciliation badge. The
+    // "matches" badge only appears when a detected receipt total equals the
+    // current total; with no detected total nothing is claimed.
+    totalLabel: 'Total',
+    totalsMatchBadge: 'Matches receipt',
+    totalsMismatchBadge: 'Totals differ',
+    totalsUnverifiedBadge: 'Not verified',
+    // Screen-reader label for the whole header (buildTotalHeadlineSpeech).
+    totalHeadlineSpeech: 'Total {amount}, {status}',
     breakdownToggleHint: 'Shows or hides the totals breakdown',
     mismatchWarning: 'The current total is {difference} {higherOrLower} than the receipt.',
     higherWord: 'higher',
@@ -581,25 +585,51 @@ export const copy = {
     // Not from the spec — the visual revamp's manual light/dark override
     // (defaults to following the system setting; see ThemeProvider.tsx).
     appearanceSection: 'Appearance',
+    appearanceCaption: 'Choose your app theme.',
     appearanceSystem: 'Match system',
     appearanceLight: 'Light',
     appearanceDark: 'Dark',
     privacySection: 'Privacy',
     // Deliberately not spec 13.20's literal text ("...does not upload them to
     // a Splitsy server") — the 2026-07-31 spec Amendment means that's no
-    // longer accurate: a receipt photo may transit Splitsy's own backend for
-    // OCR extraction. This says what's still true (everything confirmed
-    // stays local, nothing is stored server-side) instead of a now-false
-    // claim. See the Amendment callout at the top of
-    // docs/Splitsy_MVP_Spec.md for the full rationale.
-    privacyBody:
-      'Splitsy stores receipt images, extracted text, and bill history on this device. A photo may briefly be sent to Splitsy’s own text-reading service to read it, then deleted there immediately — nothing is stored on a server, and your confirmed bill always stays on this device.',
+    // longer accurate. A receipt photo transits Splitsy's own backend
+    // (held in memory only), which forwards it to a third-party AI
+    // text-reading provider whose retention Splitsy doesn't control. The
+    // server itself only stores account sign-in data (Better Auth) and a
+    // scan-cooldown record — never receipt images or receipt text. So this
+    // copy avoids claiming the photo is "deleted immediately", that nothing
+    // is stored on a server, or that all data is exclusively on-device. The
+    // provider is deliberately not named (user decision). See the Amendment
+    // callout at the top of docs/Splitsy_MVP_Spec.md for the full rationale.
+    privacyLocalTitle: 'Stored on your device',
+    privacyLocalBody: 'Your bills and receipt photos are saved on this device.',
+    privacyOcrTitle: 'Online receipt reading',
+    privacyOcrBody:
+      "Scanning sends the photo to Splitsy's server and a third-party reading service.",
+    privacyServerTitle: 'Server storage',
+    privacyServerBody: "Splitsy's server keeps your sign-in details, not your receipts.",
+    privacyLearnMore: 'Learn more',
+    privacyLearnMoreHint: 'Opens full privacy details',
+    privacyDetailsHeading: 'How Splitsy handles your data',
+    privacyDetailsLocalBody:
+      'Your bills, trips, and receipt photos, including the items and prices read from your receipts, are saved on this device.',
+    privacyDetailsOcrBody:
+      "When you scan a receipt, the photo is sent to Splitsy's server, which passes it to a third-party AI text-reading provider to read the items and prices. Splitsy's server doesn't save the photo or the text read from it, but Splitsy doesn't control how long that provider may keep it.",
+    privacyDetailsServerBody:
+      "Splitsy's server stores your account sign-in details and a small record used to pace receipt scans. It doesn't save your receipt photos, receipt text, or bills.",
     dataSection: 'Local data',
     deleteAllAction: 'Delete all local data',
-    deleteAllHeading: 'Delete all Splitsy data?',
+    deleteAllCaption: 'Permanently removes saved bills and receipt photos.',
+    // Matches resetAllLocalData (bill.service.ts / bill.service.web.ts):
+    // deletes every bill (cascading items, participants, assignments,
+    // adjustments; drafts are bills too, including bills inside trips), the
+    // app_settings table, and the receipts image directory. Trips and trip
+    // members, the theme preference (AsyncStorage), and the sign-in session
+    // are NOT touched — keep this copy in sync if that function changes.
+    deleteAllHeading: 'Delete all bills and receipts?',
     deleteAllBody:
-      'This permanently removes every saved bill, draft, receipt image, and setting from this device.',
-    deleteAllConfirm: 'Delete everything',
+      "This permanently removes every saved bill and draft, including bills inside trips, plus all receipt photos, from this device. Your trips and their member lists, your theme choice, and your sign-in are kept. This can't be undone.",
+    deleteAllConfirm: 'Delete permanently',
     deleteAllCancel: 'Cancel',
     versionLabel: 'Version',
     aboutSection: 'About Splitsy',

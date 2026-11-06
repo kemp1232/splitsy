@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import type { ColorTokens } from '@/theme/tokens';
@@ -103,6 +103,9 @@ type Props = {
   // reading as a distinct chip. See `pastelSolidColors` for how the
   // fill/text pair is derived.
   solid?: boolean;
+  // Optional leading icon, rendered with the label's own color (same
+  // render-prop shape as AppButton's `icon`).
+  icon?: (color: string) => ReactNode;
 };
 
 // Status is always conveyed by the label text itself, never by background
@@ -113,6 +116,7 @@ export function StatusBadge({
   style,
   solid = false,
   labelColor = 'textPrimary',
+  icon,
 }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -120,6 +124,7 @@ export function StatusBadge({
   const solidStyle = pastel ? { backgroundColor: pastel.background, borderWidth: 0 } : null;
   return (
     <View style={[styles.badge, styles[tone], solidStyle, style]}>
+      {icon ? icon(pastel ? pastel.text : colors[labelColor]) : null}
       <AppText
         variant="caption"
         color={labelColor}
@@ -140,6 +145,9 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     badge: {
       alignSelf: 'flex-start',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.xs / 2,
       borderRadius: radius.pill,

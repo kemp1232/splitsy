@@ -1,17 +1,17 @@
 import Feather from '@expo/vector-icons/Feather';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
+import type { ComponentProps } from 'react';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
-import { AppButton } from '@/components/ui/AppButton';
+import { PrivacyDetailsModal } from '@/components/settings/PrivacyDetailsModal';
 import { AppText } from '@/components/ui/AppText';
 import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
-import { Divider } from '@/components/ui/Divider';
+import { GroupedCard, GroupedSeparator, SectionHeader } from '@/components/ui/GroupedSection';
 import { InlineError } from '@/components/ui/InlineError';
 import { Screen } from '@/components/ui/Screen';
-import { SectionCard } from '@/components/ui/SectionCard';
 import { copy } from '@/constants/copy';
 import { resetAllLocalData } from '@/features/bills/bill.service';
 import { authClient } from '@/lib/authClient';
@@ -26,16 +26,125 @@ import { useTheme, type ThemePreference } from '@/theme/ThemeProvider';
 // though that shouldn't happen in practice for this project.
 const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 
-const APPEARANCE_OPTIONS: { value: ThemePreference; label: string }[] = [
-  { value: 'system', label: copy.settings.appearanceSystem },
-  { value: 'light', label: copy.settings.appearanceLight },
-  { value: 'dark', label: copy.settings.appearanceDark },
+const APPEARANCE_OPTIONS: { value: ThemePreference; label: string; icon: FeatherName }[] = [
+  { value: 'system', label: copy.settings.appearanceSystem, icon: 'smartphone' },
+  { value: 'light', label: copy.settings.appearanceLight, icon: 'sun' },
+  { value: 'dark', label: copy.settings.appearanceDark, icon: 'moon' },
 ];
+
+const PRIVACY_SUMMARY = [
+  { title: copy.settings.privacyLocalTitle, body: copy.settings.privacyLocalBody },
+  { title: copy.settings.privacyOcrTitle, body: copy.settings.privacyOcrBody },
+  { title: copy.settings.privacyServerTitle, body: copy.settings.privacyServerBody },
+];
+
+type FeatherName = ComponentProps<typeof Feather>['name'];
+
+// Section title row with a leading icon — GroupedSection's SectionHeader has
+// no icon slot, so it's composed here rather than widening that shared API
+// for one screen.
+function SettingsSectionHeader({
+  icon,
+  title,
+  caption,
+}: {
+  icon: FeatherName;
+  title: string;
+  caption?: string;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View style={staticStyles.sectionHeader}>
+      <Feather
+        name={icon}
+        size={20}
+        color={colors.textSecondary}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      />
+      <View style={staticStyles.flex}>
+        <SectionHeader title={title} caption={caption} />
+      </View>
+    </View>
+  );
+}
+
+type SettingsRowProps = {
+  icon: FeatherName;
+  title: string;
+  caption?: string;
+  onPress: () => void;
+  destructive?: boolean;
+  loading?: boolean;
+  accessibilityHint?: string;
+};
+
+// One full-width tappable row inside a GroupedCard: icon, title (+ optional
+// caption), and a trailing chevron — ActionRow.tsx's shape without its own
+// border, since the GroupedCard supplies that. `loading` swaps the chevron for
+// a spinner and disables the row.
+function SettingsRow({
+  icon,
+  title,
+  caption,
+  onPress,
+  destructive,
+  loading,
+  accessibilityHint,
+}: SettingsRowProps) {
+  const { colors } = useTheme();
+  const pressedStyle = useMemo(() => createRowPressedStyle(colors), [colors]);
+  const tone = destructive ? colors.danger : colors.textPrimary;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={caption ? `${title}, ${caption}` : title}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: !!loading, busy: !!loading }}
+      disabled={loading}
+      onPress={onPress}
+      style={({ pressed }) => [
+        staticStyles.row,
+        staticStyles.pressableRow,
+        pressed && pressedStyle.pressed,
+        loading && staticStyles.rowDisabled,
+      ]}
+    >
+      <Feather
+        name={icon}
+        size={20}
+        color={tone}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      />
+      <View style={staticStyles.rowText}>
+        <AppText color={destructive ? 'danger' : 'textPrimary'}>{title}</AppText>
+        {caption ? (
+          <AppText variant="caption" color="textSecondary">
+            {caption}
+          </AppText>
+        ) : null}
+      </View>
+      {loading ? (
+        <ActivityIndicator size="small" color={colors.textSecondary} />
+      ) : (
+        <Feather
+          name="chevron-right"
+          size={20}
+          color={colors.textSecondary}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        />
+      )}
+    </Pressable>
+  );
+}
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { colors, preference, setPreference } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [showPrivacyDetails, setShowPrivacyDetails] = useState(false);
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
   const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -85,10 +194,17 @@ export default function SettingsScreen() {
   return (
     <Screen scroll>
       <View style={styles.body}>
-        <AppText variant="heading">{copy.settings.heading}</AppText>
+        <AppText variant="heading" accessibilityRole="header">
+          {copy.settings.heading}
+        </AppText>
 
-        <SectionCard title={copy.settings.appearanceSection}>
-          <View style={styles.appearanceRow} accessibilityRole="radiogroup">
+        <View style={styles.section}>
+          <SettingsSectionHeader
+            icon="sliders"
+            title={copy.settings.appearanceSection}
+            caption={copy.settings.appearanceCaption}
+          />
+          <View style={styles.segmentRow} accessibilityRole="radiogroup">
             {APPEARANCE_OPTIONS.map((option) => {
               const selected = preference === option.value;
               return (
@@ -96,64 +212,111 @@ export default function SettingsScreen() {
                   key={option.value}
                   onPress={() => setPreference(option.value)}
                   accessibilityRole="radio"
+                  accessibilityLabel={option.label}
                   accessibilityState={{ selected }}
                   style={({ pressed }) => [
-                    styles.appearanceOption,
-                    selected && styles.appearanceOptionSelected,
-                    pressed && styles.appearanceOptionPressed,
+                    styles.segment,
+                    selected && styles.segmentSelected,
+                    pressed && styles.segmentPressed,
                   ]}
                 >
-                  {/* Selection is conveyed by the check icon, not only the
-                      option's background color (spec section 17) — was a
-                      literal "✓ " text prefix before the icon pass. */}
-                  <View style={styles.appearanceOptionContent}>
-                    {selected ? (
-                      <Feather name="check" size={16} color={colors.onPrimary} />
-                    ) : null}
-                    <AppText variant="body" color={selected ? 'onPrimary' : 'textPrimary'}>
-                      {option.label}
-                    </AppText>
-                  </View>
+                  {/* Icon stacked above the label so "Match system" gets the
+                      segment's full width. Selection isn't conveyed by color
+                      alone (spec section 17): the selected label is also
+                      bold. The label has no line limit, so at large font
+                      sizes it wraps rather than clips; the row's default
+                      stretch alignment keeps all three segments the same
+                      height. */}
+                  <Feather
+                    name={option.icon}
+                    size={18}
+                    color={selected ? colors.onPrimary : colors.textSecondary}
+                    accessibilityElementsHidden
+                    importantForAccessibility="no-hide-descendants"
+                  />
+                  <AppText
+                    variant="caption"
+                    color={selected ? 'onPrimary' : 'textPrimary'}
+                    style={[styles.segmentLabel, selected && styles.segmentLabelSelected]}
+                  >
+                    {option.label}
+                  </AppText>
                 </Pressable>
               );
             })}
           </View>
-        </SectionCard>
+        </View>
 
-        <SectionCard title={copy.auth.accountSection}>
-          <AppButton
-            variant="secondary"
-            label={copy.auth.logOutAction}
-            onPress={handleLogOut}
-            loading={loggingOut}
-            icon={(color) => <Feather name="log-out" size={18} color={color} />}
-          />
+        <View style={styles.section}>
+          <SettingsSectionHeader icon="user" title={copy.auth.accountSection} />
+          <GroupedCard>
+            <SettingsRow
+              icon="log-out"
+              title={copy.auth.logOutAction}
+              onPress={handleLogOut}
+              loading={loggingOut}
+            />
+          </GroupedCard>
           {logOutError ? <InlineError message={logOutError} /> : null}
-        </SectionCard>
+        </View>
 
-        <SectionCard title={copy.settings.privacySection}>
-          <AppText color="textSecondary">{copy.settings.privacyBody}</AppText>
-        </SectionCard>
+        <View style={styles.section}>
+          <SettingsSectionHeader icon="shield" title={copy.settings.privacySection} />
+          <GroupedCard>
+            {PRIVACY_SUMMARY.map((item) => (
+              <View key={item.title}>
+                <View
+                  accessible
+                  accessibilityLabel={`${item.title}, ${item.body}`}
+                  style={[staticStyles.row, styles.summaryText]}
+                >
+                  <AppText>{item.title}</AppText>
+                  <AppText variant="caption" color="textSecondary">
+                    {item.body}
+                  </AppText>
+                </View>
+                <GroupedSeparator />
+              </View>
+            ))}
+            <SettingsRow
+              icon="info"
+              title={copy.settings.privacyLearnMore}
+              accessibilityHint={copy.settings.privacyLearnMoreHint}
+              onPress={() => setShowPrivacyDetails(true)}
+            />
+          </GroupedCard>
+        </View>
 
-        <SectionCard title={copy.settings.dataSection}>
-          <AppButton
-            variant="destructive"
-            label={copy.settings.deleteAllAction}
-            onPress={() => setShowDeleteAllConfirm(true)}
-            icon={(color) => <Feather name="trash" size={18} color={color} />}
-          />
+        <View style={styles.section}>
+          <SettingsSectionHeader icon="database" title={copy.settings.dataSection} />
+          <GroupedCard>
+            <SettingsRow
+              icon="trash-2"
+              title={copy.settings.deleteAllAction}
+              caption={copy.settings.deleteAllCaption}
+              destructive
+              onPress={() => setShowDeleteAllConfirm(true)}
+            />
+          </GroupedCard>
           {deleteAllError ? <InlineError message={deleteAllError} /> : null}
-        </SectionCard>
+        </View>
 
-        <SectionCard title={copy.settings.aboutSection}>
+        <View style={styles.section}>
+          <SettingsSectionHeader icon="smartphone" title={copy.settings.aboutSection} />
           <AppText color="textSecondary">{copy.settings.aboutBody}</AppText>
-          <Divider />
-          <View style={styles.row}>
-            <AppText color="textSecondary">{copy.settings.versionLabel}</AppText>
-            <AppText>{APP_VERSION}</AppText>
-          </View>
-        </SectionCard>
+          <GroupedCard>
+            <View style={[staticStyles.row, styles.versionRow]}>
+              <AppText color="textSecondary">{copy.settings.versionLabel}</AppText>
+              <AppText>{APP_VERSION}</AppText>
+            </View>
+          </GroupedCard>
+        </View>
       </View>
+
+      <PrivacyDetailsModal
+        visible={showPrivacyDetails}
+        onClose={() => setShowPrivacyDetails(false)}
+      />
 
       <ConfirmationDialog
         visible={showDeleteAllConfirm}
@@ -172,44 +335,96 @@ export default function SettingsScreen() {
 function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     body: {
-      // Section-to-section rhythm (heading, then each SectionCard) — spacing
-      // within a card is SectionCard's own spacing.sm.
-      gap: spacing.xl,
+      // Section-to-section rhythm (heading, then each section) — tighter
+      // than the old spacing.xl for the compact grouped layout.
+      gap: spacing.lg,
       // So the last card isn't hidden underneath the persistent tab bar
       // that now floats over this screen.
       paddingBottom: TAB_BAR_CONTENT_CLEARANCE,
     },
-    row: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    appearanceRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
+    section: {
       gap: spacing.sm,
     },
-    appearanceOption: {
+    summaryText: {
+      gap: 2,
+    },
+    versionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.md,
+    },
+    segmentRow: {
+      flexDirection: 'row',
+      gap: spacing.xs,
+    },
+    segment: {
+      flex: 1,
       minHeight: touchTarget.min,
+      alignItems: 'center',
       justifyContent: 'center',
-      paddingHorizontal: spacing.md,
+      gap: 2,
+      paddingHorizontal: spacing.xs,
       paddingVertical: spacing.sm,
-      borderRadius: radius.pill,
+      borderRadius: radius.md,
       borderCurve: 'continuous',
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surfaceMuted,
     },
-    appearanceOptionContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.xs,
+    segmentLabel: {
+      textAlign: 'center',
     },
-    appearanceOptionSelected: {
+    segmentLabelSelected: {
+      fontWeight: '600',
+    },
+    segmentSelected: {
       backgroundColor: colors.primary,
       borderColor: colors.primary,
     },
-    appearanceOptionPressed: {
+    segmentPressed: {
       opacity: 0.85,
     },
   });
 }
+
+// SettingsRow's only themed style — kept separate so each row builds this one
+// small sheet instead of the whole screen's createStyles.
+function createRowPressedStyle(colors: ColorTokens) {
+  return StyleSheet.create({
+    pressed: {
+      backgroundColor: colors.surfaceMuted,
+    },
+  });
+}
+
+const staticStyles = StyleSheet.create({
+  // Shared padding/height for every row inside a GroupedCard.
+  row: {
+    minHeight: touchTarget.min,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    justifyContent: 'center',
+  },
+  pressableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  rowText: {
+    flex: 1,
+    gap: 2,
+  },
+  // Same dimmed treatment as AppButton's own disabled/loading state.
+  rowDisabled: {
+    opacity: 0.5,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  flex: {
+    flex: 1,
+  },
+});

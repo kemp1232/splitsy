@@ -21,6 +21,7 @@ import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
+import { Divider } from '@/components/ui/Divider';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { GroupedCard, GroupedSeparator } from '@/components/ui/GroupedSection';
@@ -30,6 +31,7 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
 import { SectionCard } from '@/components/ui/SectionCard';
+import { StatusBadge } from '@/components/ui/StatusBadge';
 import { copy } from '@/constants/copy';
 import type { Bill } from '@/db/repositories/bills.repository';
 import { billsRepository } from '@/db/repositories/bills.repository';
@@ -45,8 +47,10 @@ import { createGalleryBill, pickGalleryImageUri } from '@/features/bills/gallery
 import { buildOcrStatus, type OcrStatusTone } from '@/features/receipt-review/buildOcrStatus';
 import {
   buildMismatchMessage,
-  buildTotalHeadline,
+  buildTotalHeadlineSpeech,
+  getTotalsBadgeLabel,
   getTotalsMatch,
+  type TotalsMatchStatus,
 } from '@/features/receipt-review/buildTotalsSummary';
 import { nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
@@ -397,17 +401,12 @@ export default function ReceiptReviewScreen() {
   // warns that people are cleared too.
   const canChooseAnother =
     bill.entryMethod === 'GALLERY' && bill.status === 'DRAFT' && ocrSource != null;
-  const totalHeadline = buildTotalHeadline(
-    computedTotalCentavos,
-    totalsMatch.status,
-    formatCentavos,
-  );
-  const totalHeadlineSpeech = buildTotalHeadline(
+  const totalHeadlineSpeech = buildTotalHeadlineSpeech(
     computedTotalCentavos,
     totalsMatch.status,
     formatCentavosForSpeech,
-    true,
   );
+  const totalsBadge = TOTALS_BADGE[totalsMatch.status];
   const mismatchMessage = buildMismatchMessage(totalsMatch.differenceCentavos, formatCentavos);
   const mismatchSpeech = buildMismatchMessage(
     totalsMatch.differenceCentavos,
@@ -676,8 +675,9 @@ export default function ReceiptReviewScreen() {
         )}
 
         <SectionCard>
-          {/* Collapsed by default to one line ("Total ₱X ✓ matches receipt");
-              the subtotal/receipt-total breakdown sits behind this toggle. */}
+          {/* Collapsed by default to the header (total + match badge); the
+              subtotal/receipt-total breakdown sits behind this toggle. The
+              badge is plain content of this one button, not its own target. */}
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ expanded: showBreakdown }}
@@ -686,9 +686,25 @@ export default function ReceiptReviewScreen() {
             onPress={() => setShowBreakdown((current) => !current)}
             style={({ pressed }) => [styles.totalToggle, pressed && styles.pressed]}
           >
-            <AppText variant="subheading" style={styles.totalHeadline}>
-              {totalHeadline}
-            </AppText>
+            <View style={styles.totalHeader}>
+              <AppText variant="caption" color="textSecondary">
+                {copy.receiptReview.totalLabel}
+              </AppText>
+              {/* Wraps the badge under the amount when the row runs out of
+                  width (narrow screens, large font settings). */}
+              <View style={styles.totalAmountRow}>
+                <AppText variant="amount" style={styles.totalAmount}>
+                  {formatCentavos(computedTotalCentavos)}
+                </AppText>
+                <StatusBadge
+                  label={getTotalsBadgeLabel(totalsMatch.status)}
+                  tone={totalsBadge.tone}
+                  labelColor={totalsBadge.labelColor}
+                  icon={(color) => <Feather name={totalsBadge.icon} size={14} color={color} />}
+                  style={styles.totalBadge}
+                />
+              </View>
+            </View>
             <Feather
               name={showBreakdown ? 'chevron-up' : 'chevron-down'}
               size={20}
@@ -696,6 +712,7 @@ export default function ReceiptReviewScreen() {
             />
           </Pressable>
 
+          {showBreakdown ? <Divider /> : null}
           {showBreakdown ? (
             <View style={styles.breakdown}>
               {bill.detectedSubtotalCentavos != null ? (
@@ -707,7 +724,7 @@ export default function ReceiptReviewScreen() {
                   <AppText color="textSecondary" style={styles.uniformText}>
                     {copy.receiptReview.detectedSubtotalLabel}
                   </AppText>
-                  <AppText style={styles.uniformText}>
+                  <AppText style={[styles.uniformText, styles.breakdownValue]}>
                     {formatCentavos(bill.detectedSubtotalCentavos)}
                   </AppText>
                 </View>
@@ -720,7 +737,9 @@ export default function ReceiptReviewScreen() {
                 <AppText color="textSecondary" style={styles.uniformText}>
                   {copy.receiptReview.itemSubtotalLabel}
                 </AppText>
-                <AppText style={styles.uniformText}>{formatCentavos(itemSubtotalCentavos)}</AppText>
+                <AppText style={[styles.uniformText, styles.breakdownValue]}>
+                  {formatCentavos(itemSubtotalCentavos)}
+                </AppText>
               </View>
               {detectedTotalCentavos != null ? (
                 <View
@@ -731,7 +750,7 @@ export default function ReceiptReviewScreen() {
                   <AppText color="textSecondary" style={styles.uniformText}>
                     {copy.receiptReview.detectedTotalLabel}
                   </AppText>
-                  <AppText style={styles.uniformText}>
+                  <AppText style={[styles.uniformText, styles.breakdownValue]}>
                     {formatCentavos(detectedTotalCentavos)}
                   </AppText>
                 </View>
@@ -881,6 +900,21 @@ function tint(hex: string): string {
   return `${hex}26`;
 }
 
+// Totals badge look per reconciliation status (getTotalsMatch decides the
+// status; this only picks its tone and icon).
+const TOTALS_BADGE: Record<
+  TotalsMatchStatus,
+  {
+    tone: 'success' | 'warning' | 'neutral';
+    labelColor: 'success' | 'warning' | 'textSecondary';
+    icon: 'check-circle' | 'alert-triangle' | 'help-circle';
+  }
+> = {
+  match: { tone: 'success', labelColor: 'success', icon: 'check-circle' },
+  mismatch: { tone: 'warning', labelColor: 'warning', icon: 'alert-triangle' },
+  'no-receipt-total': { tone: 'neutral', labelColor: 'textSecondary', icon: 'help-circle' },
+};
+
 function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     // Body-sized copy on this screen renders at the `caption` size; headings
@@ -984,11 +1018,29 @@ function createStyles(colors: ColorTokens) {
       borderRadius: radius.md,
       borderCurve: 'continuous',
     },
-    totalHeadline: {
+    totalHeader: {
       flex: 1,
+      gap: 2,
+      paddingVertical: spacing.xs,
+    },
+    totalAmountRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      columnGap: spacing.md,
+      rowGap: spacing.xs,
+    },
+    totalAmount: {
+      flexShrink: 1,
+    },
+    totalBadge: {
+      alignSelf: 'center',
     },
     breakdown: {
       gap: spacing.sm,
+    },
+    breakdownValue: {
+      fontVariant: ['tabular-nums'],
     },
     reconciliationRow: {
       flexDirection: 'row',

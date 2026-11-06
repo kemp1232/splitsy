@@ -21,24 +21,25 @@ export function getTotalsMatch(
   return { status: differenceCentavos === 0 ? 'match' : 'mismatch', differenceCentavos };
 }
 
-// One-line totals headline: "Total ₱X ✓ matches receipt" only when it really
-// matches; otherwise just "Total ₱X" (no receipt total, or a mismatch — whose
-// warning is rendered separately). `speech` swaps the ✓ glyph for words for
-// the screen-reader label; pass formatCentavosForSpeech as formatMoney then.
-export function buildTotalHeadline(
+// Totals badge text: "Matches receipt" only when it really matches; with no
+// detected receipt total nothing is claimed ("Not verified").
+export function getTotalsBadgeLabel(status: TotalsMatchStatus): string {
+  const r = copy.receiptReview;
+  if (status === 'match') return r.totalsMatchBadge;
+  if (status === 'mismatch') return r.totalsMismatchBadge;
+  return r.totalsUnverifiedBadge;
+}
+
+// Screen-reader label for the totals header ("Total <amount>, <badge>");
+// pass formatCentavosForSpeech as formatMoney.
+export function buildTotalHeadlineSpeech(
   computedTotalCentavos: number,
   status: TotalsMatchStatus,
   formatMoney: (centavos: number) => string,
-  speech = false,
 ): string {
-  const r = copy.receiptReview;
-  const template =
-    status === 'match'
-      ? speech
-        ? r.totalHeadlineMatchesSpeech
-        : r.totalHeadlineMatches
-      : r.totalHeadline;
-  return template.replace('{amount}', () => formatMoney(computedTotalCentavos));
+  return copy.receiptReview.totalHeadlineSpeech
+    .replace('{amount}', () => formatMoney(computedTotalCentavos))
+    .replace('{status}', () => getTotalsBadgeLabel(status).toLowerCase());
 }
 
 // Mismatch warning text — one builder for both the visible label

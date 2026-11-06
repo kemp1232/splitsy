@@ -1,6 +1,11 @@
 import { formatCentavos } from '@/lib/money';
 
-import { buildMismatchMessage, buildTotalHeadline, getTotalsMatch } from './buildTotalsSummary';
+import {
+  buildMismatchMessage,
+  buildTotalHeadlineSpeech,
+  getTotalsBadgeLabel,
+  getTotalsMatch,
+} from './buildTotalsSummary';
 
 const fakeSpeech = (centavos: number) => `${centavos} centavos`;
 
@@ -22,28 +27,33 @@ describe('getTotalsMatch', () => {
   });
 });
 
-describe('buildTotalHeadline', () => {
+describe('getTotalsBadgeLabel', () => {
   it('claims a receipt match only when the totals match', () => {
-    expect(buildTotalHeadline(52025, 'match', formatCentavos)).toBe(
-      `Total ${formatCentavos(52025)} ✓ matches receipt`,
-    );
+    expect(getTotalsBadgeLabel('match')).toBe('Matches receipt');
   });
 
-  it('shows the plain total when no receipt total was detected', () => {
-    expect(buildTotalHeadline(52025, 'no-receipt-total', formatCentavos)).toBe(
-      `Total ${formatCentavos(52025)}`,
-    );
+  it('flags a mismatch', () => {
+    expect(getTotalsBadgeLabel('mismatch')).toBe('Totals differ');
   });
 
-  it('shows the plain total on a mismatch', () => {
-    expect(buildTotalHeadline(52025, 'mismatch', formatCentavos)).toBe(
-      `Total ${formatCentavos(52025)}`,
-    );
+  it('claims nothing when no receipt total was detected', () => {
+    expect(getTotalsBadgeLabel('no-receipt-total')).toBe('Not verified');
   });
+});
 
-  it('uses words instead of the check glyph for the speech label', () => {
-    expect(buildTotalHeadline(52025, 'match', fakeSpeech, true)).toBe(
+describe('buildTotalHeadlineSpeech', () => {
+  it('reads the total and its match status', () => {
+    expect(buildTotalHeadlineSpeech(52025, 'match', fakeSpeech)).toBe(
       'Total 52025 centavos, matches receipt',
+    );
+  });
+
+  it('never claims a match on a mismatch or without a receipt total', () => {
+    expect(buildTotalHeadlineSpeech(52025, 'mismatch', fakeSpeech)).toBe(
+      'Total 52025 centavos, totals differ',
+    );
+    expect(buildTotalHeadlineSpeech(52025, 'no-receipt-total', fakeSpeech)).toBe(
+      'Total 52025 centavos, not verified',
     );
   });
 });
