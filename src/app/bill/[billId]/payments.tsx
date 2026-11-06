@@ -291,6 +291,17 @@ export default function PaymentsScreen() {
           }),
         ),
       );
+      // This screen stays mounted under Summary, so a later Continue must diff
+      // against what is now persisted, not what was first loaded (otherwise
+      // clearing a saved overpayment back to 0 would look unchanged).
+      setParticipants((current) =>
+        current.map((participant) => {
+          const saved = updates.find((update) => update.participantId === participant.id);
+          return saved
+            ? { ...participant, contributedCentavos: saved.contributedCentavos }
+            : participant;
+        }),
+      );
       router.push(`/bill/${billId}/summary`);
       // Expo Router keeps this screen mounted underneath the pushed Summary
       // screen rather than unmounting it, so without this the Continue
