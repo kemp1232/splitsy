@@ -1,7 +1,9 @@
 import {
+  OcrDailyLimitError,
   OcrQueuedError,
   OcrRateLimitedError,
   OcrTruncatedError,
+  OcrUnauthenticatedError,
   type OcrRecognitionResult,
   type ReceiptOcrService,
 } from './ReceiptOcrService';
@@ -71,6 +73,13 @@ export class FallbackReceiptOcrService implements ReceiptOcrService {
       }
       if (error instanceof OcrTruncatedError) {
         return { ...result, fallbackReason: 'token_limit_truncated' };
+      }
+      // Not silent: the review screen explains each of these (buildOcrStatus).
+      if (error instanceof OcrDailyLimitError) {
+        return { ...result, fallbackReason: 'daily_limit' };
+      }
+      if (error instanceof OcrUnauthenticatedError) {
+        return { ...result, fallbackReason: 'unauthenticated' };
       }
       return result;
     }

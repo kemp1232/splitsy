@@ -5,6 +5,7 @@ import { getMigrations } from 'better-auth/db/migration';
 
 import { app } from './app.js';
 import { auth } from './auth.js';
+import { migrateDailyUsageTable } from './ocr/dailyUsage.js';
 
 // Local dev / the Docker image (Fly.io or any other long-running-process
 // host) entrypoint — runs migrations once at boot, then starts listening.
@@ -15,6 +16,8 @@ import { auth } from './auth.js';
 // start. Idempotent either way — a no-op once the schema is current.
 const { runMigrations } = await getMigrations(auth.options);
 await runMigrations();
+// After Better Auth's own tables: ocr_daily_usage has an FK to its "user".
+await migrateDailyUsageTable();
 
 const port = Number(process.env.PORT ?? 8787);
 

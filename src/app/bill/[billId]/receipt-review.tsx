@@ -44,7 +44,11 @@ import { participantsRepository } from '@/db/repositories/participants.repositor
 import { useAdjustmentEditor } from '@/features/adjustments/useAdjustmentEditor';
 import { deleteBill } from '@/features/bills/bill.service';
 import { createGalleryBill, pickGalleryImageUri } from '@/features/bills/galleryBill';
-import { buildOcrStatus, type OcrStatusTone } from '@/features/receipt-review/buildOcrStatus';
+import {
+  buildOcrStatus,
+  type OcrFallbackReason,
+  type OcrStatusTone,
+} from '@/features/receipt-review/buildOcrStatus';
 import {
   buildMismatchMessage,
   buildTotalHeadlineSpeech,
@@ -102,7 +106,7 @@ export default function ReceiptReviewScreen() {
   const { billId, ocrSource, fallbackReason, truncated } = useLocalSearchParams<{
     billId: string;
     ocrSource?: 'backend' | 'on-device';
-    fallbackReason?: 'rate_limited' | 'token_limit_truncated';
+    fallbackReason?: OcrFallbackReason;
     // '1' when the backend scan was cut off by its token cap (processing.tsx).
     truncated?: string;
   }>();

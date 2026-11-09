@@ -3,6 +3,7 @@ import 'dotenv/config';
 import { getMigrations } from 'better-auth/db/migration';
 
 import { auth } from './auth.js';
+import { migrateDailyUsageTable } from './ocr/dailyUsage.js';
 
 // Standalone migration runner (`npm run db:migrate`) — the Vercel deploy
 // (api/[[...route]].ts) has no boot-once moment the way src/index.ts's own
@@ -13,4 +14,6 @@ import { auth } from './auth.js';
 // Idempotent — a no-op once the schema is current, safe to re-run.
 const { runMigrations } = await getMigrations(auth.options);
 await runMigrations();
+// After Better Auth's own tables: ocr_daily_usage has an FK to its "user".
+await migrateDailyUsageTable();
 console.log('Migrations up to date.');

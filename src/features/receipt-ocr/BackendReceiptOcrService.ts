@@ -3,12 +3,15 @@ import { z } from 'zod';
 import { OCR_BACKEND_URL } from '@/constants/config';
 import { defaultAllocationMethodForType } from '@/features/adjustments/defaultAllocationMethod';
 import type { ParsedReceipt } from '@/features/receipt-parser/receiptParser.types';
+import { getAuthRequestInit } from '@/lib/authRequestInit';
 
 import { buildImageFormDataPart } from './buildImageFormDataPart';
 import {
+  OcrDailyLimitError,
   OcrQueuedError,
   OcrRateLimitedError,
   OcrTruncatedError,
+  OcrUnauthenticatedError,
   type OcrRecognitionResult,
   type ReceiptOcrService,
 } from './ReceiptOcrService';
@@ -142,7 +145,14 @@ export class BackendReceiptOcrService implements ReceiptOcrService {
     const formData = new FormData();
     formData.append('image', await buildImageFormDataPart(imageUri));
 
-    const response = await fetch(`${OCR_BACKEND_URL}/api/ocr`, { method: 'POST', body: formData });
+    // /api/ocr is signed-in-only: attach the Better Auth session (native: the
+    // cookie expoClient stored; web: the browser's own cookie) — see
+    // src/lib/authRequestInit.ts / .web.ts.
+    const response = await fetch(`${OCR_BACKEND_URL}/api/ocr`, {
+      method: 'POST',
+      body: formData,
+      ...(await getAuthRequestInit()),
+    });
 
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
@@ -171,7 +181,15 @@ export class BackendReceiptOcrService implements ReceiptOcrService {
       // server/src/routes/ocr.ts) specifically so this distinction is
       // possible — everything else stays a generic failure that
       // FallbackReceiptOcrService already handles silently.
+      if (response.status === 401) {
+        throw new OcrUnauthenticatedError(`OCR backend requires sign-in (401): ${detail}`);
+      }
       if (response.status === 429) {
+        // The per-account daily cap (server/src/ocr/dailyUsage.ts) — checked
+        // before the queued shape below, since retrying won't help today.
+        if (parsed?.reason === 'daily_limit') {
+          throw new OcrDailyLimitError(`OCR backend daily scan limit reached (429): ${detail}`);
+        }
         // Two different 429 shapes share this status: the backend's own
         // scan-queue gate (`reason: "queued"`, always carries
         // retryAfterSeconds — see scanQueue.ts) turned this request away

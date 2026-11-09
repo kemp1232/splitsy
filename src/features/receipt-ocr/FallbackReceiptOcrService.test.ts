@@ -1,8 +1,10 @@
 import { FallbackReceiptOcrService } from './FallbackReceiptOcrService';
 import {
+  OcrDailyLimitError,
   OcrQueuedError,
   OcrRateLimitedError,
   OcrTruncatedError,
+  OcrUnauthenticatedError,
   type OcrRecognitionResult,
   type ReceiptOcrService,
 } from './ReceiptOcrService';
@@ -139,6 +141,42 @@ describe('FallbackReceiptOcrService', () => {
     expect(fallback).toHaveBeenCalled();
     expect(result.source).toBe('on-device');
     expect(result.fallbackReason).toBe('token_limit_truncated');
+  });
+
+  it('falls back on-device and tags fallbackReason "daily_limit" when the account hit its daily cap', async () => {
+    const fallback = jest.fn(async () => resultTaggedWith('on-device'));
+    const service = new FallbackReceiptOcrService(
+      {
+        recognize: async () => {
+          throw new OcrDailyLimitError('daily limit');
+        },
+      },
+      { recognize: fallback },
+    );
+
+    const result = await service.recognize('file:///receipt.jpg');
+
+    expect(fallback).toHaveBeenCalled();
+    expect(result.source).toBe('on-device');
+    expect(result.fallbackReason).toBe('daily_limit');
+  });
+
+  it('falls back on-device and tags fallbackReason "unauthenticated" when the session was rejected', async () => {
+    const fallback = jest.fn(async () => resultTaggedWith('on-device'));
+    const service = new FallbackReceiptOcrService(
+      {
+        recognize: async () => {
+          throw new OcrUnauthenticatedError('signed out');
+        },
+      },
+      { recognize: fallback },
+    );
+
+    const result = await service.recognize('file:///receipt.jpg');
+
+    expect(fallback).toHaveBeenCalled();
+    expect(result.source).toBe('on-device');
+    expect(result.fallbackReason).toBe('unauthenticated');
   });
 
   it('rethrows OcrQueuedError instead of falling back to on-device, unlike every other failure', async () => {

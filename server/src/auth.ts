@@ -138,6 +138,15 @@ export const auth = betterAuth({
       });
     },
   },
+  // Account deletion (Play Store requirement; 2026-11-09 spec Amendment):
+  // POST /api/auth/delete-user, used by the app's Settings > Delete account
+  // and the backend's own /delete-account web page (routes/pages.ts). Both
+  // send the password, which Better Auth verifies before deleting. Deleting
+  // the user removes its sessions and accounts; ocr_daily_usage rows go via
+  // their ON DELETE CASCADE foreign key (ocr/dailyUsage.ts).
+  user: {
+    deleteUser: { enabled: true },
+  },
   plugins: [expo()],
   // Only in production: the deployed frontend and this backend are two
   // separate hosts on two different registrable domains (e.g. a Netlify

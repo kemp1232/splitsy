@@ -47,16 +47,44 @@ export class OcrQueuedError extends Error {
   }
 }
 
+// Thrown when the backend refused the scan because the request carried no
+// valid session (HTTP 401, `reason: 'unauthenticated'` — see
+// server/src/routes/ocr.ts). /api/ocr is signed-in-only; this usually means
+// the stored session expired. FallbackReceiptOcrService falls back to
+// on-device OCR and tags `fallbackReason: 'unauthenticated'` so the review
+// screen can say why (web has no fallback and shows it on the failure screen).
+export class OcrUnauthenticatedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OcrUnauthenticatedError';
+  }
+}
+
+// Thrown when this account has used up its daily backend scans (HTTP 429,
+// `reason: 'daily_limit'` — see server/src/ocr/dailyUsage.ts). Distinct from
+// both OcrQueuedError (wait seconds and retry) and OcrRateLimitedError (Groq's
+// own limit): retrying today won't help, so FallbackReceiptOcrService falls
+// back on-device with `fallbackReason: 'daily_limit'`.
+export class OcrDailyLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OcrDailyLimitError';
+  }
+}
+
 // Which implementation actually produced this result — lets the UI show
 // whether a scan used the Groq backend or fell back to on-device OCR (see
 // FallbackReceiptOcrService). A UI hint only, never treated as bill data
 // (spec section 7). `fallbackReason` is set only for the reasons the UI
 // currently distinguishes (rate limiting, a token-cap-truncated backend
-// response) — every other fallback reason stays silent, same as before.
+// response, the per-account daily cap, an expired session) — every other fallback reason stays silent, same as before.
+export type OcrFallbackReason =
+  'rate_limited' | 'token_limit_truncated' | 'daily_limit' | 'unauthenticated';
+
 export type OcrRecognitionResult = {
   receipt: ParsedReceipt;
   source: 'backend' | 'on-device';
-  fallbackReason?: 'rate_limited' | 'token_limit_truncated';
+  fallbackReason?: OcrFallbackReason;
   // Set only when source === 'backend' and the Groq call was cut off by its
   // token cap (finish_reason "length") — some fields (total, subtotal, full
   // text) may be missing. Deliberately not a `fallbackReason`: nothing fell

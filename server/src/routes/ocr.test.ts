@@ -19,8 +19,26 @@ vi.mock('../ocr/scanQueue.js', () => ({
   claimScanSlot: vi.fn().mockResolvedValue({ claimed: true }),
 }));
 
+// The session lookup and per-account daily cap are mocked the same way:
+// every test defaults to "signed in, under the cap" so the existing tests
+// exercise the same success/failure paths as before; the auth/cap tests at
+// the bottom override these per-test.
+vi.mock('../sessionUser.js', () => ({
+  getSessionUserId: vi.fn().mockResolvedValue('user-1'),
+}));
+vi.mock('../ocr/dailyUsage.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../ocr/dailyUsage.js')>();
+  return {
+    ...actual,
+    claimDailyScan: vi.fn().mockResolvedValue({ allowed: true, usageDay: '2026-11-09' }),
+    refundDailyScan: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
+import { claimDailyScan, refundDailyScan } from '../ocr/dailyUsage.js';
 import { GroqRequestError, requestReceiptExtraction } from '../ocr/groqClient.js';
 import { claimScanSlot } from '../ocr/scanQueue.js';
+import { getSessionUserId } from '../sessionUser.js';
 import { ocrRoute } from './ocr.js';
 
 // A real, minimal decodable image — sharp (used by preprocessReceiptImage)
@@ -45,6 +63,7 @@ function buildRequest(file: File | null): Request {
 
 describe('POST /api/ocr', () => {
   const originalApiKey = process.env.GROQ_API_KEY;
+  const originalDailyLimit = process.env.OCR_DAILY_SCAN_LIMIT;
 
   beforeAll(async () => {
     tinyPng = await sharp({
@@ -57,11 +76,19 @@ describe('POST /api/ocr', () => {
   beforeEach(() => {
     vi.mocked(requestReceiptExtraction).mockReset();
     vi.mocked(claimScanSlot).mockReset().mockResolvedValue({ claimed: true });
+    vi.mocked(getSessionUserId).mockReset().mockResolvedValue('user-1');
+    vi.mocked(claimDailyScan)
+      .mockReset()
+      .mockResolvedValue({ allowed: true, usageDay: '2026-11-09' });
+    vi.mocked(refundDailyScan).mockReset().mockResolvedValue(undefined);
     process.env.GROQ_API_KEY = 'test-key';
+    delete process.env.OCR_DAILY_SCAN_LIMIT;
   });
 
   afterEach(() => {
     process.env.GROQ_API_KEY = originalApiKey;
+    if (originalDailyLimit === undefined) delete process.env.OCR_DAILY_SCAN_LIMIT;
+    else process.env.OCR_DAILY_SCAN_LIMIT = originalDailyLimit;
   });
 
   it('returns the validated structured extraction on success', async () => {
@@ -272,5 +299,120 @@ describe('POST /api/ocr', () => {
     // the shared Groq token budget on a request that's just going to be
     // turned away.
     expect(requestReceiptExtraction).not.toHaveBeenCalled();
+  });
+
+  describe('sign-in requirement and per-account daily cap', () => {
+    function receiptFile() {
+      return new File([new Uint8Array(tinyPng)], 'receipt.jpg', { type: 'image/jpeg' });
+    }
+
+    it('returns 401 unauthenticated without a session, before the daily cap, scan slot or Groq', async () => {
+      vi.mocked(getSessionUserId).mockResolvedValue(null);
+
+      const res = await ocrRoute.fetch(buildRequest(receiptFile()));
+
+      expect(res.status).toBe(401);
+      expect((await res.json()).reason).toBe('unauthenticated');
+      expect(claimDailyScan).not.toHaveBeenCalled();
+      expect(claimScanSlot).not.toHaveBeenCalled();
+      expect(requestReceiptExtraction).not.toHaveBeenCalled();
+    });
+
+    it('returns 429 daily_limit without claiming the scan slot or calling Groq', async () => {
+      vi.mocked(claimDailyScan).mockResolvedValue({ allowed: false, usageDay: '2026-11-09' });
+
+      const res = await ocrRoute.fetch(buildRequest(receiptFile()));
+
+      expect(res.status).toBe(429);
+      const body = await res.json();
+      expect(body.reason).toBe('daily_limit');
+      expect(body.limit).toBe(10);
+      expect(claimScanSlot).not.toHaveBeenCalled();
+      expect(requestReceiptExtraction).not.toHaveBeenCalled();
+      expect(refundDailyScan).not.toHaveBeenCalled();
+    });
+
+    it('passes the signed-in user id and OCR_DAILY_SCAN_LIMIT (default 10) to the daily cap', async () => {
+      vi.mocked(requestReceiptExtraction).mockResolvedValue({
+        content: JSON.stringify(VALID_EXTRACTION),
+        truncated: false,
+      });
+
+      await ocrRoute.fetch(buildRequest(receiptFile()));
+      expect(claimDailyScan).toHaveBeenLastCalledWith('user-1', 10);
+
+      process.env.OCR_DAILY_SCAN_LIMIT = '3';
+      await ocrRoute.fetch(buildRequest(receiptFile()));
+      expect(claimDailyScan).toHaveBeenLastCalledWith('user-1', 3);
+    });
+
+    it('refunds the daily scan when the request is queued', async () => {
+      vi.mocked(claimScanSlot).mockResolvedValue({ claimed: false, retryAfterSeconds: 5 });
+
+      const res = await ocrRoute.fetch(buildRequest(receiptFile()));
+
+      expect(res.status).toBe(429);
+      expect((await res.json()).reason).toBe('queued');
+      expect(refundDailyScan).toHaveBeenCalledWith('user-1', '2026-11-09');
+    });
+
+    it('refunds the daily scan when the Groq request itself fails', async () => {
+      vi.mocked(requestReceiptExtraction).mockRejectedValue(
+        new GroqRequestError('Groq request failed (500): internal error', 500),
+      );
+
+      const res = await ocrRoute.fetch(buildRequest(receiptFile()));
+
+      expect(res.status).toBe(502);
+      expect(refundDailyScan).toHaveBeenCalledWith('user-1', '2026-11-09');
+    });
+
+    it('does not refund once Groq returned a (schema-invalid) response', async () => {
+      vi.mocked(requestReceiptExtraction).mockResolvedValue({
+        content: JSON.stringify({ merchantName: 'X' }),
+        truncated: false,
+      });
+
+      const res = await ocrRoute.fetch(buildRequest(receiptFile()));
+
+      expect(res.status).toBe(502);
+      expect(refundDailyScan).not.toHaveBeenCalled();
+    });
+
+    it('does not refund a successful scan', async () => {
+      vi.mocked(requestReceiptExtraction).mockResolvedValue({
+        content: JSON.stringify(VALID_EXTRACTION),
+        truncated: false,
+      });
+
+      const res = await ocrRoute.fetch(buildRequest(receiptFile()));
+
+      expect(res.status).toBe(200);
+      expect(refundDailyScan).not.toHaveBeenCalled();
+    });
+
+    it('returns 503 when the daily usage store fails, without calling Groq', async () => {
+      vi.mocked(claimDailyScan).mockRejectedValue(
+        new Error('relation "ocr_daily_usage" does not exist'),
+      );
+
+      const res = await ocrRoute.fetch(buildRequest(receiptFile()));
+
+      expect(res.status).toBe(503);
+      expect((await res.json()).reason).toBe('unavailable');
+      expect(claimScanSlot).not.toHaveBeenCalled();
+      expect(requestReceiptExtraction).not.toHaveBeenCalled();
+    });
+
+    it('returns 503 and refunds the daily scan when the scan queue fails, without calling Groq', async () => {
+      vi.mocked(claimScanSlot).mockRejectedValue(new Error('connection refused'));
+
+      const res = await ocrRoute.fetch(buildRequest(receiptFile()));
+
+      expect(res.status).toBe(503);
+      expect((await res.json()).reason).toBe('unavailable');
+      expect(refundDailyScan).toHaveBeenCalledWith('user-1', '2026-11-09');
+      expect(requestReceiptExtraction).not.toHaveBeenCalled();
+    });
   });
 });

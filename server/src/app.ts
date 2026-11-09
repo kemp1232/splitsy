@@ -4,6 +4,7 @@ import { cors } from 'hono/cors';
 
 import { auth, webAppOrigins } from './auth.js';
 import { ocrRoute } from './routes/ocr.js';
+import { pagesRoute } from './routes/pages.js';
 
 // The Hono app itself — no side effects (no migrations, no listening
 // socket) so this one file can be shared by every way this server actually
@@ -41,3 +42,7 @@ app.get('/health', healthCheck);
 app.get('/api/health', healthCheck);
 app.on(['POST', 'GET'], '/api/auth/*', (c) => auth.handler(c.req.raw));
 app.route('/', ocrRoute);
+// Public HTML pages (privacy policy, web account deletion) — outside /api/*,
+// so the CORS middleware above never applies; vercel.json's catch-all
+// rewrite already routes them to this app like every other path.
+app.route('/', pagesRoute);

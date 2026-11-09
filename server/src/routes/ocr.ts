@@ -6,13 +6,29 @@ import { GroqRequestError, requestReceiptExtraction } from '../ocr/groqClient.js
 import { preprocessReceiptImage } from '../ocr/imagePreprocess.js';
 import { RECEIPT_EXTRACTION_PROMPT } from '../ocr/prompts.js';
 import { validateReceiptExtraction } from '../ocr/receiptExtraction.schema.js';
+import { claimDailyScan, refundDailyScan, resolveDailyScanLimit } from '../ocr/dailyUsage.js';
 import { claimScanSlot } from '../ocr/scanQueue.js';
+import { getSessionUserId } from '../sessionUser.js';
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // plenty for a resized receipt photo
+
+const SCAN_UNAVAILABLE_BODY = {
+  error: 'Online scanning is temporarily unavailable. Try again later.',
+  reason: 'unavailable',
+};
 
 export const ocrRoute = new Hono();
 
 ocrRoute.post('/api/ocr', async (c) => {
+  // Signed-in users only (2026-11-09 spec Amendment) — checked first, before
+  // even parsing the upload, so an anonymous caller never reaches the daily
+  // cap, the shared scan slot, or Groq. `reason` follows the queued-429
+  // body's shape so the client (BackendReceiptOcrService.ts) can tell it apart.
+  const userId = await getSessionUserId(c.req.raw.headers);
+  if (!userId) {
+    return c.json({ error: 'Sign in to scan receipts.', reason: 'unauthenticated' }, 401);
+  }
+
   const formData = await c.req.formData();
   const file = formData.get('image');
 
@@ -52,6 +68,45 @@ ocrRoute.post('/api/ocr', async (c) => {
     ? Number(process.env.OCR_MAX_OUTPUT_TOKENS)
     : undefined;
 
+  // Per-account daily cap (see dailyUsage.ts) — checked before the global
+  // slot so an over-cap account never holds up everyone else's queue.
+  // `reason: 'daily_limit'` keeps it distinct from 'queued' and from Groq's
+  // own passed-through 429.
+  const dailyLimit = resolveDailyScanLimit(process.env.OCR_DAILY_SCAN_LIMIT);
+  // Fails closed: if the usage store itself is unavailable (DB down, or the
+  // table missing because migrate.ts hasn't been run yet), refuse with a
+  // clear 503 rather than an unhandled 500, and never call Groq uncounted.
+  let daily;
+  try {
+    daily = await claimDailyScan(userId, dailyLimit);
+  } catch {
+    console.error('[ocr] daily scan usage store unavailable');
+    return c.json(SCAN_UNAVAILABLE_BODY, 503);
+  }
+  if (!daily.allowed) {
+    return c.json(
+      {
+        error: `Daily scan limit reached (${dailyLimit} per day). Try again tomorrow.`,
+        reason: 'daily_limit',
+        limit: dailyLimit,
+      },
+      429,
+    );
+  }
+  // Refund policy: a claimed scan is given back whenever Groq never produced
+  // a completion (queued, preprocessing failed, Groq request error) — the
+  // user got nothing and nothing was spent. Once Groq has returned content
+  // (even unusable JSON), the tokens were spent, so the scan counts.
+  // Best-effort: a failed refund never changes the response.
+  const usageDay = daily.usageDay;
+  const refund = async () => {
+    try {
+      await refundDailyScan(userId, usageDay);
+    } catch {
+      console.error('[ocr] failed to refund a daily scan');
+    }
+  };
+
   // Global scan queue (see scanQueue.ts) — Groq's free-tier output-tokens-
   // per-minute budget is shared across every user of this backend, not
   // per-caller, so at most one scan may run per cooldown window regardless
@@ -63,8 +118,18 @@ ocrRoute.post('/api/ocr', async (c) => {
   // the client (BackendReceiptOcrService.ts) uses that to show a "you're
   // queued, try again in Ns" message rather than silently falling back to
   // on-device OCR the way every other error does.
-  const slot = await claimScanSlot();
+  let slot;
+  try {
+    slot = await claimScanSlot();
+  } catch {
+    // Same fail-closed treatment; the daily scan was already claimed, so
+    // give it back first.
+    console.error('[ocr] scan queue unavailable');
+    await refund();
+    return c.json(SCAN_UNAVAILABLE_BODY, 503);
+  }
   if (!slot.claimed) {
+    await refund();
     return c.json(
       {
         error: `Another scan is in progress. Try again in ${slot.retryAfterSeconds}s.`,
@@ -81,6 +146,7 @@ ocrRoute.post('/api/ocr', async (c) => {
   // failure before Groq actually returned a response (preprocessing,
   // GroqRequestError).
   let truncated = false;
+  let groqResponded = false;
   try {
     const model = resolveModelTag(engine);
     const preprocessed = await preprocessReceiptImage(bytes, maxWidth);
@@ -91,6 +157,7 @@ ocrRoute.post('/api/ocr', async (c) => {
       imageBase64: preprocessed.toString('base64'),
       maxOutputTokens,
     });
+    groqResponded = true;
     const { content } = result;
     truncated = result.truncated;
 
@@ -120,6 +187,7 @@ ocrRoute.post('/api/ocr', async (c) => {
     // scan was cut off by the token cap and some fields may be missing.
     return c.json({ ...extraction, truncated });
   } catch (error) {
+    if (!groqResponded) await refund();
     const message = error instanceof Error ? error.message : 'Unknown OCR error';
     // Groq's free-tier rate limit (429) is a distinct, expected, user-facing
     // situation — "try again shortly" — not a generic upstream failure.
