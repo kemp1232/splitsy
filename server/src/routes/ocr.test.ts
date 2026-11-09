@@ -87,6 +87,7 @@ describe('POST /api/ocr', () => {
 
   afterEach(() => {
     process.env.GROQ_API_KEY = originalApiKey;
+    delete process.env.OCR_GROQ_TIMEOUT_MS;
     if (originalDailyLimit === undefined) delete process.env.OCR_DAILY_SCAN_LIMIT;
     else process.env.OCR_DAILY_SCAN_LIMIT = originalDailyLimit;
   });
@@ -413,6 +414,46 @@ describe('POST /api/ocr', () => {
       expect((await res.json()).reason).toBe('unavailable');
       expect(refundDailyScan).toHaveBeenCalledWith('user-1', '2026-11-09');
       expect(requestReceiptExtraction).not.toHaveBeenCalled();
+    });
+
+    it('refunds the daily scan when the client disconnects mid-scan', async () => {
+      const controller = new AbortController();
+      // Groq "answers", but the client has already gone by then.
+      vi.mocked(requestReceiptExtraction).mockImplementation(async () => {
+        controller.abort();
+        return { content: JSON.stringify(VALID_EXTRACTION), truncated: false };
+      });
+      const form = new FormData();
+      form.append('image', receiptFile());
+
+      const res = await ocrRoute.fetch(
+        new Request('http://localhost/api/ocr', {
+          method: 'POST',
+          body: form,
+          signal: controller.signal,
+        }),
+      );
+
+      expect(res.status).toBe(499);
+      expect(refundDailyScan).toHaveBeenCalledWith('user-1', '2026-11-09');
+    });
+
+    it('refunds the daily scan and returns 502 when the Groq deadline is hit', async () => {
+      process.env.OCR_GROQ_TIMEOUT_MS = '20';
+      vi.mocked(requestReceiptExtraction).mockImplementation(
+        ({ signal }) =>
+          new Promise((_resolve, reject) => {
+            const fail = () => reject(signal?.reason);
+            if (signal?.aborted) fail();
+            else signal?.addEventListener('abort', fail);
+          }),
+      );
+
+      const res = await ocrRoute.fetch(buildRequest(receiptFile()));
+
+      expect(res.status).toBe(502);
+      expect((await res.json()).error).toMatch(/did not respond within 20ms/);
+      expect(refundDailyScan).toHaveBeenCalledWith('user-1', '2026-11-09');
     });
   });
 });

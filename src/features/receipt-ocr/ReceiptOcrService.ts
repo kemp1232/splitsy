@@ -101,6 +101,11 @@ export type OcrRecognitionResult = {
 // Groq backend now classifies items/totals/adjustments itself and returns
 // them already structured, so the parser is bypassed entirely for that path
 // (see PLAN.md's "Groq performs full receipt extraction" entry).
+// `signal` is optional and only honored by network-backed implementations
+// (BackendReceiptOcrService) — FallbackReceiptOcrService aborts it when its
+// timeout fires so the abandoned request's connection actually closes.
+export type RecognizeOptions = { signal?: AbortSignal };
+
 export interface ReceiptOcrService {
-  recognize(imageUri: string): Promise<OcrRecognitionResult>;
+  recognize(imageUri: string, options?: RecognizeOptions): Promise<OcrRecognitionResult>;
 }

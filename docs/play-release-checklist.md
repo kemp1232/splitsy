@@ -9,9 +9,12 @@ Android application ID: `com.splitsy.app` (final — cannot change after the fir
       not the total.
 - [ ] **Database**: run `cd server && npm run db:migrate` against the production `DATABASE_URL`
       (Neon) **before** deploying this backend version. It creates Better Auth's tables (if
-      needed) and the new `ocr_daily_usage` table. Without it, `/api/ocr` fails and the app
-      silently uses on-device OCR. Note: `ocr_scan_queue` (the global scan queue) has no DDL in
-      the repo; it must already exist on Neon.
+      needed), the new `ocr_daily_usage` table, and the global scan queue's `ocr_scan_queue`
+      table with its singleton row (`CREATE TABLE IF NOT EXISTS` + `ON CONFLICT DO NOTHING`, so
+      it is a no-op on the existing Neon table). Without it, `/api/ocr` answers 503 and the app
+      uses on-device OCR.
+- [ ] **Groq deadline** (optional): `OCR_GROQ_TIMEOUT_MS` (default 300000) must stay below the
+      app's 360 s scan timeout.
 - [ ] **Backend env** (Vercel): `OCR_DAILY_SCAN_LIMIT` (optional, default 10), plus the existing
       `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `RESEND_API_KEY`, `GROQ_API_KEY`,
       `WEB_APP_ORIGINS`.

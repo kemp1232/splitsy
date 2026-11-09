@@ -818,7 +818,7 @@ export const copy = {
     deleteAccountFailure: "We couldn't delete your account. Try again later.",
     // The server account is already gone at this point; only the local wipe failed.
     deleteAccountLocalResetFailure:
-      'Your account was deleted, but some data on this device could not be removed. Use "Delete all local data" in Settings to remove it.',
+      'Your account was deleted, but some data on this device could not be removed yet. Splitsy will try again the next time it starts, or use "Delete all local data" in Settings now.',
     // Web account-deletion page (server/src/routes/pages.ts), for anyone
     // without the app installed — required by the Play Store.
     deleteAccountWebAction: 'Delete account on the web',

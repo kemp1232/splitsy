@@ -14,6 +14,7 @@ import {
   OcrUnauthenticatedError,
   type OcrRecognitionResult,
   type ReceiptOcrService,
+  type RecognizeOptions,
 } from './ReceiptOcrService';
 
 // The lean wire shape the server validates its own response against before
@@ -134,7 +135,7 @@ export function groqExtractionToParsedReceipt(data: BackendReceiptExtraction): P
 }
 
 export class BackendReceiptOcrService implements ReceiptOcrService {
-  async recognize(imageUri: string): Promise<OcrRecognitionResult> {
+  async recognize(imageUri: string, options?: RecognizeOptions): Promise<OcrRecognitionResult> {
     if (!OCR_BACKEND_URL) {
       throw new Error('OCR backend is not configured (EXPO_PUBLIC_OCR_BACKEND_URL unset).');
     }
@@ -151,6 +152,7 @@ export class BackendReceiptOcrService implements ReceiptOcrService {
     const response = await fetch(`${OCR_BACKEND_URL}/api/ocr`, {
       method: 'POST',
       body: formData,
+      signal: options?.signal,
       ...(await getAuthRequestInit()),
     });
 

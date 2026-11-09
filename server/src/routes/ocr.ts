@@ -12,6 +12,22 @@ import { getSessionUserId } from '../sessionUser.js';
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // plenty for a resized receipt photo
 
+// The server's own deadline for the Groq call — below the client's 360s
+// timeout (FallbackReceiptOcrService.ts), so the server normally answers
+// (and refunds) before the client gives up. Env-tunable like the rest of the
+// OCR config; anything that isn't a positive integer uses the default.
+const DEFAULT_GROQ_TIMEOUT_MS = 300_000;
+export function resolveGroqTimeoutMs(raw: string | undefined): number {
+  const value = Number(raw);
+  return raw && Number.isInteger(value) && value > 0 ? value : DEFAULT_GROQ_TIMEOUT_MS;
+}
+
+// Nobody is listening once the client has disconnected — no body is built.
+// 499 is nginx's "client closed request" convention; never actually read.
+function clientGoneResponse(): Response {
+  return new Response(null, { status: 499 });
+}
+
 const SCAN_UNAVAILABLE_BODY = {
   error: 'Online scanning is temporarily unavailable. Try again later.',
   reason: 'unavailable',
@@ -147,6 +163,12 @@ ocrRoute.post('/api/ocr', async (c) => {
   // GroqRequestError).
   let truncated = false;
   let groqResponded = false;
+  // Either the client disconnecting (its request signal) or the server's own
+  // Groq deadline aborts the Groq call. Both mean the user gets no usable
+  // result, so both refund the scan even if Groq already answered.
+  const clientSignal = c.req.raw.signal;
+  const groqTimeoutMs = resolveGroqTimeoutMs(process.env.OCR_GROQ_TIMEOUT_MS);
+  const groqDeadline = AbortSignal.timeout(groqTimeoutMs);
   try {
     const model = resolveModelTag(engine);
     const preprocessed = await preprocessReceiptImage(bytes, maxWidth);
@@ -156,6 +178,7 @@ ocrRoute.post('/api/ocr', async (c) => {
       prompt: RECEIPT_EXTRACTION_PROMPT,
       imageBase64: preprocessed.toString('base64'),
       maxOutputTokens,
+      signal: AbortSignal.any([clientSignal, groqDeadline]),
     });
     groqResponded = true;
     const { content } = result;
@@ -182,12 +205,26 @@ ocrRoute.post('/api/ocr', async (c) => {
       throw new Error(`Groq response did not match the expected schema: ${detail}`);
     }
 
+    if (clientSignal.aborted) {
+      await refund();
+      return clientGoneResponse();
+    }
     // `truncated` travels as a sibling of the validated extraction (like the
     // queued-429 body's `reason`) so the client can warn the user that the
     // scan was cut off by the token cap and some fields may be missing.
     return c.json({ ...extraction, truncated });
   } catch (error) {
-    if (!groqResponded) await refund();
+    const clientGone = clientSignal.aborted;
+    const deadlineHit = groqDeadline.aborted;
+    if (!groqResponded || clientGone || deadlineHit) await refund();
+    if (clientGone) return clientGoneResponse();
+    if (deadlineHit) {
+      // Same 502 shape as any other Groq failure — the client falls back.
+      return c.json(
+        { error: `Groq did not respond within ${groqTimeoutMs}ms.`, truncated: false },
+        502,
+      );
+    }
     const message = error instanceof Error ? error.message : 'Unknown OCR error';
     // Groq's free-tier rate limit (429) is a distinct, expected, user-facing
     // situation — "try again shortly" — not a generic upstream failure.

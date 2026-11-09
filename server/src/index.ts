@@ -6,6 +6,7 @@ import { getMigrations } from 'better-auth/db/migration';
 import { app } from './app.js';
 import { auth } from './auth.js';
 import { migrateDailyUsageTable } from './ocr/dailyUsage.js';
+import { migrateScanQueueTable } from './ocr/scanQueue.js';
 
 // Local dev / the Docker image (Fly.io or any other long-running-process
 // host) entrypoint — runs migrations once at boot, then starts listening.
@@ -18,6 +19,8 @@ const { runMigrations } = await getMigrations(auth.options);
 await runMigrations();
 // After Better Auth's own tables: ocr_daily_usage has an FK to its "user".
 await migrateDailyUsageTable();
+// The global scan queue's singleton table (no-op if it already exists).
+await migrateScanQueueTable();
 
 const port = Number(process.env.PORT ?? 8787);
 

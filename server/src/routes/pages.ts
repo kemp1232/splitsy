@@ -16,6 +16,8 @@ const STYLE = `
   button { margin-top: 1.25rem; padding: 0.7rem 1.2rem; font-size: 1rem; background: #c62828;
     color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
   button:disabled { opacity: 0.6; cursor: default; }
+  button.secondary { background: #1a1a1a; margin-top: 0; }
+  [hidden] { display: none; }
   .todo { background: #fff3cd; padding: 0.1rem 0.3rem; }
   #result { margin-top: 1rem; font-weight: 600; }
 `;
@@ -98,15 +100,42 @@ const DELETE_SCRIPT = `
   var form = document.getElementById('delete-form');
   var result = document.getElementById('result');
   var button = document.getElementById('submit');
+  var verifyButton = document.getElementById('verify');
+  var pendingEmail = '';
   function show(message, ok) {
     result.textContent = message;
     result.style.color = ok ? '#2e7d32' : '#c62828';
   }
+  verifyButton.addEventListener('click', async function () {
+    if (!pendingEmail) return;
+    verifyButton.disabled = true;
+    try {
+      var sent = await fetch('/api/auth/send-verification-email', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ email: pendingEmail, callbackURL: '/delete-account' })
+      });
+      if (sent.ok) {
+        verifyButton.hidden = true;
+        show('Verification email sent. Open the link in it, then come back to this page and delete your account.', true);
+      } else if (sent.status === 429) {
+        show('Too many attempts. Wait a few minutes, then try again.', false);
+      } else {
+        show('We could not send the verification email. Please try again.', false);
+      }
+    } catch (error) {
+      show('Network error. Check your connection and try again.', false);
+    } finally {
+      verifyButton.disabled = false;
+    }
+  });
   form.addEventListener('submit', async function (event) {
     event.preventDefault();
     var email = document.getElementById('email').value.trim();
     var password = document.getElementById('password').value;
     if (!email || !password) { show('Enter your email and password.', false); return; }
+    verifyButton.hidden = true;
     button.disabled = true;
     show('Deleting your account...', true);
     try {
@@ -120,7 +149,11 @@ const DELETE_SCRIPT = `
         var signInBody = await signIn.json().catch(function () { return {}; });
         var code = signInBody && signInBody.code;
         if (code === 'EMAIL_NOT_VERIFIED') {
-          show('Verify your email first (we just sent a new link), then try again.', false);
+          // Unverified accounts can't sign in, so they can't be deleted here
+          // until the email is verified — offer a link that lands back here.
+          pendingEmail = email;
+          verifyButton.hidden = false;
+          show('Your email is not verified yet. Send a verification email, open the link, then come back to this page.', false);
         } else if (signIn.status === 401 || code === 'INVALID_EMAIL_OR_PASSWORD') {
           show('Email or password is incorrect.', false);
         } else if (signIn.status === 429) {
@@ -175,6 +208,7 @@ Settings &rarr; Delete account.</p>
 <button id="submit" type="submit">Delete my account</button>
 </form>
 <p id="result" role="status" aria-live="polite"></p>
+<button id="verify" type="button" class="secondary" hidden>Send verification email</button>
 <p><a href="/privacy">Privacy policy</a></p>
 <script>${DELETE_SCRIPT}</script>`,
 );

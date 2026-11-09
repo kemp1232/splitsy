@@ -1,4 +1,6 @@
-import { Pool } from '@neondatabase/serverless';
+import { poolQuery, type QueryFn } from '../db.js';
+
+export type { QueryFn };
 
 // Per-account daily scan cap (2026-11-09 spec Amendment): each signed-in
 // account may run at most OCR_DAILY_SCAN_LIMIT (default 10) backend scans per
@@ -13,8 +15,7 @@ import { Pool } from '@neondatabase/serverless';
 //
 // The UTC day is computed here in JS and passed as a parameter (rather than
 // `now()::date` in SQL) so the exact same SQL also runs against SQLite in
-// tests (dailyUsage.test.ts / auth.test.ts).
-const DATABASE_URL = process.env.DATABASE_URL;
+// tests (dailyUsage.test.ts / auth.test.ts). Uses the shared pool (db.ts).
 
 export const DEFAULT_DAILY_SCAN_LIMIT = 10;
 
@@ -28,24 +29,7 @@ export const OCR_DAILY_USAGE_DDL = `CREATE TABLE IF NOT EXISTS ocr_daily_usage (
   PRIMARY KEY (user_id, usage_day)
 )`;
 
-export type QueryFn = (
-  sql: string,
-  params: unknown[],
-) => Promise<{ rows: Record<string, unknown>[] }>;
-
 export type DailyScanClaim = { allowed: boolean; usageDay: string };
-
-let pool: Pool | null = null;
-function getPool(): Pool {
-  if (!DATABASE_URL) {
-    throw new Error('DATABASE_URL is not set — required for the OCR daily scan limit.');
-  }
-  // Lazy, memoized per warm instance — same as scanQueue.ts's own pool.
-  pool ??= new Pool({ connectionString: DATABASE_URL });
-  return pool;
-}
-
-const poolQuery: QueryFn = (sql, params) => getPool().query(sql, params);
 
 export function utcDay(now: Date): string {
   return now.toISOString().slice(0, 10);

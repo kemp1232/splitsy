@@ -1,14 +1,9 @@
-import { useMemo, useState } from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
 
-import { AppButton } from '@/components/ui/AppButton';
-import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
+import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { InlineError } from '@/components/ui/InlineError';
 import { copy } from '@/constants/copy';
-import type { ColorTokens } from '@/theme/tokens';
-import { radius, spacing } from '@/theme/tokens';
-import { useTheme } from '@/theme/ThemeProvider';
 
 type Props = {
   visible: boolean;
@@ -19,13 +14,11 @@ type Props = {
 };
 
 /**
- * Password-confirmed "Delete account" dialog. Same transparent-Modal shape as
- * ConfirmationDialog (backdrop tap / back button cancels), plus a password
- * field — Better Auth verifies the password server-side before deleting.
+ * Password-confirmed "Delete account" dialog: the shared ConfirmationDialog
+ * with a password field and inline error between its body and actions.
+ * Better Auth verifies the password server-side before deleting.
  */
 export function DeleteAccountDialog({ visible, onConfirm, onCancel }: Props) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -43,6 +36,7 @@ export function DeleteAccountDialog({ visible, onConfirm, onCancel }: Props) {
   }
 
   async function handleConfirm() {
+    if (submitting) return;
     if (!password) {
       setError(copy.auth.deleteAccountPasswordRequired);
       return;
@@ -59,70 +53,33 @@ export function DeleteAccountDialog({ visible, onConfirm, onCancel }: Props) {
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleCancel}>
-      <Pressable style={styles.backdrop} onPress={handleCancel}>
-        <Pressable style={styles.dialog} accessibilityRole="alert" onPress={() => {}}>
-          <AppText variant="subheading">{copy.auth.deleteAccountHeading}</AppText>
-          <AppText variant="body" color="textSecondary">
-            {copy.auth.deleteAccountBody}
-          </AppText>
-          <AppTextInput
-            label={copy.auth.deleteAccountPasswordLabel}
-            value={password}
-            onChangeText={(value) => {
-              setPassword(value);
-              if (error) setError(null);
-            }}
-            secureTextEntry
-            textContentType="password"
-            autoComplete="current-password"
-            autoCapitalize="none"
-            editable={!submitting}
-            onSubmitEditing={handleConfirm}
-          />
-          {error ? <InlineError message={error} /> : null}
-          <View style={styles.actions}>
-            <AppButton
-              label={copy.auth.deleteAccountCancel}
-              variant="secondary"
-              onPress={handleCancel}
-              disabled={submitting}
-            />
-            <AppButton
-              label={copy.auth.deleteAccountConfirm}
-              variant="destructive"
-              onPress={handleConfirm}
-              loading={submitting}
-            />
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    <ConfirmationDialog
+      visible={visible}
+      heading={copy.auth.deleteAccountHeading}
+      body={copy.auth.deleteAccountBody}
+      confirmLabel={copy.auth.deleteAccountConfirm}
+      cancelLabel={copy.auth.deleteAccountCancel}
+      destructive
+      onConfirm={handleConfirm}
+      onCancel={handleCancel}
+      confirmLoading={submitting}
+      cancelDisabled={submitting}
+    >
+      <AppTextInput
+        label={copy.auth.deleteAccountPasswordLabel}
+        value={password}
+        onChangeText={(value) => {
+          setPassword(value);
+          if (error) setError(null);
+        }}
+        secureTextEntry
+        textContentType="password"
+        autoComplete="current-password"
+        autoCapitalize="none"
+        editable={!submitting}
+        onSubmitEditing={handleConfirm}
+      />
+      {error ? <InlineError message={error} /> : null}
+    </ConfirmationDialog>
   );
-}
-
-function createStyles(colors: ColorTokens) {
-  return StyleSheet.create({
-    backdrop: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.4)',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: spacing.xl,
-    },
-    dialog: {
-      width: '100%',
-      maxWidth: 400,
-      backgroundColor: colors.surface,
-      borderRadius: radius.lg,
-      borderCurve: 'continuous',
-      padding: spacing.lg,
-      gap: spacing.md,
-    },
-    actions: {
-      flexDirection: 'row',
-      justifyContent: 'flex-end',
-      gap: spacing.sm,
-    },
-  });
 }

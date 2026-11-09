@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 
@@ -21,6 +22,14 @@ type Props = {
   // fully dismissed — for callers that must open another native screen
   // (e.g. the image picker) only after this one is gone.
   onDismiss?: () => void;
+  // Optional extra content between the body and the actions (e.g.
+  // DeleteAccountDialog's password field + inline error). Omitted by every
+  // plain confirm/cancel caller, which therefore render exactly as before.
+  children?: ReactNode;
+  // Spinner on (and disables) the confirm button while its action runs.
+  confirmLoading?: boolean;
+  // Disables the cancel button (e.g. while that action is in flight).
+  cancelDisabled?: boolean;
 };
 
 export function ConfirmationDialog({
@@ -33,6 +42,9 @@ export function ConfirmationDialog({
   onConfirm,
   onCancel,
   onDismiss,
+  children,
+  confirmLoading,
+  cancelDisabled,
 }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -54,12 +66,19 @@ export function ConfirmationDialog({
           <AppText variant="body" color="textSecondary">
             {body}
           </AppText>
+          {children}
           <View style={styles.actions}>
-            <AppButton label={cancelLabel} variant="secondary" onPress={onCancel} />
+            <AppButton
+              label={cancelLabel}
+              variant="secondary"
+              onPress={onCancel}
+              disabled={cancelDisabled}
+            />
             <AppButton
               label={confirmLabel}
               variant={destructive ? 'destructive' : 'primary'}
               onPress={onConfirm}
+              loading={confirmLoading}
             />
           </View>
         </Pressable>

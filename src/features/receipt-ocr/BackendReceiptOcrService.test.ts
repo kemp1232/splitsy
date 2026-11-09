@@ -1,3 +1,15 @@
+import {
+  BackendReceiptOcrService,
+  groqExtractionToParsedReceipt,
+} from './BackendReceiptOcrService';
+import {
+  OcrDailyLimitError,
+  OcrQueuedError,
+  OcrRateLimitedError,
+  OcrTruncatedError,
+  OcrUnauthenticatedError,
+} from './ReceiptOcrService';
+
 jest.mock('expo-file-system', () => ({
   // A minimal stand-in for the real (native) expo-file-system File class —
   // recognize() only ever calls `new File(imageUri)` and hands it to
@@ -15,22 +27,10 @@ jest.mock('expo-file-system', () => ({
 jest.mock('@/constants/config', () => ({ OCR_BACKEND_URL: '' }));
 // Stands in for the platform-specific session attachment (native cookie from
 // expoClient / web credentials: 'include') — /api/ocr is signed-in-only.
-const AUTH_REQUEST_INIT = { credentials: 'omit', headers: { cookie: 'session=abc' } };
+const mockAuthRequestInit = { credentials: 'omit', headers: { cookie: 'session=abc' } };
 jest.mock('@/lib/authRequestInit', () => ({
-  getAuthRequestInit: jest.fn(async () => AUTH_REQUEST_INIT),
+  getAuthRequestInit: jest.fn(async () => mockAuthRequestInit),
 }));
-
-import {
-  BackendReceiptOcrService,
-  groqExtractionToParsedReceipt,
-} from './BackendReceiptOcrService';
-import {
-  OcrDailyLimitError,
-  OcrQueuedError,
-  OcrRateLimitedError,
-  OcrTruncatedError,
-  OcrUnauthenticatedError,
-} from './ReceiptOcrService';
 
 // `import * as config from '@/constants/config'` would go through Babel's
 // namespace-import interop, which copies properties onto a new object rather
@@ -162,7 +162,29 @@ describe('BackendReceiptOcrService', () => {
 
       expect(global.fetch).toHaveBeenCalledWith(
         'http://fake-backend/api/ocr',
-        expect.objectContaining({ method: 'POST', ...AUTH_REQUEST_INIT }),
+        expect.objectContaining({ method: 'POST', ...mockAuthRequestInit }),
+      );
+    });
+
+    it('forwards the abort signal to the backend fetch so a timed-out request is cancelled', async () => {
+      global.fetch = jest.fn(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+          }),
+      ) as unknown as typeof fetch;
+      const controller = new AbortController();
+      const service = new BackendReceiptOcrService();
+
+      const pending = service.recognize('file:///receipt.jpg', { signal: controller.signal });
+      // Let recognize() reach its fetch call before aborting.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      controller.abort();
+
+      await expect(pending).rejects.toThrow('aborted');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://fake-backend/api/ocr',
+        expect.objectContaining({ signal: controller.signal }),
       );
     });
 

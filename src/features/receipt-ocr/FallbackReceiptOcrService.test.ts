@@ -102,6 +102,26 @@ describe('FallbackReceiptOcrService', () => {
     expect(result.source).toBe('on-device');
   });
 
+  it('aborts the backend request when the timeout fires', async () => {
+    let receivedSignal: AbortSignal | undefined;
+    const service = new FallbackReceiptOcrService(
+      {
+        recognize: (_uri, options) => {
+          receivedSignal = options?.signal;
+          return new Promise(() => {});
+        },
+      },
+      serviceThatResolves('on-device'),
+      20,
+    );
+
+    const result = await service.recognize('file:///receipt.jpg');
+
+    expect(result.source).toBe('on-device');
+    expect(receivedSignal).toBeDefined();
+    expect(receivedSignal?.aborted).toBe(true);
+  });
+
   it('falls back when the primary takes longer than the configured timeout', async () => {
     const service = new FallbackReceiptOcrService(
       serviceThatNeverResolves(),

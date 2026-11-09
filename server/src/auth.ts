@@ -1,7 +1,8 @@
 import { expo } from '@better-auth/expo';
-import { Pool } from '@neondatabase/serverless';
 import { betterAuth } from 'better-auth';
 import { Resend } from 'resend';
+
+import { getPool } from './db.js';
 
 // The Expo app's custom URL scheme, from src/constants/appInfo.json's
 // "scheme" field (read via app.config.ts). Hardcoded rather than imported
@@ -86,7 +87,7 @@ const trustedOrigins = [
 const database =
   process.env.NODE_ENV === 'test'
     ? new (await import('better-sqlite3')).default(':memory:')
-    : new Pool({ connectionString: DATABASE_URL });
+    : getPool();
 
 export const auth = betterAuth({
   database,

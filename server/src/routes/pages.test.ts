@@ -46,6 +46,10 @@ describe('public pages', () => {
     expect(html).toContain("fetch('/api/auth/delete-user'");
     // Best-effort sign-out when sign-in succeeded but deletion failed.
     expect(html).toContain("fetch('/api/auth/sign-out'");
+    // Unverified accounts get a verification link that lands back here.
+    expect(html).toContain("fetch('/api/auth/send-verification-email'");
+    expect(html).toContain("callbackURL: '/delete-account'");
+    expect(html).toContain('Send verification email');
     expect(html).toContain('type="password"');
     expect(html).not.toMatch(/<script[^>]*\bsrc=/i);
     expect(html).not.toContain('innerHTML');
