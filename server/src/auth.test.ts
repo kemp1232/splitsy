@@ -1,3 +1,4 @@
+import type Database from 'better-sqlite3';
 import { getMigrations } from 'better-auth/db/migration';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -82,6 +83,11 @@ describe('auth.ts', () => {
       // providers configured, no plugin beyond expo().
       expect('socialProviders' in auth.options).toBe(false);
       expect(auth.options.plugins).toHaveLength(1);
+    });
+
+    it('enables account deletion (user.deleteUser)', async () => {
+      const { auth } = await import('./auth.js');
+      expect(auth.options.user?.deleteUser?.enabled).toBe(true);
     });
 
     it('trusts the app scheme so the Expo plugin can deep-link back into the app', async () => {
@@ -187,6 +193,83 @@ describe('auth.ts', () => {
       );
 
       expect(signInRes.status).toBe(401);
+    });
+  });
+
+  describe('account deletion', () => {
+    // Signs up, marks the email verified directly in the in-memory SQLite DB
+    // (no emailed link to follow in a test), signs in, and returns the
+    // session cookie plus the DB handle.
+    async function signedInUser(email: string) {
+      const { auth } = await import('./auth.js');
+      const { runMigrations } = await getMigrations(auth.options);
+      await runMigrations();
+      const db = auth.options.database as unknown as Database.Database;
+
+      await auth.handler(
+        new Request('http://localhost:8787/api/auth/sign-up/email', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name: 'Delete Me', email, password: 'password1234' }),
+        }),
+      );
+      db.prepare('UPDATE "user" SET emailVerified = 1 WHERE email = ?').run(email);
+
+      const signInRes = await auth.handler(
+        new Request('http://localhost:8787/api/auth/sign-in/email', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email, password: 'password1234' }),
+        }),
+      );
+      expect(signInRes.status).toBe(200);
+      const cookie = signInRes.headers
+        .getSetCookie()
+        .map((value) => value.split(';')[0])
+        .join('; ');
+      const userId = (
+        db.prepare('SELECT id FROM "user" WHERE email = ?').get(email) as { id: string }
+      ).id;
+      return { auth, db, cookie, userId };
+    }
+
+    function deleteUserRequest(cookie: string, password: string) {
+      return new Request('http://localhost:8787/api/auth/delete-user', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify({ password }),
+      });
+    }
+
+    it('deletes the user, its sessions and its OCR usage rows when authenticated with the right password', async () => {
+      const { auth, db, cookie, userId } = await signedInUser('delete-me@example.com');
+      const { OCR_DAILY_USAGE_DDL } = await import('./ocr/dailyUsage.js');
+      db.exec(OCR_DAILY_USAGE_DDL);
+      db.prepare(
+        'INSERT INTO ocr_daily_usage (user_id, usage_day, scan_count) VALUES (?, ?, ?)',
+      ).run(userId, '2026-11-09', 3);
+
+      const res = await auth.handler(deleteUserRequest(cookie, 'password1234'));
+
+      expect(res.status).toBe(200);
+      expect((await res.json()).success).toBe(true);
+      expect(db.prepare('SELECT id FROM "user" WHERE id = ?').get(userId)).toBeUndefined();
+      expect(db.prepare('SELECT COUNT(*) AS n FROM session WHERE userId = ?').get(userId)).toEqual({
+        n: 0,
+      });
+      expect(
+        db.prepare('SELECT COUNT(*) AS n FROM ocr_daily_usage WHERE user_id = ?').get(userId),
+      ).toEqual({ n: 0 });
+    });
+
+    it('refuses to delete the user with the wrong password', async () => {
+      const { auth, db, cookie, userId } = await signedInUser('keep-me@example.com');
+
+      const res = await auth.handler(deleteUserRequest(cookie, 'not-the-password'));
+
+      expect(res.status).toBe(400);
+      expect((await res.json()).code).toBe('INVALID_PASSWORD');
+      expect(db.prepare('SELECT id FROM "user" WHERE id = ?').get(userId)).toEqual({ id: userId });
     });
   });
 });

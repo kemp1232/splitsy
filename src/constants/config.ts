@@ -41,3 +41,11 @@ export const AUTH_BACKEND_URL =
   Platform.OS === 'web'
     ? (process.env.EXPO_PUBLIC_WEB_AUTH_BACKEND_URL ?? 'http://localhost:8787')
     : (process.env.EXPO_PUBLIC_AUTH_BACKEND_URL ?? '');
+
+// Public pages served by the same backend (server/src/routes/pages.ts) and
+// linked from Settings — the privacy policy and the web account-deletion
+// page the Play Store listing points to. Derived from AUTH_BACKEND_URL (the
+// one backend that serves them) rather than separate env vars; empty when
+// that's unset, in which case Settings simply hides the links.
+export const PRIVACY_POLICY_URL = AUTH_BACKEND_URL ? `${AUTH_BACKEND_URL}/privacy` : '';
+export const ACCOUNT_DELETION_URL = AUTH_BACKEND_URL ? `${AUTH_BACKEND_URL}/delete-account` : '';

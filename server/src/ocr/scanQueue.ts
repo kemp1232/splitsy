@@ -1,4 +1,4 @@
-import { Pool } from '@neondatabase/serverless';
+import { getPool, poolQuery, type QueryFn } from '../db.js';
 
 // Groq's free/on_demand tier enforces its output-tokens-per-minute (OTPM)
 // budget per ACCOUNT, not per caller — every scan from every user of this
@@ -23,12 +23,8 @@ import { Pool } from '@neondatabase/serverless';
 // locking serializes concurrent UPDATEs to the same row, so there is no
 // separate application-level lock to get wrong.
 //
-// `@neondatabase/serverless`'s Pool is the same driver server/src/auth.ts
-// already uses for exactly this "safe to construct fresh in a serverless
-// function" reason (see its own comment) — this module keeps its own small
-// pool rather than importing auth.ts's, since that one is private to the
-// Better Auth instance and this has nothing to do with auth.
-const DATABASE_URL = process.env.DATABASE_URL;
+// Uses the server's one shared pool (db.ts), same as Better Auth and the
+// per-account daily cap.
 
 // Same cooldown for every claim — env-tunable (matching this OCR config's
 // existing OCR_IMAGE_MAX_WIDTH/OCR_MAX_OUTPUT_TOKENS pattern) in case Groq's
@@ -38,17 +34,21 @@ const DEFAULT_COOLDOWN_MS = 60_000;
 
 export type ScanSlotResult = { claimed: true } | { claimed: false; retryAfterSeconds: number };
 
-let pool: Pool | null = null;
-function getPool(): Pool {
-  if (!DATABASE_URL) {
-    throw new Error('DATABASE_URL is not set — required for the OCR scan queue.');
-  }
-  // Lazy, memoized per warm instance — mirrors auth.ts's own single
-  // module-scope Pool, just constructed on first use instead of at import
-  // time (this module's only caller, ocr.ts, already checks GROQ_API_KEY
-  // per-request rather than at boot, so failing lazily here matches that).
-  pool ??= new Pool({ connectionString: DATABASE_URL });
-  return pool;
+// The real (Neon) table's exact shape: a single row, id = 1, holding when the
+// next scan may start. CREATE ... IF NOT EXISTS plus an ON CONFLICT DO NOTHING
+// seed, so running this against the existing table is a no-op.
+export const OCR_SCAN_QUEUE_DDL = `CREATE TABLE IF NOT EXISTS ocr_scan_queue (
+  id smallint NOT NULL PRIMARY KEY,
+  next_available_at timestamp with time zone NOT NULL DEFAULT now()
+)`;
+export const OCR_SCAN_QUEUE_SEED = `INSERT INTO ocr_scan_queue (id, next_available_at)
+VALUES (1, now())
+ON CONFLICT (id) DO NOTHING`;
+
+// Run by migrate.ts / index.ts next to migrateDailyUsageTable(). Idempotent.
+export async function migrateScanQueueTable(query: QueryFn = poolQuery): Promise<void> {
+  await query(OCR_SCAN_QUEUE_DDL, []);
+  await query(OCR_SCAN_QUEUE_SEED, []);
 }
 
 // Attempts to claim the next scan slot. Succeeds (and pushes the next

@@ -212,6 +212,10 @@ export const copy = {
     // on-device fallback (processing.tsx).
     truncatedNote:
       'This receipt is too long to read on the free tier. Try a closer photo of just the items, or enter them manually.',
+    // Web-only, same reason as truncatedNote: no on-device fallback there.
+    dailyLimitNote:
+      "You've used today's online scans. They reset at midnight UTC — until then, enter the items manually.",
+    signedOutNote: 'Your sign-in has expired. Log out and sign in again to scan receipts.',
   },
 
   // Section 13.9 — Receipt review
@@ -274,6 +278,12 @@ export const copy = {
       'Online scanning was too busy just now, so this receipt was read on-device instead — please double-check items and prices, or try again in a minute for higher accuracy.',
     truncatedNote:
       "The free tier couldn't read the whole receipt, so some items or the total may be missing. Please check them.",
+    // On-device fallbacks for the backend's per-account daily cap and an
+    // expired session (server/src/routes/ocr.ts's daily_limit / 401).
+    dailyLimitNote:
+      "You've used today's online scans, so this receipt was read on-device instead — please double-check items and prices. Online scans reset at midnight UTC.",
+    signedOutNote:
+      'Your sign-in has expired, so this receipt was read on-device instead — please double-check items and prices. Log out and sign in again to use online scanning.',
     continueButton: 'Add people',
     noItemsHeading: 'No items found',
     noItemsBody: 'Add the receipt items manually to continue.',
@@ -610,13 +620,17 @@ export const copy = {
     privacyServerBody: "Splitsy's server keeps your sign-in details, not your receipts.",
     privacyLearnMore: 'Learn more',
     privacyLearnMoreHint: 'Opens full privacy details',
+    // Full privacy policy page served by the backend (server/src/routes/pages.ts).
+    privacyPolicyAction: 'Privacy policy',
+    privacyPolicyHint: 'Opens the privacy policy in your browser',
+    linkOpenFailure: "We couldn't open that page. Try again.",
     privacyDetailsHeading: 'How Splitsy handles your data',
     privacyDetailsLocalBody:
       'Your bills, trips, and receipt photos, including the items and prices read from your receipts, are saved on this device.',
     privacyDetailsOcrBody:
       "When you scan a receipt, the photo is sent to Splitsy's server, which passes it to a third-party AI text-reading provider to read the items and prices. Splitsy's server doesn't save the photo or the text read from it, but Splitsy doesn't control how long that provider may keep it.",
     privacyDetailsServerBody:
-      "Splitsy's server stores your account sign-in details and a small record used to pace receipt scans. It doesn't save your receipt photos, receipt text, or bills.",
+      "Splitsy's server stores your account sign-in details, a daily count of your receipt scans, and a small record used to pace receipt scans. It doesn't save your receipt photos, receipt text, or bills.",
     dataSection: 'Local data',
     deleteAllAction: 'Delete all local data',
     deleteAllCaption: 'Permanently removes saved bills and receipt photos.',
@@ -785,6 +799,29 @@ export const copy = {
     accountSection: 'Account',
     logOutAction: 'Log out',
     logOutFailure: "We couldn't log you out. Check your connection and try again.",
+
+    // Delete account — src/app/settings.tsx + DeleteAccountDialog. Deletes
+    // the server account (Better Auth /delete-user), then this device's
+    // local data (resetAllLocalData), then ends signed out.
+    deleteAccountAction: 'Delete account',
+    deleteAccountCaption: 'Permanently deletes your account and the data on this device.',
+    deleteAccountHeading: 'Delete your account?',
+    deleteAccountBody:
+      "This permanently deletes your Splitsy account and every bill and receipt photo saved on this device. It can't be undone. Enter your password to confirm.",
+    deleteAccountPasswordLabel: 'Password',
+    deleteAccountConfirm: 'Delete account',
+    deleteAccountCancel: 'Cancel',
+    deleteAccountPasswordRequired: 'Enter your password.',
+    deleteAccountWrongPassword: 'That password is incorrect. Try again.',
+    deleteAccountNetworkError:
+      "We couldn't reach Splitsy's server. Check your connection and try again.",
+    deleteAccountFailure: "We couldn't delete your account. Try again later.",
+    // The server account is already gone at this point; only the local wipe failed.
+    deleteAccountLocalResetFailure:
+      'Your account was deleted, but some data on this device could not be removed yet. Splitsy will try again the next time it starts, or use "Delete all local data" in Settings now.',
+    // Web account-deletion page (server/src/routes/pages.ts), for anyone
+    // without the app installed — required by the Play Store.
+    deleteAccountWebAction: 'Delete account on the web',
   },
 
   // Section 14 — global

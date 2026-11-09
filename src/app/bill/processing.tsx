@@ -18,8 +18,10 @@ import { FallbackReceiptOcrService } from '@/features/receipt-ocr/FallbackReceip
 import { getProcessingPrivacyNote } from '@/features/receipt-ocr/getProcessingPrivacyNote';
 import { MlKitReceiptOcrService } from '@/features/receipt-ocr/MlKitReceiptOcrService';
 import {
+  OcrDailyLimitError,
   OcrQueuedError,
   OcrTruncatedError,
+  OcrUnauthenticatedError,
   type ReceiptOcrService,
 } from '@/features/receipt-ocr/ReceiptOcrService';
 import { spacing } from '@/theme/tokens';
@@ -62,10 +64,12 @@ export default function ProcessingScreen() {
   // by the effect below so the UI doesn't need to re-ask the server every
   // second just to update a number.
   const [queuedSecondsLeft, setQueuedSecondsLeft] = useState<number | null>(null);
-  // Whether the last failure was a token-cap-truncated backend scan
-  // (OcrTruncatedError) — only reachable on web, where there's no on-device
-  // fallback to absorb it. Reset at the start of every attempt.
-  const [failureIsTruncated, setFailureIsTruncated] = useState(false);
+  // A more specific failure line for backend errors that are only reachable
+  // on web, where there's no on-device fallback to absorb them: a
+  // token-cap-truncated scan (OcrTruncatedError), the per-account daily cap
+  // (OcrDailyLimitError), or an expired session (OcrUnauthenticatedError).
+  // null means the generic copy.global.ocrUnavailable. Reset every attempt.
+  const [failureNote, setFailureNote] = useState<string | null>(null);
 
   useEffect(() => {
     // Guards against a stale attempt (e.g. a slow scan still in flight when
@@ -75,7 +79,7 @@ export default function ProcessingScreen() {
     (async () => {
       setStage('preparing');
       setRawText(null);
-      setFailureIsTruncated(false);
+      setFailureNote(null);
       try {
         const bill = await billsRepository.getById(billId);
         if (cancelled) return;
@@ -125,7 +129,15 @@ export default function ProcessingScreen() {
         // and easy to disable) — never shown to the end user, unlike the
         // removed DEBUG-text banner this screen used to render here.
         if (__DEV__) console.error('[ProcessingScreen] OCR failed:', error);
-        setFailureIsTruncated(error instanceof OcrTruncatedError);
+        setFailureNote(
+          error instanceof OcrTruncatedError
+            ? copy.ocrFailure.truncatedNote
+            : error instanceof OcrDailyLimitError
+              ? copy.ocrFailure.dailyLimitNote
+              : error instanceof OcrUnauthenticatedError
+                ? copy.ocrFailure.signedOutNote
+                : null,
+        );
         setStage('error');
       }
     })();
@@ -207,10 +219,10 @@ export default function ProcessingScreen() {
                 it's shown alongside spec 13.8's own required heading/body,
                 not in place of it, since that pair is an exact copy
                 contract of its own. On web there is no fallback wrapper, so
-                a token-cap-truncated scan (OcrTruncatedError) lands here
+                a truncated, daily-limited or signed-out scan lands here
                 directly and gets its own, more specific line instead. */}
             <AppText variant="body" color="textSecondary">
-              {failureIsTruncated ? copy.ocrFailure.truncatedNote : copy.global.ocrUnavailable}
+              {failureNote ?? copy.global.ocrUnavailable}
             </AppText>
           </View>
 

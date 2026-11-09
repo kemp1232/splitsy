@@ -1,7 +1,9 @@
 import {
+  OcrDailyLimitError,
   OcrQueuedError,
   OcrRateLimitedError,
   OcrTruncatedError,
+  OcrUnauthenticatedError,
   type OcrRecognitionResult,
   type ReceiptOcrService,
 } from './ReceiptOcrService';
@@ -14,9 +16,14 @@ import {
 // less-accurate on-device path needlessly.
 const DEFAULT_TIMEOUT_MS = 360_000;
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+// `onTimeout` lets the caller cancel the underlying work (here: abort the
+// backend fetch) rather than just stop waiting for it.
+function withTimeout<T>(promise: Promise<T>, ms: number, onTimeout?: () => void): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
+    const timer = setTimeout(() => {
+      onTimeout?.();
+      reject(new Error(`Timed out after ${ms}ms`));
+    }, ms);
     promise.then(
       (value) => {
         clearTimeout(timer);
@@ -43,7 +50,14 @@ export class FallbackReceiptOcrService implements ReceiptOcrService {
 
   async recognize(imageUri: string): Promise<OcrRecognitionResult> {
     try {
-      return await withTimeout(this.primary.recognize(imageUri), this.timeoutMs);
+      // Aborted on timeout so the backend request's connection really
+      // closes — the server sees the disconnect and refunds the daily scan.
+      const controller = new AbortController();
+      return await withTimeout(
+        this.primary.recognize(imageUri, { signal: controller.signal }),
+        this.timeoutMs,
+        () => controller.abort(),
+      );
     } catch (error) {
       // A queued caller (see scanQueue.ts / OcrQueuedError) should wait and
       // retry the same, better-accuracy backend path — not get silently
@@ -71,6 +85,13 @@ export class FallbackReceiptOcrService implements ReceiptOcrService {
       }
       if (error instanceof OcrTruncatedError) {
         return { ...result, fallbackReason: 'token_limit_truncated' };
+      }
+      // Not silent: the review screen explains each of these (buildOcrStatus).
+      if (error instanceof OcrDailyLimitError) {
+        return { ...result, fallbackReason: 'daily_limit' };
+      }
+      if (error instanceof OcrUnauthenticatedError) {
+        return { ...result, fallbackReason: 'unauthenticated' };
       }
       return result;
     }

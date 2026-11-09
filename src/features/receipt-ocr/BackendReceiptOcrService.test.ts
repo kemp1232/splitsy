@@ -1,3 +1,15 @@
+import {
+  BackendReceiptOcrService,
+  groqExtractionToParsedReceipt,
+} from './BackendReceiptOcrService';
+import {
+  OcrDailyLimitError,
+  OcrQueuedError,
+  OcrRateLimitedError,
+  OcrTruncatedError,
+  OcrUnauthenticatedError,
+} from './ReceiptOcrService';
+
 jest.mock('expo-file-system', () => ({
   // A minimal stand-in for the real (native) expo-file-system File class —
   // recognize() only ever calls `new File(imageUri)` and hands it to
@@ -13,12 +25,12 @@ jest.mock('expo-file-system', () => ({
 // unset in the ambient test environment, so "configured" vs "not configured"
 // is each test's own explicit setup, not incidental to how the suite is run.
 jest.mock('@/constants/config', () => ({ OCR_BACKEND_URL: '' }));
-
-import {
-  BackendReceiptOcrService,
-  groqExtractionToParsedReceipt,
-} from './BackendReceiptOcrService';
-import { OcrQueuedError, OcrRateLimitedError, OcrTruncatedError } from './ReceiptOcrService';
+// Stands in for the platform-specific session attachment (native cookie from
+// expoClient / web credentials: 'include') — /api/ocr is signed-in-only.
+const mockAuthRequestInit = { credentials: 'omit', headers: { cookie: 'session=abc' } };
+jest.mock('@/lib/authRequestInit', () => ({
+  getAuthRequestInit: jest.fn(async () => mockAuthRequestInit),
+}));
 
 // `import * as config from '@/constants/config'` would go through Babel's
 // namespace-import interop, which copies properties onto a new object rather
@@ -138,6 +150,69 @@ describe('BackendReceiptOcrService', () => {
   describe('with a configured backend', () => {
     beforeEach(() => {
       config.OCR_BACKEND_URL = 'http://fake-backend';
+    });
+
+    it('attaches the signed-in session to the OCR request', async () => {
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue({ ok: true, status: 200, json: async () => BASE_EXTRACTION });
+      const service = new BackendReceiptOcrService();
+
+      await service.recognize('file:///receipt.jpg');
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://fake-backend/api/ocr',
+        expect.objectContaining({ method: 'POST', ...mockAuthRequestInit }),
+      );
+    });
+
+    it('forwards the abort signal to the backend fetch so a timed-out request is cancelled', async () => {
+      global.fetch = jest.fn(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+          }),
+      ) as unknown as typeof fetch;
+      const controller = new AbortController();
+      const service = new BackendReceiptOcrService();
+
+      const pending = service.recognize('file:///receipt.jpg', { signal: controller.signal });
+      // Let recognize() reach its fetch call before aborting.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      controller.abort();
+
+      await expect(pending).rejects.toThrow('aborted');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://fake-backend/api/ocr',
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it('throws OcrUnauthenticatedError on a 401', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        text: async () => JSON.stringify({ error: 'Sign in', reason: 'unauthenticated' }),
+      });
+      const service = new BackendReceiptOcrService();
+
+      await expect(service.recognize('file:///receipt.jpg')).rejects.toBeInstanceOf(
+        OcrUnauthenticatedError,
+      );
+    });
+
+    it('throws OcrDailyLimitError (not queued or rate-limited) for the daily_limit 429 shape', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 429,
+        text: async () => JSON.stringify({ error: 'limit', reason: 'daily_limit', limit: 10 }),
+      });
+      const service = new BackendReceiptOcrService();
+
+      const rejection = service.recognize('file:///receipt.jpg');
+      await expect(rejection).rejects.toBeInstanceOf(OcrDailyLimitError);
+      await expect(rejection).rejects.not.toBeInstanceOf(OcrQueuedError);
+      await expect(rejection).rejects.not.toBeInstanceOf(OcrRateLimitedError);
     });
 
     it('throws OcrRateLimitedError specifically on a 429, distinct from any other failure', async () => {

@@ -14,8 +14,10 @@ const config: ExpoConfig = {
     favicon: './assets/images/icon.png',
   },
   android: {
-    // Placeholder application ID — finalize before any real release build or store submission.
-    package: 'com.splitsy.mvp',
+    // Final Play Store application ID — cannot change once a build is uploaded.
+    // versionCode is managed remotely by EAS (eas.json: appVersionSource
+    // "remote" + production autoIncrement), so it's deliberately not set here.
+    package: 'com.splitsy.app',
     adaptiveIcon: {
       backgroundColor: '#E6F4FE',
       foregroundImage: './assets/images/android-icon-foreground.png',

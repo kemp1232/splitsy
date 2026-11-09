@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { BottomTabBar } from '@/components/ui/BottomTabBar';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -9,6 +9,7 @@ import { SplashLoadingScreen } from '@/components/ui/SplashLoadingScreen';
 import { AUTH_BACKEND_URL } from '@/constants/config';
 import { copy } from '@/constants/copy';
 import { useDatabaseMigrations } from '@/db/migrations';
+import { completePendingLocalWipe } from '@/features/auth/completePendingLocalWipe';
 import { authClient } from '@/lib/authClient';
 import { fixWebViewportHeight } from '@/lib/fixWebViewportHeight';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
@@ -130,6 +131,22 @@ function SessionGate({ migrationsReady }: { migrationsReady: boolean }) {
 
 function RootNavigator() {
   const { success, error } = useDatabaseMigrations();
+  // Finishes an account deletion whose local wipe didn't complete last time
+  // (see deleteAccount.ts / completePendingLocalWipe.ts) — after migrations,
+  // before the splash lifts, so no screen ever shows the old account's bills.
+  // completePendingLocalWipe never throws; a failed retry just tries again on
+  // the next start.
+  const [pendingWipeChecked, setPendingWipeChecked] = useState(false);
+  useEffect(() => {
+    if (!success) return;
+    let cancelled = false;
+    void completePendingLocalWipe().then(() => {
+      if (!cancelled) setPendingWipeChecked(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [success]);
 
   if (error) {
     return (
@@ -142,7 +159,7 @@ function RootNavigator() {
     );
   }
 
-  return <SessionGate migrationsReady={success} />;
+  return <SessionGate migrationsReady={success && pendingWipeChecked} />;
 }
 
 export default function RootLayout() {

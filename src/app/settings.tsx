@@ -1,10 +1,12 @@
 import Feather from '@expo/vector-icons/Feather';
 import Constants from 'expo-constants';
+import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import type { ComponentProps } from 'react';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
+import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
 import { PrivacyDetailsModal } from '@/components/settings/PrivacyDetailsModal';
 import { AppText } from '@/components/ui/AppText';
 import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
@@ -12,7 +14,9 @@ import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { GroupedCard, GroupedSeparator, SectionHeader } from '@/components/ui/GroupedSection';
 import { InlineError } from '@/components/ui/InlineError';
 import { Screen } from '@/components/ui/Screen';
+import { ACCOUNT_DELETION_URL, PRIVACY_POLICY_URL } from '@/constants/config';
 import { copy } from '@/constants/copy';
+import { deleteAccount, type DeleteAccountFailure } from '@/features/auth/deleteAccount';
 import { resetAllLocalData } from '@/features/bills/bill.service';
 import { authClient } from '@/lib/authClient';
 import type { ColorTokens } from '@/theme/tokens';
@@ -140,6 +144,13 @@ function SettingsRow({
   );
 }
 
+const DELETE_ACCOUNT_ERRORS: Record<DeleteAccountFailure, string> = {
+  wrong_password: copy.auth.deleteAccountWrongPassword,
+  network: copy.auth.deleteAccountNetworkError,
+  failed: copy.auth.deleteAccountFailure,
+  local_reset_failed: copy.auth.deleteAccountLocalResetFailure,
+};
+
 export default function SettingsScreen() {
   const router = useRouter();
   const { colors, preference, setPreference } = useTheme();
@@ -149,6 +160,29 @@ export default function SettingsScreen() {
   const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logOutError, setLogOutError] = useState<string | null>(null);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+
+  // Returns the inline error for DeleteAccountDialog, or null on success —
+  // after which the root SessionGate swaps to the (auth) screens on its own
+  // (see deleteAccount.ts), same as log out never navigating itself.
+  async function handleConfirmDeleteAccount(password: string): Promise<string | null> {
+    const result = await deleteAccount(password);
+    if (result.ok) {
+      setShowDeleteAccount(false);
+      return null;
+    }
+    return DELETE_ACCOUNT_ERRORS[result.reason];
+  }
+
+  async function openExternal(url: string) {
+    setLinkError(null);
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setLinkError(copy.settings.linkOpenFailure);
+    }
+  }
 
   async function handleLogOut() {
     setLogOutError(null);
@@ -256,6 +290,14 @@ export default function SettingsScreen() {
               onPress={handleLogOut}
               loading={loggingOut}
             />
+            <GroupedSeparator />
+            <SettingsRow
+              icon="user-x"
+              title={copy.auth.deleteAccountAction}
+              caption={copy.auth.deleteAccountCaption}
+              destructive
+              onPress={() => setShowDeleteAccount(true)}
+            />
           </GroupedCard>
           {logOutError ? <InlineError message={logOutError} /> : null}
         </View>
@@ -284,7 +326,29 @@ export default function SettingsScreen() {
               accessibilityHint={copy.settings.privacyLearnMoreHint}
               onPress={() => setShowPrivacyDetails(true)}
             />
+            {PRIVACY_POLICY_URL ? (
+              <>
+                <GroupedSeparator />
+                <SettingsRow
+                  icon="external-link"
+                  title={copy.settings.privacyPolicyAction}
+                  accessibilityHint={copy.settings.privacyPolicyHint}
+                  onPress={() => openExternal(PRIVACY_POLICY_URL)}
+                />
+              </>
+            ) : null}
+            {ACCOUNT_DELETION_URL ? (
+              <>
+                <GroupedSeparator />
+                <SettingsRow
+                  icon="external-link"
+                  title={copy.auth.deleteAccountWebAction}
+                  onPress={() => openExternal(ACCOUNT_DELETION_URL)}
+                />
+              </>
+            ) : null}
           </GroupedCard>
+          {linkError ? <InlineError message={linkError} /> : null}
         </View>
 
         <View style={styles.section}>
@@ -316,6 +380,12 @@ export default function SettingsScreen() {
       <PrivacyDetailsModal
         visible={showPrivacyDetails}
         onClose={() => setShowPrivacyDetails(false)}
+      />
+
+      <DeleteAccountDialog
+        visible={showDeleteAccount}
+        onConfirm={handleConfirmDeleteAccount}
+        onCancel={() => setShowDeleteAccount(false)}
       />
 
       <ConfirmationDialog

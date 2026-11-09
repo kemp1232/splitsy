@@ -1,7 +1,8 @@
 import { expo } from '@better-auth/expo';
-import { Pool } from '@neondatabase/serverless';
 import { betterAuth } from 'better-auth';
 import { Resend } from 'resend';
+
+import { getPool } from './db.js';
 
 // The Expo app's custom URL scheme, from src/constants/appInfo.json's
 // "scheme" field (read via app.config.ts). Hardcoded rather than imported
@@ -86,7 +87,7 @@ const trustedOrigins = [
 const database =
   process.env.NODE_ENV === 'test'
     ? new (await import('better-sqlite3')).default(':memory:')
-    : new Pool({ connectionString: DATABASE_URL });
+    : getPool();
 
 export const auth = betterAuth({
   database,
@@ -137,6 +138,15 @@ export const auth = betterAuth({
         html: `<p>Welcome to Splitsy! Confirm your email address to finish setting up your account.</p><p><a href="${url}">Verify your email</a></p><p>If you didn't create a Splitsy account, you can safely ignore this email.</p>`,
       });
     },
+  },
+  // Account deletion (Play Store requirement; 2026-11-09 spec Amendment):
+  // POST /api/auth/delete-user, used by the app's Settings > Delete account
+  // and the backend's own /delete-account web page (routes/pages.ts). Both
+  // send the password, which Better Auth verifies before deleting. Deleting
+  // the user removes its sessions and accounts; ocr_daily_usage rows go via
+  // their ON DELETE CASCADE foreign key (ocr/dailyUsage.ts).
+  user: {
+    deleteUser: { enabled: true },
   },
   plugins: [expo()],
   // Only in production: the deployed frontend and this backend are two

@@ -32,6 +32,9 @@ export type GroqChatOptions = {
   prompt: string;
   imageBase64: string;
   maxOutputTokens?: number;
+  // Aborts the Groq request — ocr.ts combines the caller's own disconnect
+  // with a server-side deadline (OCR_GROQ_TIMEOUT_MS).
+  signal?: AbortSignal;
 };
 
 type GroqChatResponse = {
@@ -66,11 +69,13 @@ export async function requestReceiptExtraction({
   prompt,
   imageBase64,
   maxOutputTokens = DEFAULT_MAX_OUTPUT_TOKENS,
+  signal,
 }: GroqChatOptions): Promise<GroqExtractionResult> {
   let response: Response;
   try {
     response = await fetch(GROQ_CHAT_COMPLETIONS_URL, {
       method: 'POST',
+      signal,
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
@@ -107,6 +112,9 @@ export async function requestReceiptExtraction({
       }),
     });
   } catch (error) {
+    // An abort is the caller's own decision (ocr.ts checks which signal
+    // fired) — rethrown as-is rather than dressed up as "could not reach".
+    if (signal?.aborted) throw error;
     // Node's fetch throws a generic "fetch failed" TypeError for connection-
     // level failures — the actual reason lives in `cause`, which is
     // otherwise silently dropped.

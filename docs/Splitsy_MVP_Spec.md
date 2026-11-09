@@ -78,6 +78,14 @@
 
 ---
 
+> ## ⚠ Amendment — 2026-11-09 (Play Store release readiness)
+>
+> - **Per-account daily scan cap.** `/api/ocr` now requires a signed-in session (401 `unauthenticated` otherwise) and allows each account 10 backend scans per UTC day (`OCR_DAILY_SCAN_LIMIT`, 429 `daily_limit` once exceeded; scans that never reach a Groq completion are refunded). The count is stored in Postgres (`ocr_daily_usage`: user id + UTC day + count, deleted with the account). This amends "no user data on the server" above (lines 21, 75): the server now keeps this per-account usage counter in addition to the sign-in data from the 2026-08-25 amendment — still never receipt images, receipt text, or bills. Over the cap or signed out, the app falls back to on-device OCR with a visible note (on web, which has no fallback, a specific failure message).
+> - **Account deletion.** Settings → Delete account deletes the server account (password-confirmed, Better Auth `deleteUser`), then runs the existing "Delete all local data" reset, and ends signed out. A web deletion page is also available at the backend's `/delete-account`.
+> - **Privacy policy.** The backend serves a public privacy policy at `/privacy`, linked from Settings alongside the web deletion page. Release steps and Play Data Safety answers are in `docs/play-release-checklist.md`.
+
+---
+
 ## 1. Product Summary
 
 Splitsy lets a user photograph or upload a receipt, review the detected items, add the people sharing the bill, assign items to one or more people, divide taxes and other adjustments, and generate an exact per-person breakdown.
