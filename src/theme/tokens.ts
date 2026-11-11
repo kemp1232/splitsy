@@ -36,54 +36,123 @@ export type ColorTokens = {
   // header comment on why that flips direction between light and dark.
   gradientStart: string;
   gradientEnd: string;
+  // ---- "Playful Fintech Minimalism" additions (2026-11 redesign) ----
+  // The deeper end of the screen background's own vertical wash
+  // (AppBackground.tsx), one step past `background`.
+  backgroundDeep: string;
+  // The two soft purple tones AppBackground's organic corner shapes are
+  // painted in — deliberately very low contrast against `background`.
+  ambient: string;
+  ambientStrong: string;
+  // A third surface layer above `surface`/`surfaceMuted`: icon tiles, round
+  // header buttons, progress-bar tracks.
+  surfaceElevated: string;
+  // Tertiary text (hints, meta lines). Still clears 4.5:1 on `background`
+  // and `surface` (see tokens.test.ts).
+  textMuted: string;
+  // The violet second stop of the lavender family (gradient end, the
+  // filled "recommended" icon tile).
+  accent: string;
+  borderStrong: string;
+  // Theme-aware pressed fill for the `danger` (destructive) button.
+  dangerPressed: string;
+  // Dimmed backdrop behind every bottom sheet / dialog. 8-digit hex (has
+  // its own alpha) — never pass this through tint().
+  scrim: string;
 };
 
-// Paper-white background, pure-white cards, ink-navy text, and one deliberate
-// cobalt-indigo accent (not Bootstrap blue, not iOS system blue).
+// Harmonized lavender light palette (2026-11 redesign): a faintly violet
+// paper background, white cards, ink text and a deep lavender-indigo accent
+// dark enough to carry white labels. Every text pairing is asserted by
+// tokens.test.ts rather than only by this comment.
 export const lightColors: ColorTokens = {
-  background: '#F5F6FA',
+  background: '#F6F5FB',
   surface: '#FFFFFF',
-  surfaceMuted: '#EAECF3',
-  textPrimary: '#10141C',
-  textSecondary: '#545C6E',
-  border: '#DDE1EA',
-  primary: '#2F3EA6',
-  primaryPressed: '#232F82',
+  surfaceMuted: '#EFEEF8',
+  textPrimary: '#12131C',
+  textSecondary: '#4E5468',
+  border: '#DCDAEA',
+  primary: '#4A4FC4',
+  primaryPressed: '#3B3FA6',
   onPrimary: '#FFFFFF',
   success: '#1E7A4C',
   warning: '#8A5300',
   danger: '#C13327',
-  focus: '#2F3EA6',
-  // White (`onPrimary`) on gradientStart: 7.82:1. White on gradientEnd:
-  // 16.23:1. Both comfortably clear 4.5:1 (normal text) everywhere along the
-  // gradient, not just at the 3:1 "large text" minimum the hero's own big
-  // amount figure alone would need.
-  gradientStart: '#3546B4',
-  gradientEnd: '#141B4D',
+  focus: '#4A4FC4',
+  // White (`onPrimary`) on gradientStart: 6.55:1, on gradientEnd: 5.93:1.
+  gradientStart: '#4A4FC4',
+  gradientEnd: '#6A4BD1',
+  backgroundDeep: '#EEEDF8',
+  ambient: '#E9E5FA',
+  ambientStrong: '#DDD6F7',
+  surfaceElevated: '#F3F2FA',
+  textMuted: '#5E6478',
+  accent: '#6A4BD1',
+  borderStrong: '#C4C0DD',
+  dangerPressed: '#8C1D17',
+  scrim: '#0B0D1266',
 } as const;
 
 // Near-black (not pure #000) surfaces, off-white text, the same accent hue
 // brightened so it clears AA both as plain text on the dark background and as
 // a button fill (see the file header comment for why `onPrimary` flips dark).
+//
+// 2026-11 "Playful Fintech Minimalism": near-black navy base, layered
+// charcoal surfaces, lavender primary/violet accent, mint reserved for
+// verified/positive states, coral for destructive ones.
 export const darkColors: ColorTokens = {
   background: '#0B0D12',
-  surface: '#12151C',
-  surfaceMuted: '#1B1F29',
-  textPrimary: '#F2F3F7',
-  textSecondary: '#A9B0C0',
-  border: '#262B36',
-  primary: '#8B93FF',
-  primaryPressed: '#A6ACFF',
+  surface: '#171A25',
+  surfaceMuted: '#202335',
+  textPrimary: '#F5F6FA',
+  textSecondary: '#AAB0BE',
+  border: '#323549',
+  primary: '#9298FF',
+  primaryPressed: '#7D84F2',
   onPrimary: '#0B0D12',
-  success: '#7FE0A8',
-  warning: '#F3B94D',
-  danger: '#FF8A80',
-  focus: '#8B93FF',
-  // Dark ink (`onPrimary`) on gradientStart: 4.98:1. Dark ink on gradientEnd:
-  // 9.22:1. Both clear 4.5:1 — the same flipped light-ink-on-bright-fill
-  // pattern this file's header comment already documents for `primary`.
-  gradientStart: '#6E77E0',
-  gradientEnd: '#A6ACFF',
+  success: '#65E6AE',
+  warning: '#F4B66D',
+  danger: '#FF8585',
+  focus: '#A68BFA',
+  // Dark ink (`onPrimary`) on gradientStart: 7.55:1, on gradientEnd: 7.12:1
+  // — the flipped dark-ink-on-bright-fill pattern from the header comment.
+  gradientStart: '#9298FF',
+  gradientEnd: '#A68BFA',
+  backgroundDeep: '#10101B',
+  ambient: '#1B1730',
+  ambientStrong: '#292044',
+  surfaceElevated: '#27283D',
+  textMuted: '#8A91A3',
+  accent: '#A68BFA',
+  borderStrong: '#44486A',
+  dangerPressed: '#E56F6F',
+  scrim: '#05060A99',
+} as const;
+
+// Theme-independent chrome around a live camera feed (bill/capture.tsx):
+// that backdrop is always dark regardless of the app theme, so these never
+// flip with light/dark.
+export const cameraOverlay = {
+  text: '#FFFFFF',
+  frame: '#FFFFFF',
+  scrim: '#00000066',
+  background: '#0B0D12',
+  feedBackground: '#000000',
+  scanLine: '#FFFFFF80',
+} as const;
+
+// Ink for text laid over the fixed white speech bubble baked into
+// assets/images/greeting.png (GreetingBubble.tsx) — the bubble never
+// repaints for dark mode, so this ink never flips either.
+export const illustrationInk = {
+  heading: '#10141C',
+  body: '#2A2E38',
+} as const;
+
+// CSS box-shadow strings (New Architecture renders them on both platforms).
+export const shadows = {
+  fab: '0 6px 12px rgba(0, 0, 0, 0.28)',
+  card: '0 8px 24px rgba(0, 0, 0, 0.18)',
 } as const;
 
 export const spacing = {
@@ -93,6 +162,8 @@ export const spacing = {
   lg: 16,
   xl: 24,
   xxl: 32,
+  // Between lg and xl — the redesign's card padding / screen gutter.
+  xl20: 20,
 } as const;
 
 export const radius = {
@@ -104,6 +175,11 @@ export const radius = {
   // as its own distinct, more prominent surface.
   xl: 28,
   pill: 999,
+  // 2026-11 redesign shapes: icon tiles, buttons/inputs, cards, hero panels.
+  tile: 14,
+  button: 16,
+  card: 20,
+  hero: 26,
 } as const;
 
 // Minimums from spec section 17 (accessibility): 44x44 required, 48x48 preferred.

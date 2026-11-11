@@ -127,7 +127,7 @@ export default function SignInScreen() {
   }
 
   return (
-    <Screen scroll>
+    <Screen scroll background="form">
       <View style={styles.body}>
         <View style={styles.brandRow}>
           {/* The "Splitsy" text right next to it already names the app, so
@@ -145,7 +145,7 @@ export default function SignInScreen() {
         </View>
 
         <View style={styles.headerGroup}>
-          <AppText variant="heading">{copy.auth.signInHeading}</AppText>
+          <AppText variant="title">{copy.auth.signInHeading}</AppText>
           <AppText variant="body" color="textSecondary">
             {copy.auth.signInBody}
           </AppText>

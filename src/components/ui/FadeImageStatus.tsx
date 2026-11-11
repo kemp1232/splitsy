@@ -48,7 +48,14 @@ type Props = {
 // absolutely positioned/full-screen like SplashLoadingScreen (which overlays
 // other already-mounted screens while it fades out) — this renders in-flow
 // as a screen's own primary content instead.
-export function FadeImageStatus({ visible, image, heading, body, onFadeOutComplete, children }: Props) {
+export function FadeImageStatus({
+  visible,
+  image,
+  heading,
+  body,
+  onFadeOutComplete,
+  children,
+}: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   // Lazy useState initializer, not useRef(...).current — see
@@ -74,8 +81,7 @@ export function FadeImageStatus({ visible, image, heading, body, onFadeOutComple
 
   return (
     <Animated.View
-      style={[styles.container, { opacity }]}
-      pointerEvents={visible ? 'auto' : 'none'}
+      style={[styles.container, { opacity, pointerEvents: visible ? 'auto' : 'none' }]}
       accessibilityViewIsModal={visible}
     >
       <Image

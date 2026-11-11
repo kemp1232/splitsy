@@ -120,10 +120,10 @@ export default function RegisterScreen() {
 
   if (registeredEmail) {
     return (
-      <Screen scroll>
+      <Screen scroll background="form">
         <View style={styles.body}>
           <View style={styles.headerGroup}>
-            <AppText variant="heading">{copy.auth.registerCheckEmailHeading}</AppText>
+            <AppText variant="title">{copy.auth.registerCheckEmailHeading}</AppText>
             <AppText variant="body" color="textSecondary" accessibilityLiveRegion="polite">
               {copy.auth.registerCheckEmailBody.replace('{email}', registeredEmail)}
             </AppText>
@@ -140,10 +140,10 @@ export default function RegisterScreen() {
   }
 
   return (
-    <Screen scroll>
+    <Screen scroll background="form">
       <View style={styles.body}>
         <View style={styles.headerGroup}>
-          <AppText variant="heading">{copy.auth.registerHeading}</AppText>
+          <AppText variant="title">{copy.auth.registerHeading}</AppText>
           <AppText variant="body" color="textSecondary">
             {copy.auth.registerBody}
           </AppText>

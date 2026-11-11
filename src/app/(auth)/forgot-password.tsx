@@ -72,10 +72,10 @@ export default function ForgotPasswordScreen() {
 
   if (sent) {
     return (
-      <Screen scroll>
+      <Screen scroll background="form">
         <View style={styles.body}>
           <View style={styles.headerGroup}>
-            <AppText variant="heading">{copy.auth.forgotPasswordHeading}</AppText>
+            <AppText variant="title">{copy.auth.forgotPasswordHeading}</AppText>
             <AppText variant="body" color="textSecondary" accessibilityLiveRegion="polite">
               {copy.auth.forgotPasswordConfirmation}
             </AppText>
@@ -92,10 +92,10 @@ export default function ForgotPasswordScreen() {
   }
 
   return (
-    <Screen scroll>
+    <Screen scroll background="form">
       <View style={styles.body}>
         <View style={styles.headerGroup}>
-          <AppText variant="heading">{copy.auth.forgotPasswordHeading}</AppText>
+          <AppText variant="title">{copy.auth.forgotPasswordHeading}</AppText>
           <AppText variant="body" color="textSecondary">
             {copy.auth.forgotPasswordBody}
           </AppText>

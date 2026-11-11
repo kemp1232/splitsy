@@ -79,7 +79,7 @@ function LineItemRowComponent({ item, onEdit, onDelete }: Props) {
       <IconButton
         accessibilityLabel={editLabel}
         onPress={() => onEdit(item)}
-        icon={<Feather name="edit-2" size={18} color={colors.textSecondary} />}
+        icon={<Feather name="edit-2" size={18} color={colors.primary} />}
       />
       <IconButton
         accessibilityLabel={deleteLabel}
@@ -106,7 +106,7 @@ function createStyles(colors: ColorTokens) {
       alignItems: 'center',
       minHeight: 48,
       paddingRight: spacing.xs,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       borderCurve: 'continuous',
       backgroundColor: colors.surface,
       borderWidth: 1,
@@ -145,7 +145,9 @@ function createStyles(colors: ColorTokens) {
       paddingVertical: 2,
       borderRadius: radius.pill,
       borderCurve: 'continuous',
-      backgroundColor: colors.surfaceMuted,
+      backgroundColor: colors.surfaceElevated,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     quantityText: {
       fontSize: 13,

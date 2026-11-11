@@ -115,10 +115,16 @@ export function StatusBadge({
   tone = 'neutral',
   style,
   solid = false,
-  labelColor = 'textPrimary',
+  labelColor: labelColorProp,
   icon,
 }: Props) {
   const { colors } = useTheme();
+  // 2026-11 redesign: outlined status pills — a toned pill's label takes
+  // the tone's own color (mint "Matches receipt", etc.) unless the caller
+  // asks for a specific one. Every tone token clears 4.5:1 as text on
+  // background/surface (tokens.test.ts).
+  const labelColor: keyof ColorTokens =
+    labelColorProp ?? (tone === 'neutral' ? 'textSecondary' : SOLID_TONE_TOKEN[tone]);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const pastel = solid ? pastelSolidColors(colors[SOLID_TONE_TOKEN[tone]]) : null;
   const solidStyle = pastel ? { backgroundColor: pastel.background, borderWidth: 0 } : null;
@@ -137,26 +143,26 @@ export function StatusBadge({
 }
 
 function createStyles(colors: ColorTokens) {
-  // Tone fills are a low-alpha wash of the tone color rather than a fixed
-  // pastel literal — composited over whatever surface sits behind the badge,
-  // that alpha blend naturally lands as a light tint in the light theme and a
-  // dark tint in the dark theme, instead of needing a separate hardcoded pastel
-  // per theme.
+  // 2026-11 redesign: toned badges are outlines — a transparent fill with a
+  // tone-colored border (and, by default, a tone-colored label), so they read
+  // the same over any surface in either theme. Only `neutral` keeps a quiet
+  // elevated-surface fill. (The `solid` variant above computes its own
+  // pastel fill instead.)
   return StyleSheet.create({
     badge: {
       alignSelf: 'flex-start',
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.xs,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.xs / 2,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs,
       borderRadius: radius.pill,
       borderCurve: 'continuous',
-      borderWidth: 1,
+      borderWidth: 1.5,
     },
-    neutral: { backgroundColor: colors.surfaceMuted, borderColor: colors.border },
-    success: { backgroundColor: `${colors.success}26`, borderColor: colors.success },
-    warning: { backgroundColor: `${colors.warning}26`, borderColor: colors.warning },
-    danger: { backgroundColor: `${colors.danger}26`, borderColor: colors.danger },
+    neutral: { backgroundColor: colors.surfaceElevated, borderColor: colors.border },
+    success: { backgroundColor: 'transparent', borderColor: colors.success },
+    warning: { backgroundColor: 'transparent', borderColor: colors.warning },
+    danger: { backgroundColor: 'transparent', borderColor: colors.danger },
   });
 }

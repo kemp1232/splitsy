@@ -17,17 +17,28 @@ type Props = PropsWithChildren<{
   // direction: "used sparingly, not scattered everywhere"), not applied to
   // every SectionCard in the app.
   torn?: boolean;
+  // 2026-11 redesign: a mint border for a card whose state the app has
+  // actually verified (e.g. BillTotalCard only when the total matches the
+  // receipt). Omitted = neutral border. Not meant to be combined with
+  // `torn` (the torn edge keeps the neutral border color).
+  highlight?: 'success';
 }>;
 
-export function SectionCard({ title, torn, children }: Props) {
+export function SectionCard({ title, torn, highlight, children }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
     <View>
-      <View style={[styles.card, torn && styles.cardTorn]}>
+      <View
+        style={[
+          styles.card,
+          highlight === 'success' && styles.highlightSuccess,
+          torn && styles.cardTorn,
+        ]}
+      >
         {title ? (
-          <AppText variant="subheading" style={styles.title}>
+          <AppText variant="cardTitle" style={styles.title}>
             {title}
           </AppText>
         ) : null}
@@ -42,12 +53,16 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     card: {
       backgroundColor: colors.surface,
-      borderRadius: radius.lg,
+      borderRadius: radius.card,
       borderCurve: 'continuous',
       borderWidth: 1,
       borderColor: colors.border,
-      padding: spacing.lg,
+      padding: spacing.xl20,
       gap: spacing.sm,
+    },
+    highlightSuccess: {
+      borderColor: colors.success,
+      borderWidth: 1.5,
     },
     cardTorn: {
       borderBottomWidth: 0,

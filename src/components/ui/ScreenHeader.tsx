@@ -49,6 +49,7 @@ export function ScreenHeader({
     <View style={styles.headerBlock}>
       <View style={styles.headingRow}>
         <IconButton
+          variant="surface"
           accessibilityLabel={backAccessibilityLabel}
           onPress={onBack ?? defaultBack}
           icon={<Feather name="arrow-left" size={22} color={colors.textPrimary} />}
@@ -56,17 +57,17 @@ export function ScreenHeader({
         {/* Decorative — the heading beside it carries the meaning. */}
         <Feather
           name={icon}
-          size={24}
+          size={26}
           color={colors.primary}
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         />
-        <AppText variant="heading" style={styles.headingText} accessibilityRole="header">
+        <AppText variant="title" style={styles.headingText} accessibilityRole="header">
           {heading}
         </AppText>
       </View>
       {body ? (
-        <AppText variant="body" color="textSecondary" style={styles.uniformText}>
+        <AppText variant="body" color="textSecondary" style={styles.bodyText}>
           {body}
         </AppText>
       ) : null}
@@ -77,22 +78,20 @@ export function ScreenHeader({
 
 // Theme-independent (colors are applied inline to the icons above).
 const styles = StyleSheet.create({
-  uniformText: {
-    fontSize: 14,
-    lineHeight: 19,
+  bodyText: {
+    fontSize: 15,
+    lineHeight: 21,
   },
   headerBlock: {
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   headingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    // Pulls the back button's own touch-target padding flush with the
-    // content edge so the arrow lines up with the cards below.
-    marginLeft: -spacing.md,
+    gap: spacing.md,
   },
   headingText: {
+    flex: 1,
     flexShrink: 1,
   },
 });

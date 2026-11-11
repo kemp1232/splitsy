@@ -104,10 +104,10 @@ export default function NewTripScreen() {
   }
 
   return (
-    <Screen scroll padded={false}>
+    <Screen scroll padded={false} background="form">
       <View style={styles.body}>
         <View style={styles.headerBlock}>
-          <AppText variant="heading">{copy.trip.newHeading}</AppText>
+          <AppText variant="title">{copy.trip.newHeading}</AppText>
           <AppText variant="body" color="textSecondary">
             {copy.trip.newBody}
           </AppText>
@@ -245,7 +245,7 @@ function createStyles(colors: ColorTokens) {
       justifyContent: 'space-between',
       gap: spacing.md,
       padding: spacing.md,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       borderCurve: 'continuous',
       backgroundColor: colors.surface,
       borderWidth: 1,

@@ -13,7 +13,7 @@ import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { copy } from '@/constants/copy';
 import { useBillSourceActions } from '@/features/bills/useBillSourceActions';
 import { goBackOrHome } from '@/lib/navigation';
-import { radius, spacing, touchTarget } from '@/theme/tokens';
+import { cameraOverlay, radius, spacing, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 const FLASH_CYCLE: FlashMode[] = ['auto', 'on', 'off'];
@@ -31,12 +31,7 @@ const FLASH_LABEL: Record<FlashMode, string> = {
 // intentionally uses fixed white-on-dark colors instead of theme tokens,
 // which would otherwise resolve to dark ink in dark mode and disappear
 // against this same fixed dark chrome.
-const overlay = {
-  text: '#FFFFFF',
-  scrim: 'rgba(0,0,0,0.4)',
-  frame: '#FFFFFF',
-  background: '#0B0D12',
-};
+// These colors are named in theme/tokens.ts (cameraOverlay).
 
 export default function CaptureScreen() {
   const router = useRouter();
@@ -135,7 +130,7 @@ export default function CaptureScreen() {
         <IconButton
           accessibilityLabel={copy.cameraCapture.closeAccessibilityLabel}
           onPress={() => goBackOrHome(router)}
-          icon={<Feather name="x" size={22} color={overlay.text} />}
+          icon={<Feather name="x" size={22} color={cameraOverlay.text} />}
         />
         <Pressable
           onPress={() =>
@@ -168,11 +163,11 @@ export default function CaptureScreen() {
           detector (spec F-007 explicitly rules that out for the MVP). */}
       <View style={styles.cameraCard}>
         <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" flash={flash} />
-        <View style={styles.scanLine} pointerEvents="none" />
-        <View style={[styles.bracket, styles.bracketTopLeft]} pointerEvents="none" />
-        <View style={[styles.bracket, styles.bracketTopRight]} pointerEvents="none" />
-        <View style={[styles.bracket, styles.bracketBottomLeft]} pointerEvents="none" />
-        <View style={[styles.bracket, styles.bracketBottomRight]} pointerEvents="none" />
+        <View style={styles.scanLine} />
+        <View style={[styles.bracket, styles.bracketTopLeft]} />
+        <View style={[styles.bracket, styles.bracketTopRight]} />
+        <View style={[styles.bracket, styles.bracketBottomLeft]} />
+        <View style={[styles.bracket, styles.bracketBottomRight]} />
       </View>
 
       <View style={styles.bottomBar}>
@@ -181,12 +176,12 @@ export default function CaptureScreen() {
             variant="secondary"
             label={copy.cameraCapture.galleryAction}
             onPress={pickFromGallery}
-            // Fixed overlay.text, not the color AppButton's render-prop would
+            // Fixed cameraOverlay.text, not the color AppButton's render-prop would
             // otherwise hand back (theme-derived colors.primary for a
             // secondary button) — this button sits on the camera's own fixed
             // dark chrome, which never follows the app's light/dark theme
-            // (see this file's own `overlay` header comment).
-            icon={() => <Feather name="image" size={18} color={overlay.text} />}
+            // (see this file's own camera-chrome header comment).
+            icon={() => <Feather name="image" size={18} color={cameraOverlay.text} />}
           />
         </View>
         {/* The reference's large circular shutter button. */}
@@ -205,13 +200,13 @@ export default function CaptureScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: overlay.background },
+  screen: { flex: 1, backgroundColor: cameraOverlay.background },
   headerBlock: { marginBottom: spacing.lg },
   spacedBelow: { marginTop: spacing.sm, marginBottom: spacing.lg, gap: spacing.sm },
   deniedRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs },
   deniedText: { flex: 1 },
   fallbacks: { marginTop: spacing.xl, gap: spacing.xs },
-  overlayText: { color: overlay.text },
+  overlayText: { color: cameraOverlay.text },
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -225,7 +220,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: radius.pill,
     borderCurve: 'continuous',
-    backgroundColor: overlay.scrim,
+    backgroundColor: cameraOverlay.scrim,
   },
   instructionBlock: {
     paddingHorizontal: spacing.lg,
@@ -242,23 +237,25 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     borderCurve: 'continuous',
     overflow: 'hidden',
-    backgroundColor: '#000000',
+    backgroundColor: cameraOverlay.feedBackground,
   },
   scanLine: {
+    pointerEvents: 'none',
     position: 'absolute',
     left: spacing.xl,
     right: spacing.xl,
     top: '45%',
     height: 2,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: cameraOverlay.scanLine,
     borderRadius: radius.pill,
     borderCurve: 'continuous',
   },
   bracket: {
+    pointerEvents: 'none',
     position: 'absolute',
     width: 32,
     height: 32,
-    borderColor: overlay.frame,
+    borderColor: cameraOverlay.frame,
   },
   bracketTopLeft: {
     top: spacing.lg,
@@ -304,7 +301,7 @@ const styles = StyleSheet.create({
     borderRadius: 42,
     borderCurve: 'continuous',
     borderWidth: 4,
-    borderColor: overlay.frame,
+    borderColor: cameraOverlay.frame,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -313,6 +310,6 @@ const styles = StyleSheet.create({
     height: 68,
     borderRadius: 34,
     borderCurve: 'continuous',
-    backgroundColor: overlay.text,
+    backgroundColor: cameraOverlay.text,
   },
 });

@@ -65,14 +65,26 @@ import { createId } from '@/lib/ids';
 import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
 import type { ColorTokens } from '@/theme/tokens';
 import { radius, spacing, touchTarget } from '@/theme/tokens';
+import { tint } from '@/theme/tint';
 import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
-const STATUS_ICON: Record<OcrStatusTone, keyof typeof Feather.glyphMap> = {
-  success: 'check-circle',
-  warning: 'alert-triangle',
-  neutral: 'smartphone',
+// 'success' here is the "Read by AI — double-check…" banner: a caution, not
+// a verified state, so it renders as a lavender info outline (primary
+// border + icon), never mint (2026-11 redesign; presentation-only mapping —
+// buildOcrStatus's own tones are unchanged).
+const STATUS_PRESENTATION: Record<
+  OcrStatusTone,
+  {
+    icon: keyof typeof Feather.glyphMap;
+    styleKey: 'info' | 'warning' | 'neutral';
+    colorToken: keyof ColorTokens;
+  }
+> = {
+  success: { icon: 'info', styleKey: 'info', colorToken: 'primary' },
+  warning: { icon: 'alert-triangle', styleKey: 'warning', colorToken: 'warning' },
+  neutral: { icon: 'smartphone', styleKey: 'neutral', colorToken: 'textSecondary' },
 };
 
 async function fetchReviewData(billId: string) {
@@ -454,12 +466,13 @@ export default function ReceiptReviewScreen() {
         <View style={styles.headerBlock}>
           <View style={styles.headingRow}>
             <IconButton
+              variant="surface"
               accessibilityLabel={copy.receiptReview.backAccessibilityLabel}
               onPress={handleBack}
               icon={<Feather name="arrow-left" size={22} color={colors.textPrimary} />}
             />
-            <Feather name="file-text" size={24} color={colors.primary} />
-            <AppText variant="heading" style={styles.headingText} accessibilityRole="header">
+            <Feather name="file-text" size={26} color={colors.primary} />
+            <AppText variant="title" style={styles.headingText} accessibilityRole="header">
               {copy.receiptReview.heading}
             </AppText>
           </View>
@@ -485,12 +498,12 @@ export default function ReceiptReviewScreen() {
             ]
               .filter(Boolean)
               .join('. ')}
-            style={[styles.statusCard, styles[ocrStatus.tone]]}
+            style={[styles.statusCard, styles[STATUS_PRESENTATION[ocrStatus.tone].styleKey]]}
           >
             <Feather
-              name={STATUS_ICON[ocrStatus.tone]}
+              name={STATUS_PRESENTATION[ocrStatus.tone].icon}
               size={20}
-              color={ocrStatus.tone === 'neutral' ? colors.textSecondary : colors[ocrStatus.tone]}
+              color={colors[STATUS_PRESENTATION[ocrStatus.tone].colorToken]}
             />
             <View style={styles.statusText}>
               <AppText variant="subheading" style={styles.uniformText}>
@@ -550,7 +563,7 @@ export default function ReceiptReviewScreen() {
         <View style={styles.itemsBlock}>
           <View style={styles.itemsHeaderRow}>
             <View style={styles.itemsHeaderText}>
-              <AppText variant="subheading" accessibilityRole="header">
+              <AppText variant="cardTitle" accessibilityRole="header">
                 {copy.receiptReview.itemsSectionWithCount.replace('{count}', () =>
                   String(items.length),
                 )}
@@ -702,7 +715,7 @@ export default function ReceiptReviewScreen() {
           <View style={styles.itemsBlock}>
             <View style={styles.itemsHeaderRow}>
               <View style={styles.itemsHeaderText}>
-                <AppText variant="subheading" accessibilityRole="header">
+                <AppText variant="cardTitle" accessibilityRole="header">
                   {copy.adjustments.sectionWithCount.replace('{count}', () =>
                     String(adjustments.length),
                   )}
@@ -852,8 +865,7 @@ export default function ReceiptReviewScreen() {
           large
           label={copy.receiptReview.continueButton}
           disabled={items.length === 0}
-          icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
-          iconPosition="trailing"
+          trailingArrow
           onPress={() => router.push(`/bill/${billId}/participants`)}
         />
       </ScrollView>
@@ -966,13 +978,6 @@ export default function ReceiptReviewScreen() {
   );
 }
 
-// Low-alpha wash of a tone token — the same `${token}26` convention
-// StatusBadge.tsx uses for its own tone fills, kept in this one place so the
-// status card and reconciliation row never carry scattered hex literals.
-function tint(hex: string): string {
-  return `${hex}26`;
-}
-
 // Totals badge look per reconciliation status (getTotalsMatch decides the
 // status; this only picks its tone and icon).
 const TOTALS_BADGE: Record<
@@ -1009,12 +1014,10 @@ function createStyles(colors: ColorTokens) {
     headingRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.sm,
-      // Pulls the back button's own touch-target padding flush with the
-      // content edge so the arrow lines up with the cards below.
-      marginLeft: -spacing.md,
+      gap: spacing.md,
     },
     headingText: {
+      flex: 1,
       flexShrink: 1,
     },
     statusCard: {
@@ -1022,15 +1025,15 @@ function createStyles(colors: ColorTokens) {
       alignItems: 'flex-start',
       gap: spacing.sm,
       padding: spacing.md,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       borderCurve: 'continuous',
-      borderWidth: 1,
+      borderWidth: 1.5,
     },
     statusText: {
       flex: 1,
       gap: 2,
     },
-    success: { backgroundColor: tint(colors.success), borderColor: colors.success },
+    info: { backgroundColor: tint(colors.primary), borderColor: colors.primary },
     warning: { backgroundColor: tint(colors.warning), borderColor: colors.warning },
     neutral: { backgroundColor: colors.surfaceMuted, borderColor: colors.border },
     itemsBlock: {
@@ -1055,18 +1058,18 @@ function createStyles(colors: ColorTokens) {
       minHeight: touchTarget.preferred,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
-      borderRadius: radius.md,
+      borderRadius: radius.card,
       borderCurve: 'continuous',
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
     },
     viewActionIcon: {
-      width: 36,
-      height: 36,
-      borderRadius: radius.sm,
+      width: 40,
+      height: 40,
+      borderRadius: radius.tile,
       borderCurve: 'continuous',
-      backgroundColor: tint(colors.primary),
+      backgroundColor: colors.surfaceElevated,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -1088,7 +1091,7 @@ function createStyles(colors: ColorTokens) {
       alignItems: 'center',
       gap: spacing.sm,
       minHeight: touchTarget.preferred,
-      borderRadius: radius.md,
+      borderRadius: radius.card,
       borderCurve: 'continuous',
     },
     totalHeader: {
@@ -1122,7 +1125,7 @@ function createStyles(colors: ColorTokens) {
       marginTop: spacing.xs,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       borderCurve: 'continuous',
       borderWidth: 1,
     },

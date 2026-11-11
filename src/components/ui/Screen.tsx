@@ -14,6 +14,8 @@ import type { ColorTokens } from '@/theme/tokens';
 import { CONTENT_MAX_WIDTH, spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
+import { AppBackground, type AppBackgroundVariant } from './AppBackground';
+
 type Props = PropsWithChildren<{
   scroll?: boolean;
   padded?: boolean;
@@ -27,6 +29,10 @@ type Props = PropsWithChildren<{
   // button with the keyboard open presses it instead of only dismissing
   // the keyboard. Unset keeps ScrollView's own default.
   keyboardShouldPersistTaps?: ScrollViewProps['keyboardShouldPersistTaps'];
+  // Which AppBackground ambient composition sits behind this screen
+  // (2026-11 redesign). Defaults to 'default'; 'none' renders only the flat
+  // background color.
+  background?: AppBackgroundVariant | 'none';
 }>;
 
 // Used to have a `footer` prop for a sticky bottom action bar
@@ -48,6 +54,7 @@ export function Screen({
   padded = true,
   tabBarHidden = false,
   keyboardShouldPersistTaps,
+  background = 'default',
   children,
 }: Props) {
   const { colors } = useTheme();
@@ -56,6 +63,12 @@ export function Screen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={edges}>
+      {/* Absolute-fill and style.pointerEvents 'none' — sits behind everything
+          below (including the ScrollView, so it never scrolls with the
+          content), spans the full window width even when the content
+          column below is capped on desktop web, and ignores the safe-area
+          padding so it reaches under the status bar too. */}
+      {background === 'none' ? null : <AppBackground variant={background} />}
       {/* Web desktop widening (see theme/tokens.ts's own CONTENT_MAX_WIDTH
           comment) — a plain flex child of `safeArea`, centered via
           `alignSelf` rather than any absolute-positioning trick, so it's

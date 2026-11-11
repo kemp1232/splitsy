@@ -82,10 +82,11 @@ const config: ExpoConfig = {
     [
       'expo-splash-screen',
       {
-        // Matches the theme's light/dark `background` tokens (src/theme/tokens.ts)
-        // so the splash screen doesn't flash a mismatched color before the app's
-        // own ThemeProvider takes over.
-        backgroundColor: '#F5F6FA',
+        // The app defaults to dark (ThemeProvider's DEFAULT_PREFERENCE), so the
+        // native splash is dark in both system modes — matches the dark
+        // `background` token (src/theme/tokens.ts) and avoids a light flash
+        // before ThemeProvider takes over.
+        backgroundColor: '#0B0D12',
         image: './assets/images/splash-icon.png',
         imageWidth: 160,
         dark: {

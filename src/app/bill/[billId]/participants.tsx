@@ -243,12 +243,13 @@ export default function ParticipantsScreen() {
         <View style={styles.headerBlock}>
           <View style={styles.headingRow}>
             <IconButton
+              variant="surface"
               accessibilityLabel={copy.participants.backAccessibilityLabel}
               onPress={handleBack}
               icon={<Feather name="arrow-left" size={22} color={colors.textPrimary} />}
             />
-            <Feather name="users" size={24} color={colors.primary} />
-            <AppText variant="heading" style={styles.headingText} accessibilityRole="header">
+            <Feather name="users" size={26} color={colors.primary} />
+            <AppText variant="title" style={styles.headingText} accessibilityRole="header">
               {copy.participants.heading}
             </AppText>
           </View>
@@ -355,8 +356,7 @@ export default function ParticipantsScreen() {
           <AppButton
             label={copy.participants.continueButton}
             disabled={!meetsMinimumParticipants}
-            icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
-            iconPosition="trailing"
+            trailingArrow
             onPress={handleContinue}
           />
         </View>
@@ -411,13 +411,13 @@ function createStyles(colors: ColorTokens) {
     headingRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.sm,
+      gap: spacing.md,
     },
     headingText: {
       flex: 1,
     },
     sectionCard: {
-      borderRadius: radius.md,
+      borderRadius: radius.card,
       borderCurve: 'continuous',
       backgroundColor: colors.surface,
       borderWidth: StyleSheet.hairlineWidth,

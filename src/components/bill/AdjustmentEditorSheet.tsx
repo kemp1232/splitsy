@@ -452,7 +452,7 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     backdrop: {
       flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.4)',
+      backgroundColor: colors.scrim,
     },
     // See ParticipantEditorSheet's identical style for why flex: 1 +
     // justifyContent: 'flex-end' belongs here and not on `backdrop`: it's
@@ -473,8 +473,11 @@ function createStyles(colors: ColorTokens) {
     },
     sheet: {
       backgroundColor: colors.surface,
-      borderTopLeftRadius: radius.lg,
-      borderTopRightRadius: radius.lg,
+      borderTopLeftRadius: radius.hero,
+      borderTopRightRadius: radius.hero,
+      borderWidth: 1,
+      borderBottomWidth: 0,
+      borderColor: colors.border,
       padding: spacing.lg,
       gap: spacing.md,
       // Lets the sheet shrink to `sheetMaxHeight`'s cap so the ScrollView
@@ -527,7 +530,7 @@ function createStyles(colors: ColorTokens) {
       justifyContent: 'center',
       gap: 2,
       padding: spacing.md,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surfaceMuted,

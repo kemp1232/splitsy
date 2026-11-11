@@ -8,6 +8,7 @@ import type { ColorTokens } from '@/theme/tokens';
 import { spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
+import { AppBackground } from './AppBackground';
 import { AppText } from './AppText';
 
 // Fade duration for both directions — kept short and identical each way so
@@ -65,14 +66,14 @@ export function SplashLoadingScreen({ visible, onFadeOutComplete }: Props) {
 
   return (
     <Animated.View
-      style={[styles.container, { opacity }]}
-      pointerEvents={visible ? 'auto' : 'none'}
+      style={[styles.container, { opacity, pointerEvents: visible ? 'auto' : 'none' }]}
       // Still announced once while genuinely showing — the message text
       // below already carries this, `accessibilityViewIsModal` just keeps
       // a screen reader from also wandering into whatever's mounted (but
       // hidden) underneath while this overlay is up.
       accessibilityViewIsModal={visible}
     >
+      <AppBackground variant="loading" />
       <View style={styles.brandRow}>
         <Image
           source={require('../../../assets/images/logo.png')}

@@ -54,9 +54,9 @@ function createStyles(colors: ColorTokens) {
       gap: spacing.xs / 2,
     },
     track: {
-      height: 6,
+      height: 8,
       borderRadius: radius.pill,
-      backgroundColor: colors.surfaceMuted,
+      backgroundColor: colors.surfaceElevated,
       overflow: 'hidden',
     },
     fill: {

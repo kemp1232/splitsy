@@ -19,7 +19,7 @@ export function ErrorState({ heading, body, retryLabel, onRetry }: Props) {
   return (
     <View style={styles.container} accessibilityLiveRegion="assertive">
       <Feather name="alert-circle" size={28} color={colors.danger} />
-      <AppText variant="subheading" style={styles.center}>
+      <AppText variant="cardTitle" style={styles.center}>
         {heading}
       </AppText>
       <AppText variant="body" color="textSecondary" style={styles.center}>

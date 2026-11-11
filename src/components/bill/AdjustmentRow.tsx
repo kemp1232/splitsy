@@ -103,7 +103,7 @@ function createStyles(colors: ColorTokens) {
     iconTile: {
       width: 36,
       height: 36,
-      borderRadius: radius.sm,
+      borderRadius: radius.tile,
       borderCurve: 'continuous',
       backgroundColor: tint(colors.primary),
       alignItems: 'center',
