@@ -23,7 +23,9 @@ type Props = {
 // shows the total and receipt-match badge exactly as the finished bill does.
 export function BillTotalCard({ totalCentavos, matchStatus, caption }: Props) {
   return (
-    <SectionCard>
+    // Mint border only when the app's own reconciliation says the total
+    // matches the receipt — never just because there's a value.
+    <SectionCard highlight={matchStatus === 'matches' ? 'success' : undefined}>
       {caption ? (
         <AppText variant="caption" color="textSecondary">
           {caption}

@@ -3,16 +3,24 @@ import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, type ReactNode } from 'react';
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Animated,
+  Pressable,
+  StyleSheet,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { GreetingBubble } from '@/components/ui/GreetingBubble';
 import { IconButton } from '@/components/ui/IconButton';
 import { Screen } from '@/components/ui/Screen';
+import { usePressFeedback } from '@/components/ui/usePressFeedback';
 import { copy } from '@/constants/copy';
 import { useBillSourceActions } from '@/features/bills/useBillSourceActions';
 import type { ColorTokens } from '@/theme/tokens';
 import { radius, spacing, touchTarget } from '@/theme/tokens';
-import { tint } from '@/theme/tint';
 import { useTheme } from '@/theme/ThemeProvider';
 
 type SourceOptionProps = {
@@ -39,49 +47,57 @@ function SourceOption({
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const label = badge ? `${title}, ${badge}, ${description}` : `${title}, ${description}`;
+  const press = usePressFeedback();
   return (
     <Pressable
       onPress={onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={({ pressed }) => [
-        styles.option,
-        primary ? styles.optionPrimary : null,
-        pressed ? (primary ? styles.optionPrimaryPressed : styles.optionPressed) : null,
-        style,
-      ]}
+      style={style}
     >
-      {/* Decorative leading icon — the row's label already names the action,
-          so it is hidden from screen readers. */}
-      <View
-        style={[styles.iconTile, primary ? styles.iconTilePrimary : null]}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-      >
-        {icon(colors.primary, 18)}
-      </View>
-      <View style={styles.optionText}>
-        {/* Wraps so the badge drops below the title on narrow screens or
-            large font scales instead of overflowing. */}
-        <View style={styles.titleRow}>
-          <AppText variant="subheading" style={styles.uniformText}>
-            {title}
-          </AppText>
-          {badge ? (
-            <View style={styles.badge}>
-              <AppText variant="caption" color="primary">
-                {badge}
-              </AppText>
+      {({ pressed }) => (
+        <Animated.View
+          style={[
+            styles.option,
+            primary ? styles.optionPrimary : null,
+            pressed ? styles.optionPressed : null,
+            press.animatedStyle,
+          ]}
+        >
+          {/* Decorative leading icon — the row's label already names the
+              action, so it is hidden from screen readers. The recommended
+              option's tile is filled lavender (2026-11 redesign). */}
+          <View
+            style={[styles.iconTile, primary ? styles.iconTilePrimary : null]}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            {icon(primary ? colors.onPrimary : colors.primary, 22)}
+          </View>
+          <View style={styles.optionText}>
+            {/* Wraps so the badge drops below the title on narrow screens or
+                large font scales instead of overflowing. */}
+            <View style={styles.titleRow}>
+              <AppText variant="cardTitle">{title}</AppText>
+              {badge ? (
+                <View style={styles.badge}>
+                  <AppText variant="caption" color="primary">
+                    {badge}
+                  </AppText>
+                </View>
+              ) : null}
             </View>
-          ) : null}
-        </View>
-        <AppText variant="caption" color="textSecondary">
-          {description}
-        </AppText>
-      </View>
-      <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        <Feather name="chevron-right" size={20} color={colors.textSecondary} />
-      </View>
+            <AppText variant="caption" color="textSecondary">
+              {description}
+            </AppText>
+          </View>
+          <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <Feather name="chevron-right" size={20} color={colors.textSecondary} />
+          </View>
+        </Animated.View>
+      )}
     </Pressable>
   );
 }
@@ -131,20 +147,28 @@ export default function NewBillScreen() {
         <View style={styles.headerBlock}>
           <View style={styles.headingRow}>
             <IconButton
+              variant="surface"
               accessibilityLabel={copy.newBill.backAccessibilityLabel}
               onPress={handleBack}
               icon={<Feather name="arrow-left" size={22} color={colors.textPrimary} />}
             />
             <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-              <Feather name="file-text" size={24} color={colors.primary} />
+              <Feather name="file-text" size={26} color={colors.primary} />
             </View>
-            <AppText variant="heading" style={styles.headingText} accessibilityRole="header">
+            <AppText variant="title" style={styles.headingText} accessibilityRole="header">
               {copy.newBill.heading}
             </AppText>
           </View>
-          <AppText variant="body" color="textSecondary" style={styles.uniformText}>
+          <AppText variant="body" color="textSecondary">
             {copy.newBill.body}
           </AppText>
+        </View>
+
+        {/* The shared mascot + speech bubble (same artwork as Home), kept
+            small — capped at ~120dp tall so the five options below stay
+            near the top; it shrinks further on narrow screens. */}
+        <View style={styles.mascot}>
+          <GreetingBubble heading={copy.newBill.mascotGreeting} width="100%" maxHeight={120} />
         </View>
 
         <View style={styles.options}>
@@ -172,7 +196,9 @@ export default function NewBillScreen() {
             title={copy.newBill.quickSplitTitle}
             description={copy.newBill.quickSplitDescription}
             onPress={() => navigate(() => router.push('/bill/quick-split'))}
-            icon={(color, size) => <MaterialCommunityIcons name="equal" size={size} color={color} />}
+            icon={(color, size) => (
+              <MaterialCommunityIcons name="equal" size={size} color={color} />
+            )}
           />
           <SourceOption
             title={copy.newBill.tripTitle}
@@ -189,39 +215,36 @@ export default function NewBillScreen() {
 
 function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
-    uniformText: {
-      fontSize: 14,
-      lineHeight: 19,
-    },
     body: {
       padding: spacing.lg,
       gap: spacing.lg,
     },
     headerBlock: {
-      gap: spacing.xs,
+      gap: spacing.sm,
     },
     headingRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.sm,
-      // Pulls the back button's own touch-target padding flush with the
-      // content edge.
-      marginLeft: -spacing.md,
+      gap: spacing.md,
     },
     headingText: {
+      flex: 1,
       flexShrink: 1,
     },
+    mascot: {
+      alignItems: 'center',
+    },
     options: {
-      gap: spacing.sm,
+      gap: spacing.md,
     },
     option: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.md,
+      gap: spacing.lg,
       minHeight: touchTarget.preferred,
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.md,
-      borderRadius: radius.md,
+      paddingVertical: spacing.lg,
+      paddingHorizontal: spacing.lg,
+      borderRadius: radius.card,
       borderCurve: 'continuous',
       borderWidth: 1,
       borderColor: colors.border,
@@ -230,32 +253,31 @@ function createStyles(colors: ColorTokens) {
     optionPressed: {
       backgroundColor: colors.surfaceMuted,
     },
+    // The recommended choice: lavender border (plus the outlined
+    // "Recommended" pill and filled tile) — never color alone.
     optionPrimary: {
-      backgroundColor: tint(colors.primary),
       borderColor: colors.primary,
-    },
-    optionPrimaryPressed: {
-      // Stronger low-alpha wash, same hex-suffix convention as tint().
-      backgroundColor: `${colors.primary}40`,
+      borderWidth: 1.5,
     },
     tripOption: {
       // Extra separation on top of the list gap.
       marginTop: spacing.sm,
     },
     iconTile: {
-      width: 36,
-      height: 36,
-      borderRadius: radius.sm,
+      width: 52,
+      height: 52,
+      borderRadius: radius.tile,
       borderCurve: 'continuous',
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: tint(colors.primary),
+      backgroundColor: colors.surfaceElevated,
     },
     iconTilePrimary: {
-      backgroundColor: `${colors.primary}33`,
+      backgroundColor: colors.accent,
     },
     optionText: {
       flex: 1,
+      minWidth: 0,
       gap: 2,
     },
     titleRow: {
@@ -268,7 +290,7 @@ function createStyles(colors: ColorTokens) {
     badge: {
       borderRadius: radius.pill,
       borderCurve: 'continuous',
-      borderWidth: 1,
+      borderWidth: 1.5,
       borderColor: colors.primary,
       paddingHorizontal: spacing.sm,
       paddingVertical: 1,

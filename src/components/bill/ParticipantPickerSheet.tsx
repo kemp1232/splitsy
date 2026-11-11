@@ -138,7 +138,7 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     backdrop: {
       flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.4)',
+      backgroundColor: colors.scrim,
       justifyContent: 'flex-end',
     },
     // On the Animated.View wrapper, not `sheet` below — see this file's own
@@ -148,8 +148,11 @@ function createStyles(colors: ColorTokens) {
     },
     sheet: {
       backgroundColor: colors.surface,
-      borderTopLeftRadius: radius.lg,
-      borderTopRightRadius: radius.lg,
+      borderTopLeftRadius: radius.hero,
+      borderTopRightRadius: radius.hero,
+      borderWidth: 1,
+      borderBottomWidth: 0,
+      borderColor: colors.border,
       padding: spacing.lg,
       gap: spacing.md,
       // Web desktop widening (theme/tokens.ts's own CONTENT_MAX_WIDTH

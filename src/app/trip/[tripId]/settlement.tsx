@@ -370,9 +370,9 @@ export default function TripSettlementScreen() {
   }
 
   return (
-    <Screen scroll padded={false}>
+    <Screen scroll padded={false} background="summary">
       <View style={styles.headerRow}>
-        <AppText variant="heading">{copy.tripSettlement.heading}</AppText>
+        <AppText variant="title">{copy.tripSettlement.heading}</AppText>
         <AppText variant="subheading">{title}</AppText>
         <StatusBadge
           label={isSettled ? copy.trip.settledBadge : copy.trip.activeBadge}
@@ -386,6 +386,8 @@ export default function TripSettlementScreen() {
           empty state below). */}
       {data.result ? (
         <GradientHeroCard
+          roundTopCorners
+          sideInset
           label={copy.tripSettlement.tripTotalLabel}
           amountCentavos={data.tripTotalCentavos}
         />

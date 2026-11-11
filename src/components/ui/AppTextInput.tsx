@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode, Ref } from 'react';
-import { useId, useMemo } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { StyleSheet, TextInput, View, type TextInput as RNTextInput } from 'react-native';
 
 import type { ColorTokens } from '@/theme/tokens';
@@ -42,12 +42,17 @@ export function AppTextInput({
   leadingIcon,
   trailingIcon,
   hideErrorMessage,
+  onFocus,
+  onBlur,
   ...rest
 }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const id = useId();
-  const iconColor = colors.textSecondary;
+  // Drives the focus ring (colors.focus) — onFocus/onBlur are still
+  // forwarded to the caller's own handlers unchanged.
+  const [focused, setFocused] = useState(false);
+  const iconColor = focused ? colors.primary : colors.textSecondary;
   return (
     <View style={styles.container}>
       {label ? (
@@ -59,11 +64,20 @@ export function AppTextInput({
         {leadingIcon ? <View style={styles.leadingIcon}>{leadingIcon(iconColor)}</View> : null}
         <TextInput
           accessibilityLabelledBy={label ? id : undefined}
-          placeholderTextColor={colors.textSecondary}
+          placeholderTextColor={colors.textMuted}
+          onFocus={(event) => {
+            setFocused(true);
+            onFocus?.(event);
+          }}
+          onBlur={(event) => {
+            setFocused(false);
+            onBlur?.(event);
+          }}
           style={[
             styles.input,
             leadingIcon && styles.inputWithLeadingIcon,
             trailingIcon && styles.inputWithTrailingIcon,
+            focused && styles.inputFocused,
             error && styles.inputError,
             style,
           ]}
@@ -81,18 +95,25 @@ function createStyles(colors: ColorTokens) {
     container: { gap: spacing.xs },
     inputRow: { justifyContent: 'center' },
     input: {
-      minHeight: touchTarget.min,
-      borderWidth: 1,
+      minHeight: touchTarget.preferred,
+      borderWidth: 1.5,
       borderColor: colors.border,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       borderCurve: 'continuous',
-      paddingHorizontal: spacing.md,
+      paddingHorizontal: spacing.lg,
       fontSize: 15,
       color: colors.textPrimary,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.surfaceMuted,
+      // The lavender border below is the focus ring — suppress the browser's
+      // own focus outline on web, which otherwise draws a second, white ring
+      // over it. (No-op on native.)
+      outlineWidth: 0,
+    },
+    inputFocused: {
+      borderColor: colors.focus,
     },
     inputWithLeadingIcon: {
-      paddingLeft: spacing.xxl,
+      paddingLeft: spacing.xxl + spacing.md,
     },
     inputWithTrailingIcon: {
       paddingRight: spacing.xxl,
@@ -102,7 +123,7 @@ function createStyles(colors: ColorTokens) {
     },
     leadingIcon: {
       position: 'absolute',
-      left: spacing.md,
+      left: spacing.lg,
       zIndex: 1,
     },
     trailingIcon: {

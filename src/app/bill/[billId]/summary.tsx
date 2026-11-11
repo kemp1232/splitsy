@@ -435,7 +435,7 @@ export default function SummaryScreen() {
   }
 
   return (
-    <Screen tabBarHidden scroll padded={false}>
+    <Screen tabBarHidden scroll padded={false} background="summary">
       <View style={styles.headerRow}>
         <ScreenHeader icon="share-2" heading={copy.summary.heading} body={copy.summary.body} />
       </View>
@@ -641,7 +641,7 @@ function createStyles(colors: ColorTokens) {
     toast: {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       borderCurve: 'continuous',
       backgroundColor: colors.textPrimary,
     },

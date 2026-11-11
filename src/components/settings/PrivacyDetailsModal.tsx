@@ -37,7 +37,7 @@ export function PrivacyDetailsModal({ visible, onClose }: Props) {
               icon={(color) => <Feather name="x" size={18} color={color} />}
             />
           </View>
-          <AppText variant="heading" accessibilityRole="header">
+          <AppText variant="title" accessibilityRole="header">
             {copy.settings.privacyDetailsHeading}
           </AppText>
           {SECTIONS.map((section) => (

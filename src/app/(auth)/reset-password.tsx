@@ -39,10 +39,10 @@ export default function ResetPasswordScreen() {
 
   if (!token) {
     return (
-      <Screen scroll>
+      <Screen scroll background="form">
         <View style={styles.body}>
           <View style={styles.headerGroup}>
-            <AppText variant="heading">{copy.auth.resetPasswordMissingTokenHeading}</AppText>
+            <AppText variant="title">{copy.auth.resetPasswordMissingTokenHeading}</AppText>
             <AppText variant="body" color="textSecondary">
               {copy.auth.resetPasswordMissingTokenBody}
             </AppText>
@@ -102,10 +102,10 @@ export default function ResetPasswordScreen() {
   }
 
   return (
-    <Screen scroll>
+    <Screen scroll background="form">
       <View style={styles.body}>
         <View style={styles.headerGroup}>
-          <AppText variant="heading">{copy.auth.resetPasswordHeading}</AppText>
+          <AppText variant="title">{copy.auth.resetPasswordHeading}</AppText>
           <AppText variant="body" color="textSecondary">
             {copy.auth.resetPasswordBody}
           </AppText>

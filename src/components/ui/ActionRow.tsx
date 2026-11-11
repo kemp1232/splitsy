@@ -1,13 +1,14 @@
 import Feather from '@expo/vector-icons/Feather';
 import type { ComponentProps } from 'react';
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
-import { tint } from '@/theme/tint';
 import type { ColorTokens } from '@/theme/tokens';
 import { radius, spacing, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
+
+import { usePressFeedback } from './usePressFeedback';
 
 type Props = {
   icon: ComponentProps<typeof Feather>['name'];
@@ -24,35 +25,41 @@ type Props = {
 export function ActionRow({ icon, title, caption, onPress, accessibilityLabel }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const press = usePressFeedback();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? `${title}, ${caption}`}
       onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
     >
-      <View
-        style={styles.iconTile}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-      >
-        <Feather name={icon} size={18} color={colors.primary} />
-      </View>
-      <View style={styles.text}>
-        <AppText variant="subheading" style={styles.uniformText}>
-          {title}
-        </AppText>
-        <AppText variant="caption" color="textSecondary">
-          {caption}
-        </AppText>
-      </View>
-      <Feather
-        name="chevron-right"
-        size={20}
-        color={colors.textSecondary}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-      />
+      {({ pressed }) => (
+        <Animated.View style={[styles.row, pressed && styles.pressed, press.animatedStyle]}>
+          <View
+            style={styles.iconTile}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            <Feather name={icon} size={20} color={colors.primary} />
+          </View>
+          <View style={styles.text}>
+            <AppText variant="cardTitle" style={styles.uniformText}>
+              {title}
+            </AppText>
+            <AppText variant="caption" color="textSecondary">
+              {caption}
+            </AppText>
+          </View>
+          <Feather
+            name="chevron-right"
+            size={20}
+            color={colors.textSecondary}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          />
+        </Animated.View>
+      )}
     </Pressable>
   );
 }
@@ -64,20 +71,20 @@ function createStyles(colors: ColorTokens) {
       alignItems: 'center',
       gap: spacing.md,
       minHeight: touchTarget.preferred,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      borderRadius: radius.md,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+      borderRadius: radius.card,
       borderCurve: 'continuous',
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
     },
     iconTile: {
-      width: 36,
-      height: 36,
-      borderRadius: radius.sm,
+      width: 44,
+      height: 44,
+      borderRadius: radius.tile,
       borderCurve: 'continuous',
-      backgroundColor: tint(colors.primary),
+      backgroundColor: colors.surfaceElevated,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -87,10 +94,11 @@ function createStyles(colors: ColorTokens) {
     },
     pressed: {
       backgroundColor: colors.surfaceMuted,
+      borderColor: colors.borderStrong,
     },
     uniformText: {
-      fontSize: 14,
-      lineHeight: 19,
+      fontSize: 15,
+      lineHeight: 20,
     },
   });
 }

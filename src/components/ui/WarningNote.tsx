@@ -1,7 +1,9 @@
 import Feather from '@expo/vector-icons/Feather';
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { spacing } from '@/theme/tokens';
+import type { ColorTokens } from '@/theme/tokens';
+import { radius, spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 import { AppText } from './AppText';
@@ -16,6 +18,7 @@ type Props = {
 // summary and saved-bill screens.
 export function WarningNote({ message }: Props) {
   const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.row} accessibilityLiveRegion="polite">
       <Feather name="alert-triangle" size={18} color={colors.warning} />
@@ -26,13 +29,24 @@ export function WarningNote({ message }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  text: {
-    flex: 1,
-  },
-});
+// 2026-11 redesign: a warning-outlined note card (icon + text, never color
+// alone).
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.button,
+      borderCurve: 'continuous',
+      borderWidth: 1,
+      borderColor: colors.warning,
+      backgroundColor: colors.surface,
+    },
+    text: {
+      flex: 1,
+    },
+  });
+}

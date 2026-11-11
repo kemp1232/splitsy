@@ -40,10 +40,10 @@ export default function VerifyEmailScreen() {
   const canGoToSignIn = outcome !== 'error';
 
   return (
-    <Screen scroll>
+    <Screen scroll background="form">
       <View style={styles.body}>
         <View style={styles.headerGroup}>
-          <AppText variant="heading">{HEADINGS[outcome]}</AppText>
+          <AppText variant="title">{HEADINGS[outcome]}</AppText>
           <AppText variant="body" color="textSecondary" accessibilityLiveRegion="polite">
             {BODIES[outcome]}
           </AppText>

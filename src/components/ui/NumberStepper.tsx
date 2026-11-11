@@ -1,5 +1,7 @@
+import { useMemo } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
+import type { ColorTokens } from '@/theme/tokens';
 import { spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -27,14 +29,16 @@ export function NumberStepper({
   style,
 }: Props) {
   const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={[styles.row, style]}>
       <IconButton
         accessibilityLabel={`Decrease ${label}`}
         disabled={value <= min}
+        variant="surface"
         onPress={() => onChange(Math.max(min, value - 1))}
         icon={
-          <AppText variant="subheading" style={{ color: colors.primary }}>
+          <AppText variant="subheading" style={styles.glyph}>
             −
           </AppText>
         }
@@ -45,9 +49,10 @@ export function NumberStepper({
       <IconButton
         accessibilityLabel={`Increase ${label}`}
         disabled={value >= max}
+        variant="surface"
         onPress={() => onChange(Math.min(max, value + 1))}
         icon={
-          <AppText variant="subheading" style={{ color: colors.primary }}>
+          <AppText variant="subheading" style={styles.glyph}>
             +
           </AppText>
         }
@@ -56,7 +61,10 @@ export function NumberStepper({
   );
 }
 
-const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  value: { minWidth: 24, textAlign: 'center' },
-});
+function createStyles(colors: ColorTokens) {
+  return StyleSheet.create({
+    row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    value: { minWidth: 24, textAlign: 'center', fontVariant: ['tabular-nums'] },
+    glyph: { color: colors.primary },
+  });
+}

@@ -24,7 +24,7 @@ export function SectionHeader({ title, caption, accessibilityLabel, action }: Se
     <View style={staticStyles.headerRow}>
       <View style={staticStyles.headerText}>
         <AppText
-          variant="subheading"
+          variant="cardTitle"
           accessibilityRole="header"
           accessibilityLabel={accessibilityLabel}
         >
@@ -64,13 +64,21 @@ export function GroupedSeparator() {
 }
 
 const staticStyles = StyleSheet.create({
+  // Wraps instead of squeezing: the title/caption keep at least ~200dp, and
+  // an action too wide to fit beside them (e.g. "Assign all unassigned" on a
+  // phone) drops onto its own line rather than forcing the title into a
+  // narrow multi-line column. Narrow actions ("Add item") stay alongside.
   headerRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: spacing.sm,
+    columnGap: spacing.sm,
+    rowGap: spacing.xs,
   },
   headerText: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 200,
     gap: 2,
   },
   separator: {
@@ -81,10 +89,10 @@ const staticStyles = StyleSheet.create({
 function createCardStyles(colors: ColorTokens) {
   return StyleSheet.create({
     card: {
-      borderRadius: radius.md,
+      borderRadius: radius.card,
       borderCurve: 'continuous',
       backgroundColor: colors.surface,
-      borderWidth: StyleSheet.hairlineWidth,
+      borderWidth: 1,
       borderColor: colors.border,
       overflow: 'hidden',
     },

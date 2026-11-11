@@ -1,4 +1,4 @@
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 type Props = {
@@ -29,7 +29,7 @@ export function ReceiptTornEdge({ color, borderColor, height = 10, teeth = 16 }:
   path += ' L100,0 Z';
 
   return (
-    <View pointerEvents="none">
+    <View style={styles.noTouch}>
       <Svg width="100%" height={height} viewBox={`0 0 100 ${height}`} preserveAspectRatio="none">
         <Path
           d={path}
@@ -42,3 +42,9 @@ export function ReceiptTornEdge({ color, borderColor, height = 10, teeth = 16 }:
     </View>
   );
 }
+
+// style.pointerEvents rather than the deprecated `pointerEvents` prop
+// (react-native-web warns on the prop).
+const styles = StyleSheet.create({
+  noTouch: { pointerEvents: 'none' },
+});

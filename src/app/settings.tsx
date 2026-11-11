@@ -235,7 +235,7 @@ export default function SettingsScreen() {
   return (
     <Screen scroll>
       <View style={styles.body}>
-        <AppText variant="heading" accessibilityRole="header">
+        <AppText variant="title" accessibilityRole="header">
           {copy.settings.heading}
         </AppText>
 
@@ -443,7 +443,7 @@ function createStyles(colors: ColorTokens) {
       gap: 2,
       paddingHorizontal: spacing.xs,
       paddingVertical: spacing.sm,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       borderCurve: 'continuous',
       borderWidth: 1,
       borderColor: colors.border,

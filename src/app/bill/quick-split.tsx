@@ -57,7 +57,7 @@ export default function QuickSplitScreen() {
   }
 
   return (
-    <Screen tabBarHidden scroll>
+    <Screen tabBarHidden scroll background="form">
       <View style={styles.body}>
         {/* Shared bill-screen header: nothing is created until Continue, so
             its default back (previous screen, else Home) just leaves. */}

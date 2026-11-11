@@ -12,6 +12,7 @@ import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { GreetingBubble } from '@/components/ui/GreetingBubble';
 import { IconButton } from '@/components/ui/IconButton';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
@@ -465,7 +466,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <Screen padded={false}>
+    <Screen padded={false} background="hero">
       <View style={styles.header}>
         <View style={styles.brandRow}>
           <View style={styles.brandGroup}>
@@ -481,7 +482,7 @@ export default function HomeScreen() {
               accessibilityElementsHidden
               importantForAccessibility="no-hide-descendants"
             />
-            <AppText variant="subheading">{appInfo.name}</AppText>
+            <AppText variant="cardTitle">{appInfo.name}</AppText>
           </View>
           {/* Default person-glyph avatar, not a photo — this app collects no
               profile image (spec-adjacent, same reasoning as
@@ -490,60 +491,18 @@ export default function HomeScreen() {
               (already reachable via the bottom tab bar), so it reuses that
               tab's own accessibility label rather than inventing a new one. */}
           <IconButton
+            variant="surface"
             accessibilityLabel={copy.nav.settingsTab}
             onPress={() => router.push('/settings')}
-            icon={
-              <View style={styles.avatarCircle}>
-                <Feather name="user" size={18} color={colors.primary} />
-              </View>
-            }
+            icon={<Feather name="user" size={20} color={colors.primary} />}
           />
         </View>
-        {/* The ninja mascot + speech-bubble artwork (assets/images/greeting.png,
-            a fixed 1774x887 graphic) with the actual greeting text laid over
-            the bubble's empty interior — `imageWrap` locks the container to
-            the image's own aspect ratio so it scales to any screen width
-            without distortion, and the overlay's percentages are the
-            bubble's measured position within that fixed image, so they stay
-            correctly aligned at any render size. Only the image itself is
-            hidden from screen readers; the overlaid text is a normal
-            sibling, not part of the image, so it's still announced. */}
-        <View style={styles.greetingImageWrap}>
-          <Image
-            source={require('../../assets/images/greeting.png')}
-            style={styles.greetingImage}
-            contentFit="contain"
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-          />
-          <View style={styles.greetingTextOverlay} pointerEvents="none">
-            {/* The speech bubble itself is a fixed white graphic baked into
-                greeting.png — it doesn't repaint for dark mode, so the text
-                laid over it can't use the theme's own textPrimary/
-                textSecondary tokens either (those flip to near-white in dark
-                mode and would all but disappear here). Fixed dark literals
-                instead, same reasoning as bill/capture.tsx's own overlay
-                colors for its camera-chrome text. */}
-            <AppText
-              variant="heading"
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.6}
-              style={styles.greetingHeadingText}
-            >
-              {copy.home.greeting.replace('{name}', displayName)}
-            </AppText>
-            <AppText
-              variant="body"
-              numberOfLines={2}
-              style={styles.greetingSubtitleText}
-              adjustsFontSizeToFit
-              minimumFontScale={0.7}
-            >
-              {copy.home.greetingSubtitle}
-            </AppText>
-          </View>
-        </View>
+        {/* Mascot + speech bubble with the greeting laid over it — shared
+            with the Add-receipt screen (GreetingBubble.tsx). */}
+        <GreetingBubble
+          heading={copy.home.greeting.replace('{name}', displayName)}
+          subtitle={copy.home.greetingSubtitle}
+        />
       </View>
 
       {entries.length === 0 ? (
@@ -559,7 +518,7 @@ export default function HomeScreen() {
               shows every bill/trip (there's no separate "all bills" screen
               to link out to), so unlike the reference there's no "See all"
               action here. */}
-          <AppText variant="subheading" style={styles.sectionTitle}>
+          <AppText variant="sectionTitle" style={styles.sectionTitle}>
             {copy.home.recentSectionTitle}
           </AppText>
           <FlatList
@@ -641,73 +600,6 @@ function createStyles(colors: ColorTokens) {
     logo: {
       width: 28,
       height: 28,
-    },
-    // Locks this container to greeting.png's own fixed aspect ratio (1774x887)
-    // so it scales to any screen width without distorting — the overlay
-    // below is positioned as a percentage of this same box, so it tracks the
-    // bubble's actual position at whatever size this ends up rendering at.
-    greetingImageWrap: {
-      // Not full width — at 100% the mascot + bubble read as oversized on a
-      // phone. The overlay's percentages and the text sizes below scale with
-      // it, so shrinking this one value shrinks the whole block evenly.
-      width: '80%',
-      // Must match greeting.png's own current pixel dimensions exactly — a
-      // mismatch here is what caused the "space above/below" bug even after
-      // the image itself was re-cropped with no internal padding:
-      // contentFit="contain" letterboxes a shorter actual image inside a
-      // container shaped for the old, taller one, leaving visible empty gaps
-      // that have nothing to do with the image file itself. Re-check this
-      // value with `file assets/images/greeting.png` if the asset changes again.
-      aspectRatio: 1774 / 528,
-    },
-    greetingImage: {
-      width: '100%',
-      height: '100%',
-    },
-    // Fixed literals, not theme tokens — see the render-side comment on why
-    // (the speech bubble itself doesn't repaint for dark mode). Darker than
-    // the theme's own textPrimary/textSecondary tokens too, since white text
-    // isn't the only failure mode here — plain gray reads as washed-out
-    // against a stark white bubble the way it wouldn't against this app's
-    // usual off-white/dark surfaces.
-    // Sizes stepped down from the heading/body variants (22/15) to roughly
-    // match greetingImageWrap's own 80% width.
-    greetingHeadingText: {
-      color: '#10141C',
-      fontSize: 18,
-      lineHeight: 23,
-    },
-    greetingSubtitleText: {
-      color: '#2A2E38',
-      fontSize: 13,
-      lineHeight: 18,
-    },
-    // Percentages are the speech bubble's own measured interior within
-    // greeting.png — the ninja + bubble tail occupy the left ~35%, so text
-    // starts to the right of that; the rounded corners get a further margin
-    // on all sides so text never touches the bubble's own border. Re-measure
-    // these if the image is re-cropped again (see greetingImageWrap's own
-    // note) — unlike the aspect ratio, these aren't derivable from the file's
-    // raw dimensions, they're read off the bubble's actual position in it.
-    greetingTextOverlay: {
-      position: 'absolute',
-      left: '37%',
-      right: '7%',
-      top: '10%',
-      bottom: '18%',
-      justifyContent: 'center',
-      gap: 2,
-    },
-    avatarCircle: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      borderCurve: 'continuous',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: colors.surfaceMuted,
-      borderWidth: 1,
-      borderColor: colors.border,
     },
     sectionTitle: {
       paddingHorizontal: spacing.lg,
