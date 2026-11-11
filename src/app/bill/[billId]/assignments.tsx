@@ -27,7 +27,10 @@ import type { LineItem } from '@/db/repositories/lineItems.repository';
 import { lineItemsRepository } from '@/db/repositories/lineItems.repository';
 import type { Participant } from '@/db/repositories/participants.repository';
 import { participantsRepository } from '@/db/repositories/participants.repository';
-import { computeEqualSplitAssignmentUpdates } from '@/features/assignments/computeEqualSplitAssignmentUpdates';
+import {
+  applyLineItemAssignmentUpdatesSequentially,
+  computeEqualSplitAssignmentUpdates,
+} from '@/features/assignments/computeEqualSplitAssignmentUpdates';
 import { createSerialQueue } from '@/features/assignments/createSerialQueue';
 import {
   groupAssignedParticipantIdsByLineItem,
@@ -41,6 +44,7 @@ import {
   toggleParticipantId,
 } from '@/features/assignments/toggleParticipantAssignment';
 import { resolvePostAssignmentsRoute } from '@/features/bills/resolvePostAssignmentsRoute';
+import { useEnsureBillEditable } from '@/features/bills/useEnsureBillEditable';
 import {
   findMeParticipant,
   resolveQuickAddMeName,
@@ -96,10 +100,9 @@ async function syncEqualSplitAssignments(
   const updates = computeEqualSplitAssignmentUpdates(itemRows, participantRows, assignmentRows);
   if (updates.length === 0) return false;
 
-  await Promise.all(
-    updates.map((update) =>
-      itemAssignmentsRepository.setForLineItem(update.lineItemId, update.participantIds),
-    ),
+  // Sequential, never Promise.all — see applyLineItemAssignmentUpdatesSequentially.
+  await applyLineItemAssignmentUpdatesSequentially(updates, (lineItemId, participantIds) =>
+    itemAssignmentsRepository.setForLineItem(lineItemId, participantIds),
   );
   return true;
 }
@@ -235,6 +238,8 @@ export default function AssignmentsScreen() {
   const meName = resolveQuickAddMeName(session?.user.name);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { billId } = useLocalSearchParams<{ billId: string }>();
+  // Back in edit mode if the bill was re-completed underneath this screen.
+  useEnsureBillEditable(billId);
 
   const [state, setState] = useState<LoadState>('loading');
   const [bill, setBill] = useState<Bill | null>(null);
@@ -510,7 +515,10 @@ export default function AssignmentsScreen() {
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
           retryLabel={copy.global.retryAction}
-          onRetry={() => setState('loading')}
+          onRetry={() => {
+            setState('loading');
+            void enqueueRefresh();
+          }}
         />
       </Screen>
     );

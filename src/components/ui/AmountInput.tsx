@@ -52,6 +52,18 @@ export function AmountInput({
   style,
 }: Props) {
   const [text, setText] = useState(() => centavosToInputText(valueCentavos));
+  // Re-sync the text when the parent changes valueCentavos to something the
+  // text no longer represents — e.g. an editor sheet re-seeding its state in
+  // its Modal's onShow, which runs after this input has already mounted with
+  // the previous item's value. A value that the current text already
+  // represents (like 1200 for an in-progress "12.") leaves the text alone.
+  const [syncedCentavos, setSyncedCentavos] = useState(valueCentavos);
+  if (valueCentavos !== syncedCentavos) {
+    setSyncedCentavos(valueCentavos);
+    if (textToCentavos(text) !== valueCentavos) {
+      setText(centavosToInputText(valueCentavos));
+    }
+  }
 
   function handleChange(next: string) {
     if (next !== '' && !AMOUNT_PATTERN.test(next)) return;

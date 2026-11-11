@@ -36,7 +36,7 @@ export const ParticipantChip = memo(function ParticipantChip({
       onPress={onPress}
       disabled={!isInteractive}
       accessibilityRole={isInteractive ? 'checkbox' : undefined}
-      accessibilityState={isInteractive ? { checked: !!selected } : undefined}
+      aria-checked={isInteractive ? !!selected : undefined}
       accessibilityLabel={isInteractive ? (accessibilityLabel ?? name) : undefined}
       style={({ pressed }) => [
         styles.chip,

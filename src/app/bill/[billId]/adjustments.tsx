@@ -17,6 +17,7 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { WarningNote } from '@/components/ui/WarningNote';
 import { copy } from '@/constants/copy';
 import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
 import { adjustmentAllocationsRepository } from '@/db/repositories/adjustmentAllocations.repository';
@@ -36,6 +37,7 @@ import {
   buildSplitLineItems,
 } from '@/features/adjustments/buildSplitInputs';
 import { useAdjustmentEditor } from '@/features/adjustments/useAdjustmentEditor';
+import { useEnsureBillEditable } from '@/features/bills/useEnsureBillEditable';
 import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
@@ -45,6 +47,7 @@ import type {
 } from '@/features/splitting/split.types';
 import { nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
+import { getNegativeTotalWarning } from '@/features/receipt-review/buildTotalsSummary';
 import { formatCentavos } from '@/lib/money';
 import { spacing } from '@/theme/tokens';
 
@@ -125,6 +128,8 @@ function computeSplitAndReconciliation(data: LoadedData): {
 export default function AdjustmentsScreen() {
   const router = useRouter();
   const { billId } = useLocalSearchParams<{ billId: string }>();
+  // Back in edit mode if the bill was re-completed underneath this screen.
+  useEnsureBillEditable(billId);
 
   const [state, setState] = useState<LoadState>('loading');
   const [bill, setBill] = useState<Bill | null>(null);
@@ -152,58 +157,62 @@ export default function AdjustmentsScreen() {
   // re-read everything (guards included) rather than show a stale
   // reconciliation that "Add difference" or "Continue with difference"
   // would then act on.
+  // Also called directly by the error state's Retry — setting state back to
+  // 'loading' alone never re-runs the focus effect below.
+  const loadScreen = useCallback(async () => {
+    try {
+      const data = await fetchAdjustmentsData(billId);
+      if (!data.billRow) {
+        setState('error');
+        return;
+      }
+
+      // Draft-progression guard (spec section 15): this screen assumes
+      // items exist, at least two participants exist, and every item is
+      // already assigned — exactly what F-013's assignments screen already
+      // blocks continuing without. If any of that isn't true yet (e.g. a
+      // stale or direct deep link), send the user back to the earliest
+      // incomplete step instead of rendering — and, just as importantly,
+      // instead of ever calling calculateSplit with data it isn't ready
+      // for (an unassigned item would throw).
+      if (data.itemRows.length === 0) {
+        router.replace(`/bill/${billId}/receipt-review`);
+        return;
+      }
+      if (!hasMinimumParticipants(data.participantRows.length)) {
+        router.replace(`/bill/${billId}/participants`);
+        return;
+      }
+      const { unassignedItems } = partitionLineItemsByAssignment(
+        data.itemRows,
+        data.assignmentRows,
+      );
+      if (unassignedItems.length > 0) {
+        router.replace(`/bill/${billId}/assignments`);
+        return;
+      }
+
+      const { splitResult: nextSplitResult, reconciliation: nextReconciliation } =
+        computeSplitAndReconciliation(data);
+      setBill(data.billRow);
+      setParticipants(data.participantRows);
+      setAdjustments(data.adjustmentRows);
+      setSplitResult(nextSplitResult);
+      setReconciliation(nextReconciliation);
+      setState('ready');
+    } catch {
+      // Covers both a genuine load failure and calculateSplit's
+      // SplitInvariantError (spec 10.7) — either way this is not a
+      // user-fixable validation case, so it surfaces as the same generic
+      // error state as any other unexpected failure, never silently.
+      setState('error');
+    }
+  }, [billId, router]);
+
   useFocusEffect(
     useCallback(() => {
-      (async () => {
-        try {
-          const data = await fetchAdjustmentsData(billId);
-          if (!data.billRow) {
-            setState('error');
-            return;
-          }
-
-          // Draft-progression guard (spec section 15): this screen assumes
-          // items exist, at least two participants exist, and every item is
-          // already assigned — exactly what F-013's assignments screen already
-          // blocks continuing without. If any of that isn't true yet (e.g. a
-          // stale or direct deep link), send the user back to the earliest
-          // incomplete step instead of rendering — and, just as importantly,
-          // instead of ever calling calculateSplit with data it isn't ready
-          // for (an unassigned item would throw).
-          if (data.itemRows.length === 0) {
-            router.replace(`/bill/${billId}/receipt-review`);
-            return;
-          }
-          if (!hasMinimumParticipants(data.participantRows.length)) {
-            router.replace(`/bill/${billId}/participants`);
-            return;
-          }
-          const { unassignedItems } = partitionLineItemsByAssignment(
-            data.itemRows,
-            data.assignmentRows,
-          );
-          if (unassignedItems.length > 0) {
-            router.replace(`/bill/${billId}/assignments`);
-            return;
-          }
-
-          const { splitResult: nextSplitResult, reconciliation: nextReconciliation } =
-            computeSplitAndReconciliation(data);
-          setBill(data.billRow);
-          setParticipants(data.participantRows);
-          setAdjustments(data.adjustmentRows);
-          setSplitResult(nextSplitResult);
-          setReconciliation(nextReconciliation);
-          setState('ready');
-        } catch {
-          // Covers both a genuine load failure and calculateSplit's
-          // SplitInvariantError (spec 10.7) — either way this is not a
-          // user-fixable validation case, so it surfaces as the same generic
-          // error state as any other unexpected failure, never silently.
-          setState('error');
-        }
-      })();
-    }, [billId, router]),
+      void loadScreen();
+    }, [loadScreen]),
   );
 
   // Reloads everything and recomputes the split after an adjustment is
@@ -299,11 +308,16 @@ export default function AdjustmentsScreen() {
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
           retryLabel={copy.global.retryAction}
-          onRetry={() => setState('loading')}
+          onRetry={() => {
+            setState('loading');
+            void loadScreen();
+          }}
         />
       </Screen>
     );
   }
+
+  const negativeTotalWarning = getNegativeTotalWarning(splitResult.computedTotalCentavos);
 
   return (
     <Screen tabBarHidden scroll padded={false}>
@@ -371,6 +385,10 @@ export default function AdjustmentsScreen() {
           onAddDifference={handleAddDifference}
           onReviewItems={handleReviewItems}
         />
+
+        {/* Same warning as receipt-review's totals card — a warning only,
+            Continue stays enabled (icon + text, not color alone). */}
+        {negativeTotalWarning ? <WarningNote message={negativeTotalWarning} /> : null}
 
         {/* Was a sticky BottomActionBar footer — moved inline, per the
             user's own explicit request (2026-08-27) to drop sticky nav

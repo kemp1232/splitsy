@@ -6,6 +6,7 @@ import { StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/ui/AppText';
 import { IconButton } from '@/components/ui/IconButton';
 import { copy } from '@/constants/copy';
+import { goBackOrHome } from '@/lib/navigation';
 import { spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -37,15 +38,11 @@ export function ScreenHeader({
   const { colors } = useTheme();
   const router = useRouter();
 
-  // Same behaviour as participants.tsx's own handleBack: the previous wizard
-  // step when there is one in the stack, otherwise Home (e.g. a draft resumed
-  // straight onto this step from a cold start).
+  // The previous wizard step when there is one in the stack, otherwise Home
+  // (e.g. a draft resumed straight onto this step from a cold start) — the
+  // app's shared goBackOrHome.
   function defaultBack() {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/');
-    }
+    goBackOrHome(router);
   }
 
   return (

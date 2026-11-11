@@ -102,6 +102,8 @@ export const copy = {
     emptyHeading: 'No one added yet',
     emptyBody: 'Add everyone sharing this trip to get started.',
     removeConfirmHeading: 'Remove {name} from this trip?',
+    removeAccessibilityLabel: 'Remove {name}',
+    duplicateNameError: 'That name is already in this trip.',
     removeConfirmBody:
       'They will no longer be added automatically to bills you scan into this trip.',
     removeAction: 'Remove person',
@@ -110,6 +112,7 @@ export const copy = {
     activeBadge: 'Active',
     settledBadge: 'Settled',
     billCountLabel: '{count} bills',
+    billCountLabelSingular: '1 bill',
     rosterSectionTitle: 'Trip roster',
     billsSectionTitle: 'Bills in this trip',
     tripTotalLabel: 'Completed so far',
@@ -122,6 +125,9 @@ export const copy = {
     deleteConfirmHeading: 'Delete this trip?',
     deleteConfirmBody:
       'This permanently removes the trip and all {count} bills in it, including their receipt images.',
+    deleteConfirmBodySingular:
+      'This permanently removes the trip and the 1 bill in it, including its receipt image.',
+    deleteConfirmBodyEmpty: 'This permanently removes the trip.',
   },
 
   // Not from the spec — the quick-split entry screen (see PLAN.md's
@@ -146,6 +152,10 @@ export const copy = {
     permanentDenialBody:
       'Camera access is turned off. Enable it in your phone settings, or choose another way to add the receipt.',
     settingsButton: 'Open settings',
+    // Web only: the browser, not the phone, holds the camera permission, and
+    // there's no settings screen an app can open for it.
+    webDeniedBody:
+      'Camera access is blocked for this site. Allow it in your browser settings, or choose another way to add the receipt.',
   },
 
   // Section 13.5 — Camera capture
@@ -202,6 +212,12 @@ export const copy = {
   // Section 13.8 — OCR failure
   ocrFailure: {
     heading: "We couldn't read this receipt",
+    // Shown instead of heading/body (and the ocrUnavailable line) when the
+    // backend answered 502/503/504 (OcrServiceBusyError) — not a photo
+    // problem, so "Try a clearer photo" would be misleading.
+    busyHeading: 'Receipt scanning is busy',
+    busyBody:
+      'The reading service is busy or having trouble right now. Try again in a moment, or enter the items manually.',
     body: 'Try a clearer photo, or enter the items manually.',
     retryButton: 'Try again',
     anotherPhotoButton: 'Use another photo',
@@ -258,6 +274,10 @@ export const copy = {
     mismatchWarning: 'The current total is {difference} {higherOrLower} than the receipt.',
     higherWord: 'higher',
     lowerWord: 'lower',
+    // Items + fees/discounts below zero (getNegativeTotalWarning) — a
+    // warning only, Continue stays enabled. Shared with the fees screen.
+    negativeTotalWarning:
+      'The discounts are bigger than the items. Check the item prices and discount amounts on the receipt.',
     rawTextAction: 'Extracted text',
     // Deliberately its own key rather than reusing
     // copy.savedBillDetail.receiptAction ('View receipt') — that string is
@@ -292,6 +312,14 @@ export const copy = {
     chooseAnotherCaption: 'Scan a different photo instead',
     chooseAnotherConfirmHeading: 'Choose another photo?',
     chooseAnotherConfirmBody: 'The items and people on this bill will be cleared.',
+    // The scan read a day that doesn't exist (e.g. 2026-02-31) and processing
+    // saved the real date it rolls over to (buildDateRolledOverWarning).
+    dateRolledOverWarning:
+      "We read the date as {readDate}, which doesn't exist, so we changed it to {date}. Check the date.",
+    // A photo bill whose scan never finished (canRescanReceipt): re-run the
+    // scan on the same photo.
+    rescanAction: 'Scan this photo',
+    rescanCaption: 'Read the items from this receipt photo',
   },
 
   // Section 13.10 — Add/edit item sheet
@@ -331,6 +359,7 @@ export const copy = {
     backAccessibilityLabel: 'Go back',
     sectionWithCount: 'People ({count})',
     sectionAccessibilityLabel: '{count} people',
+    sectionAccessibilityLabelSingular: '1 person',
     removeAccessibilityLabel: 'Remove {name}',
     removeConfirmHeading: 'Remove {name}?',
     removeConfirmBody: 'Their item assignments and custom adjustment amounts will also be removed.',
@@ -370,11 +399,11 @@ export const copy = {
     continueToPaymentsButton: 'Add who paid',
     editAdjustmentsAction: 'Edit fees and discounts',
     blockingErrorHeading: 'Assign every item',
-    blockingErrorBody: '{count} {itemWord} still need {assignmentWord}.',
+    blockingErrorBody: '{count} {itemWord} still {assignmentWord}.',
     itemWordSingular: 'item',
     itemWordPlural: 'items',
-    assignmentWordSingular: 'an assignment',
-    assignmentWordPlural: 'assignments',
+    assignmentWordSingular: 'needs an assignment',
+    assignmentWordPlural: 'need assignments',
     itemsSectionTitle: 'Items',
     itemsSectionWithUnassignedCount: 'Items ({count} unassigned)',
     itemsCaption: 'Tap a name to add or remove that person.',
@@ -521,9 +550,10 @@ export const copy = {
     markSettledAction: 'Mark trip settled',
     settledToast: 'Trip marked as settled.',
     // Not from the spec — Trip feature addition: each person's card can
-    // expand to show every item they're assigned to across the trip's bills.
-    viewItemsAction: 'View items',
-    hideItemsAction: 'Hide items',
+    // expand to show, per bill, their items and their share of each
+    // fee/tax/discount.
+    viewItemsAction: 'View breakdown',
+    hideItemsAction: 'Hide breakdown',
     // Appended to a shared item's name, e.g. "Nachos (split with Sam, Jo)" —
     // named co-assignees, not just a generic "(shared)" suffix, since this
     // view spans multiple bills where "shared" alone doesn't say with whom.
@@ -760,6 +790,12 @@ export const copy = {
     verifyEmailErrorHeading: "This link isn't working",
     verifyEmailErrorBody: 'This verification link is invalid or has expired. Request a new one.',
     verifyEmailGoToSignIn: 'Go to sign in',
+    // Opened with neither the success marker nor an error (e.g. typed in, or
+    // a link from an email sent before the marker existed) — nothing is
+    // claimed either way.
+    verifyEmailPendingHeading: 'Check your email',
+    verifyEmailPendingBody:
+      "Open the verification link we sent you. If you've already verified your email, you can sign in.",
 
     // Shared field labels/placeholders/validation errors, used across more
     // than one of the four screens above.

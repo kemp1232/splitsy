@@ -38,6 +38,8 @@ export default function ForgotPasswordScreen() {
   const [sent, setSent] = useState(false);
 
   async function handleSendResetLink() {
+    // Enter can't send a second link while one is in flight.
+    if (submitting) return;
     const emailResult = validateEmail(email);
     setEmailError(
       emailResult.valid
@@ -114,6 +116,8 @@ export default function ForgotPasswordScreen() {
             keyboardType="email-address"
             textContentType="emailAddress"
             autoComplete="email"
+            returnKeyType="send"
+            onSubmitEditing={handleSendResetLink}
           />
         </View>
 

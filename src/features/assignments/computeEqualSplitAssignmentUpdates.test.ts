@@ -2,7 +2,10 @@ import type { ItemAssignment } from '@/db/repositories/itemAssignments.repositor
 import type { LineItem } from '@/db/repositories/lineItems.repository';
 import type { Participant } from '@/db/repositories/participants.repository';
 
-import { computeEqualSplitAssignmentUpdates } from './computeEqualSplitAssignmentUpdates';
+import {
+  applyLineItemAssignmentUpdatesSequentially,
+  computeEqualSplitAssignmentUpdates,
+} from './computeEqualSplitAssignmentUpdates';
 
 function makeLineItem(id: string): LineItem {
   return {
@@ -104,5 +107,82 @@ describe('computeEqualSplitAssignmentUpdates', () => {
     );
 
     expect(updates).toEqual([{ lineItemId: 'item-drifted', participantIds: ['p-1', 'p-2'] }]);
+  });
+});
+
+describe('applyLineItemAssignmentUpdatesSequentially', () => {
+  // Mirrors web's single-connection sqlite-proxy: a second transaction that
+  // starts while one is still open fails its BEGIN.
+  function createFakeStore(initial: ItemAssignment[]) {
+    let rows = [...initial];
+    let inFlight = false;
+    return {
+      rows: () => rows,
+      async write(lineItemId: string, participantIds: string[]) {
+        if (inFlight) throw new Error('cannot start a transaction within a transaction');
+        inFlight = true;
+        await Promise.resolve();
+        rows = [
+          ...rows.filter((row) => row.lineItemId !== lineItemId),
+          ...participantIds.map((participantId) => makeAssignment(lineItemId, participantId)),
+        ];
+        inFlight = false;
+      },
+    };
+  }
+
+  it('applies every update one at a time, never overlapping', async () => {
+    const store = createFakeStore([]);
+    await applyLineItemAssignmentUpdatesSequentially(
+      [
+        { lineItemId: 'i1', participantIds: ['a'] },
+        { lineItemId: 'i2', participantIds: ['a', 'b'] },
+        { lineItemId: 'i3', participantIds: ['b'] },
+      ],
+      store.write,
+    );
+    expect(store.rows()).toEqual([
+      makeAssignment('i1', 'a'),
+      makeAssignment('i2', 'a'),
+      makeAssignment('i2', 'b'),
+      makeAssignment('i3', 'b'),
+    ]);
+  });
+
+  it('turning equal split on from the QA state assigns every item to every participant', async () => {
+    const items = ['aji', 'gyoza', 'miso', 'tonk'].map(makeLineItem);
+    const participants = ['A', 'B', 'C'].map(makeParticipant);
+    const store = createFakeStore([
+      makeAssignment('aji', 'A'),
+      makeAssignment('aji', 'B'),
+      makeAssignment('gyoza', 'A'),
+      makeAssignment('gyoza', 'B'),
+      makeAssignment('gyoza', 'C'),
+      makeAssignment('miso', 'C'),
+    ]);
+
+    const updates = computeEqualSplitAssignmentUpdates(items, participants, store.rows());
+    await applyLineItemAssignmentUpdatesSequentially(updates, store.write);
+
+    expect(computeEqualSplitAssignmentUpdates(items, participants, store.rows())).toEqual([]);
+    expect(store.rows()).toHaveLength(12);
+  });
+
+  it('stops at the first failing write and rethrows', async () => {
+    const write = jest
+      .fn<Promise<void>, [string, string[]]>()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('disk full'));
+    await expect(
+      applyLineItemAssignmentUpdatesSequentially(
+        [
+          { lineItemId: 'i1', participantIds: ['a'] },
+          { lineItemId: 'i2', participantIds: ['a'] },
+          { lineItemId: 'i3', participantIds: ['a'] },
+        ],
+        write,
+      ),
+    ).rejects.toThrow('disk full');
+    expect(write).toHaveBeenCalledTimes(2);
   });
 });

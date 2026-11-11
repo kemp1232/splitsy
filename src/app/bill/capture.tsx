@@ -2,15 +2,17 @@ import Feather from '@expo/vector-icons/Feather';
 import { CameraView, useCameraPermissions, type FlashMode } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { IconButton } from '@/components/ui/IconButton';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { copy } from '@/constants/copy';
 import { useBillSourceActions } from '@/features/bills/useBillSourceActions';
+import { goBackOrHome } from '@/lib/navigation';
 import { radius, spacing, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -53,14 +55,25 @@ export default function CaptureScreen() {
   }
 
   if (!permission.granted) {
+    // expo-camera's web permission response always says canAskAgain: true,
+    // but once the browser has blocked the camera, requesting again fails
+    // silently — so on web a denial is final until the user changes it in
+    // the browser.
+    const isWeb = Platform.OS === 'web';
+    const canAskAgain = permission.canAskAgain && !(isWeb && permission.status === 'denied');
     return (
       <Screen tabBarHidden>
-        <AppText variant="heading">{copy.cameraPermission.heading}</AppText>
-        <AppText variant="body" color="textSecondary" style={styles.spacedBelow}>
-          {copy.cameraPermission.body}
-        </AppText>
+        {/* Shared bill-screen header; its default back is the previous
+            screen, else Home (e.g. a web tab reloaded on /bill/capture). */}
+        <View style={styles.headerBlock}>
+          <ScreenHeader
+            icon="camera"
+            heading={copy.cameraPermission.heading}
+            body={copy.cameraPermission.body}
+          />
+        </View>
 
-        {permission.canAskAgain ? (
+        {canAskAgain ? (
           <AppButton
             label={copy.cameraPermission.primaryButton}
             onPress={requestPermission}
@@ -73,13 +86,19 @@ export default function CaptureScreen() {
             <View style={styles.deniedRow}>
               <Feather name="alert-circle" size={16} color={colors.danger} />
               <AppText variant="body" color="danger" style={styles.deniedText}>
-                {copy.cameraPermission.permanentDenialBody}
+                {isWeb
+                  ? copy.cameraPermission.webDeniedBody
+                  : copy.cameraPermission.permanentDenialBody}
               </AppText>
             </View>
-            <AppButton
-              label={copy.cameraPermission.settingsButton}
-              onPress={() => Linking.openSettings()}
-            />
+            {/* No app settings screen to open on web (Linking.openSettings
+                would navigate this tab to an "app-settings:" URL). */}
+            {isWeb ? null : (
+              <AppButton
+                label={copy.cameraPermission.settingsButton}
+                onPress={() => Linking.openSettings()}
+              />
+            )}
           </View>
         )}
 
@@ -115,7 +134,7 @@ export default function CaptureScreen() {
       <View style={styles.topBar}>
         <IconButton
           accessibilityLabel={copy.cameraCapture.closeAccessibilityLabel}
-          onPress={() => router.back()}
+          onPress={() => goBackOrHome(router)}
           icon={<Feather name="x" size={22} color={overlay.text} />}
         />
         <Pressable
@@ -187,6 +206,7 @@ export default function CaptureScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: overlay.background },
+  headerBlock: { marginBottom: spacing.lg },
   spacedBelow: { marginTop: spacing.sm, marginBottom: spacing.lg, gap: spacing.sm },
   deniedRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs },
   deniedText: { flex: 1 },

@@ -12,6 +12,8 @@ import { useTheme } from '@/theme/ThemeProvider';
 
 type Props = {
   visible: boolean;
+  // Disables only Edit — e.g. while this bill's edit restore is still running.
+  editDisabled?: boolean;
   onEdit: () => void;
   onShare: () => void;
   onDelete: () => void;
@@ -26,7 +28,14 @@ type Props = {
 // button rather than a form. Works identically for a DRAFT or a COMPLETED
 // bill — the caller (home screen) decides what each action actually does for
 // the specific bill the sheet was opened for.
-export function BillOverflowSheet({ visible, onEdit, onShare, onDelete, onCancel }: Props) {
+export function BillOverflowSheet({
+  visible,
+  editDisabled,
+  onEdit,
+  onShare,
+  onDelete,
+  onCancel,
+}: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   // Modal's own `animationType="slide"` would transform the backdrop along
@@ -46,6 +55,7 @@ export function BillOverflowSheet({ visible, onEdit, onShare, onDelete, onCancel
               variant="text"
               label={copy.home.overflowEdit}
               onPress={onEdit}
+              disabled={editDisabled}
               icon={(color) => <Feather name="edit" size={18} color={color} />}
             />
             <AppButton

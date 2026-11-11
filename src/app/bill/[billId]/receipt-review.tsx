@@ -44,6 +44,7 @@ import { participantsRepository } from '@/db/repositories/participants.repositor
 import { useAdjustmentEditor } from '@/features/adjustments/useAdjustmentEditor';
 import { deleteBill } from '@/features/bills/bill.service';
 import { createGalleryBill, pickGalleryImageUri } from '@/features/bills/galleryBill';
+import { useEnsureBillEditable } from '@/features/bills/useEnsureBillEditable';
 import {
   buildOcrStatus,
   type OcrFallbackReason,
@@ -52,11 +53,14 @@ import {
 import {
   buildMismatchMessage,
   buildTotalHeadlineSpeech,
+  getNegativeTotalWarning,
   getTotalsBadgeLabel,
   getTotalsMatch,
   type TotalsMatchStatus,
 } from '@/features/receipt-review/buildTotalsSummary';
-import { nowIso } from '@/lib/date';
+import { buildDateRolledOverWarning } from '@/features/receipt-review/buildDateRolledOverWarning';
+import { canRescanReceipt } from '@/features/receipt-review/canRescanReceipt';
+import { isValidDateOnly, nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
 import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
 import type { ColorTokens } from '@/theme/tokens';
@@ -64,9 +68,6 @@ import { radius, spacing, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
-
-// Matches spec section 9.1's documented receiptDate shape exactly.
-const RECEIPT_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const STATUS_ICON: Record<OcrStatusTone, keyof typeof Feather.glyphMap> = {
   success: 'check-circle',
@@ -103,16 +104,24 @@ export default function ReceiptReviewScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { billId, ocrSource, fallbackReason, truncated } = useLocalSearchParams<{
+  const { billId, ocrSource, fallbackReason, truncated, dateReadAs } = useLocalSearchParams<{
     billId: string;
     ocrSource?: 'backend' | 'on-device';
     fallbackReason?: OcrFallbackReason;
     // '1' when the backend scan was cut off by its token cap (processing.tsx).
     truncated?: string;
+    // The non-existent date the scan read, when processing saved its
+    // rolled-over real date instead (buildDateRolledOverWarning).
+    dateReadAs?: string;
   }>();
+  // Back in edit mode if the bill was re-completed underneath this screen.
+  useEnsureBillEditable(billId);
   const isTruncated = truncated === '1';
 
   const [state, setState] = useState<LoadState>('loading');
+  // Bumped by the error state's Retry so the load effect below runs again —
+  // setting state back to 'loading' alone never re-triggers it.
+  const [reloadKey, setReloadKey] = useState(0);
   const [bill, setBill] = useState<Bill | null>(null);
   const [items, setItems] = useState<LineItem[]>([]);
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
@@ -172,7 +181,7 @@ export default function ReceiptReviewScreen() {
         setState('error');
       }
     })();
-  }, [billId]);
+  }, [billId, reloadKey]);
 
   // Stable per-row callbacks (they take the item rather than closing over
   // it) so LineItemRow's React.memo can skip unchanged rows.
@@ -226,7 +235,7 @@ export default function ReceiptReviewScreen() {
 
   async function handleDateBlur() {
     const trimmed = receiptDate.trim();
-    if (trimmed !== '' && !RECEIPT_DATE_PATTERN.test(trimmed)) {
+    if (trimmed !== '' && !isValidDateOnly(trimmed)) {
       setDateError(copy.receiptReview.invalidDateError);
       return;
     }
@@ -380,7 +389,10 @@ export default function ReceiptReviewScreen() {
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
           retryLabel={copy.global.retryAction}
-          onRetry={() => setState('loading')}
+          onRetry={() => {
+            setState('loading');
+            setReloadKey((key) => key + 1);
+          }}
         />
       </Screen>
     );
@@ -391,6 +403,8 @@ export default function ReceiptReviewScreen() {
   const computedTotalCentavos = itemSubtotalCentavos + adjustmentTotalCentavos;
   const detectedTotalCentavos = bill.detectedReceiptTotalCentavos;
   const totalsMatch = getTotalsMatch(computedTotalCentavos, detectedTotalCentavos);
+  const negativeTotalWarning = getNegativeTotalWarning(computedTotalCentavos);
+  const dateRolledOverWarning = buildDateRolledOverWarning(dateReadAs, receiptDate);
 
   const ocrStatus = buildOcrStatus(ocrSource, fallbackReason, isTruncated);
   // Only for a gallery draft that arrived here straight from processing.
@@ -405,6 +419,15 @@ export default function ReceiptReviewScreen() {
   // warns that people are cleared too.
   const canChooseAnother =
     bill.entryMethod === 'GALLERY' && bill.status === 'DRAFT' && ocrSource != null;
+  // An interrupted scan (photo but no OCR text, nothing added or typed yet)
+  // can be run again on this same bill — processing appends items/fees and
+  // overwrites merchant/date, so only while all of those are still empty.
+  // The fields' live values, not `bill`'s: typing counts even before blur saves it.
+  const canRescan = canRescanReceipt(
+    { ...bill, merchantName, receiptDate },
+    items.length,
+    adjustments.length,
+  );
   const totalHeadlineSpeech = buildTotalHeadlineSpeech(
     computedTotalCentavos,
     totalsMatch.status,
@@ -498,7 +521,7 @@ export default function ReceiptReviewScreen() {
             placeholder={copy.receiptReview.merchantPlaceholder}
             value={merchantName}
             onChangeText={setMerchantName}
-            onEndEditing={handleMerchantBlur}
+            onBlur={handleMerchantBlur}
             leadingIcon={(color) => <Feather name="shopping-bag" size={18} color={color} />}
           />
           <AppTextInput
@@ -509,10 +532,19 @@ export default function ReceiptReviewScreen() {
               setReceiptDate(value);
               setDateError(null);
             }}
-            onEndEditing={handleDateBlur}
+            onBlur={handleDateBlur}
             error={dateError ?? undefined}
             leadingIcon={(color) => <Feather name="calendar" size={18} color={color} />}
           />
+          {/* Icon + text, not color alone; gone once the date is changed. */}
+          {dateRolledOverWarning ? (
+            <View style={styles.dateWarningRow}>
+              <Feather name="alert-triangle" size={16} color={colors.warning} />
+              <AppText variant="caption" style={styles.reconciliationText}>
+                {dateRolledOverWarning}
+              </AppText>
+            </View>
+          ) : null}
         </SectionCard>
 
         <View style={styles.itemsBlock}>
@@ -589,7 +621,8 @@ export default function ReceiptReviewScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`${copy.preview.chooseAnotherAction}, ${copy.receiptReview.chooseAnotherCaption}`}
-                accessibilityState={{ busy: choosingAnother, disabled: choosingAnother }}
+                aria-busy={choosingAnother}
+                aria-disabled={choosingAnother}
                 disabled={choosingAnother}
                 onPress={() => setConfirmChooseAnother(true)}
                 style={({ pressed }) => [styles.viewActionRow, pressed && styles.pressed]}
@@ -610,6 +643,31 @@ export default function ReceiptReviewScreen() {
                 ) : (
                   <Feather name="chevron-right" size={20} color={colors.textSecondary} />
                 )}
+              </Pressable>
+            ) : null}
+            {canRescan ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${copy.receiptReview.rescanAction}, ${copy.receiptReview.rescanCaption}`}
+                // push, not replace: processing's "Use another photo" goes
+                // back, which should land here again. Its success path
+                // replaces itself with a fresh review, whose own back is
+                // dismissTo('/').
+                onPress={() => router.push({ pathname: '/bill/processing', params: { billId } })}
+                style={({ pressed }) => [styles.viewActionRow, pressed && styles.pressed]}
+              >
+                <View style={styles.viewActionIcon}>
+                  <Feather name="refresh-cw" size={18} color={colors.primary} />
+                </View>
+                <View style={styles.viewActionText}>
+                  <AppText variant="subheading" style={styles.uniformText}>
+                    {copy.receiptReview.rescanAction}
+                  </AppText>
+                  <AppText variant="caption" color="textSecondary">
+                    {copy.receiptReview.rescanCaption}
+                  </AppText>
+                </View>
+                <Feather name="chevron-right" size={20} color={colors.textSecondary} />
               </Pressable>
             ) : null}
             {bill.rawOcrText ? (
@@ -684,7 +742,7 @@ export default function ReceiptReviewScreen() {
               badge is plain content of this one button, not its own target. */}
           <Pressable
             accessibilityRole="button"
-            accessibilityState={{ expanded: showBreakdown }}
+            aria-expanded={showBreakdown}
             accessibilityLabel={totalHeadlineSpeech}
             accessibilityHint={copy.receiptReview.breakdownToggleHint}
             onPress={() => setShowBreakdown((current) => !current)}
@@ -772,6 +830,17 @@ export default function ReceiptReviewScreen() {
               <Feather name="alert-triangle" size={18} color={colors.warning} />
               <AppText variant="caption" style={styles.reconciliationText}>
                 {mismatchMessage}
+              </AppText>
+            </View>
+          ) : null}
+
+          {/* Discounts bigger than the items: a warning only (icon + text,
+              not color alone) — Continue below stays enabled. */}
+          {negativeTotalWarning ? (
+            <View style={[styles.reconciliationRow, styles.warning]}>
+              <Feather name="alert-triangle" size={18} color={colors.warning} />
+              <AppText variant="caption" style={styles.reconciliationText}>
+                {negativeTotalWarning}
               </AppText>
             </View>
           ) : null}
@@ -1059,6 +1128,11 @@ function createStyles(colors: ColorTokens) {
     },
     reconciliationText: {
       flex: 1,
+    },
+    dateWarningRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
     },
     rawTextScroll: {
       marginTop: spacing.md,

@@ -159,7 +159,7 @@ export default function NewTripScreen() {
                       </AppText>
                     </Pressable>
                     <IconButton
-                      accessibilityLabel={copy.trip.removeConfirmHeading.replace(
+                      accessibilityLabel={copy.trip.removeAccessibilityLabel.replace(
                         '{name}',
                         item.name,
                       )}
@@ -195,6 +195,7 @@ export default function NewTripScreen() {
       </View>
 
       <ParticipantEditorSheet
+        duplicateNameError={copy.trip.duplicateNameError}
         visible={editingMember !== null}
         initial={editingMember && editingMember !== 'new' ? { name: editingMember.name } : null}
         existingNames={existingNamesForEditor}

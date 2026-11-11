@@ -4,6 +4,7 @@ import {
   buildMismatchMessage,
   buildTotalHeadlineSpeech,
   getTotalsBadgeLabel,
+  getNegativeTotalWarning,
   getTotalsMatch,
 } from './buildTotalsSummary';
 
@@ -69,5 +70,18 @@ describe('buildMismatchMessage', () => {
     expect(buildMismatchMessage(-1025, formatCentavos)).toBe(
       `The current total is ${formatCentavos(1025)} lower than the receipt.`,
     );
+  });
+});
+
+describe('getNegativeTotalWarning', () => {
+  it('warns when the discounts are bigger than the items', () => {
+    expect(getNegativeTotalWarning(-1)).toBe(
+      'The discounts are bigger than the items. Check the item prices and discount amounts on the receipt.',
+    );
+  });
+
+  it('does not warn at exactly zero or above', () => {
+    expect(getNegativeTotalWarning(0)).toBeNull();
+    expect(getNegativeTotalWarning(52025)).toBeNull();
   });
 });

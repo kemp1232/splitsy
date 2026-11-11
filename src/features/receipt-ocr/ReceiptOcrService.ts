@@ -72,6 +72,23 @@ export class OcrDailyLimitError extends Error {
   }
 }
 
+// Thrown when the backend answered 502/503/504 — the reading service (Groq)
+// is over capacity, timed out, or otherwise having trouble right now (the
+// server wraps every upstream failure as a 502, and its own fail-closed
+// paths as a 503). A "try again in a moment" situation, not a bad photo:
+// processing.tsx says so instead of "Try a clearer photo" on web.
+// FallbackReceiptOcrService deliberately treats it like any other failure
+// (silently reads on-device instead), so native is unchanged.
+export class OcrServiceBusyError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'OcrServiceBusyError';
+  }
+}
+
 // Which implementation actually produced this result — lets the UI show
 // whether a scan used the Groq backend or fell back to on-device OCR (see
 // FallbackReceiptOcrService). A UI hint only, never treated as bill data

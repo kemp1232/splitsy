@@ -1,8 +1,8 @@
 import Feather from '@expo/vector-icons/Feather';
 import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { StyleSheet, View, type TextInput } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
@@ -11,6 +11,7 @@ import { InlineError } from '@/components/ui/InlineError';
 import { Screen } from '@/components/ui/Screen';
 import appInfo from '@/constants/appInfo.json';
 import { copy } from '@/constants/copy';
+import { VERIFY_EMAIL_SUCCESS_PARAMS } from '@/features/auth/resolveVerifyEmailOutcome';
 import {
   MAX_PASSWORD_LENGTH,
   MIN_PASSWORD_LENGTH,
@@ -47,8 +48,13 @@ export default function RegisterScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
+  // Enter moves name -> email -> password; Enter on the password registers.
+  const emailInputRef = useRef<TextInput>(null);
+  const passwordInputRef = useRef<TextInput>(null);
 
   async function handleRegister() {
+    // Enter can't start a second registration while one is in flight.
+    if (submitting) return;
     const nameResult = validateDisplayName(name);
     const emailResult = validateEmail(email);
     const passwordResult = validateNewPassword(password);
@@ -85,7 +91,12 @@ export default function RegisterScreen() {
         name: nameResult.name,
         email: emailResult.email,
         password: passwordResult.password,
-        callbackURL: Linking.createURL('verify-email', { scheme: appInfo.scheme }),
+        callbackURL: Linking.createURL('verify-email', {
+          scheme: appInfo.scheme,
+          // Success marker for verify-email.tsx: Better Auth redirects to this
+          // URL as-is on success and appends `&error=…` on failure.
+          queryParams: VERIFY_EMAIL_SUCCESS_PARAMS,
+        }),
       });
       if (error) {
         setFormError(
@@ -150,9 +161,13 @@ export default function RegisterScreen() {
             error={nameError ?? undefined}
             textContentType="name"
             autoComplete="name"
+            returnKeyType="next"
+            submitBehavior="submit"
+            onSubmitEditing={() => emailInputRef.current?.focus()}
           />
 
           <AppTextInput
+            ref={emailInputRef}
             label={copy.auth.emailLabel}
             placeholder={copy.auth.emailPlaceholder}
             value={email}
@@ -166,9 +181,13 @@ export default function RegisterScreen() {
             keyboardType="email-address"
             textContentType="emailAddress"
             autoComplete="email"
+            returnKeyType="next"
+            submitBehavior="submit"
+            onSubmitEditing={() => passwordInputRef.current?.focus()}
           />
 
           <AppTextInput
+            ref={passwordInputRef}
             label={copy.auth.passwordLabel}
             value={password}
             onChangeText={(value) => {
@@ -179,6 +198,8 @@ export default function RegisterScreen() {
             secureTextEntry
             textContentType="newPassword"
             autoComplete="new-password"
+            returnKeyType="go"
+            onSubmitEditing={handleRegister}
           />
         </View>
 

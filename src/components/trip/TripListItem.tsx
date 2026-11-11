@@ -7,6 +7,7 @@ import { ReceiptTornEdge } from '@/components/ui/ReceiptTornEdge';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { copy } from '@/constants/copy';
 import type { Trip, TripWithBillCount } from '@/db/repositories/trips.repository';
+import { formatTripBillCount } from '@/features/trips/formatTripBillCount';
 import { formatBillListDate } from '@/lib/date';
 import { formatCentavos } from '@/lib/money';
 import type { ColorTokens } from '@/theme/tokens';
@@ -44,6 +45,7 @@ export const TripListItem = memo(function TripListItem({
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { trip, billCount } = entry;
+  const billCountLabel = formatTripBillCount(billCount);
   const title = trip.name ?? copy.trip.unknownTripTitle;
 
   return (
@@ -72,9 +74,7 @@ export const TripListItem = memo(function TripListItem({
             <View style={styles.metaRow}>
               <AppText variant="caption" color="textSecondary">
                 {formatBillListDate(trip.updatedAt)}
-                {billCount > 0
-                  ? ` · ${copy.trip.billCountLabel.replace('{count}', String(billCount))}`
-                  : ''}
+                {billCountLabel ? ` · ${billCountLabel}` : ''}
               </AppText>
               {rosterNames.length > 0 ? (
                 <AvatarStack names={rosterNames} size={18} max={3} />

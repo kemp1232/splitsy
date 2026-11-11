@@ -45,6 +45,9 @@ type Props = {
   // Reading from the repository/store and passing names down keeps this
   // sheet's validation self-contained without it hitting the repository itself.
   existingNames: string[];
+  // Overrides the duplicate-name message — the trip screens pass the
+  // trip-worded one, since the default names "this bill".
+  duplicateNameError?: string;
   onSave: (draft: ParticipantDraft) => void;
   onCancel: () => void;
 };
@@ -53,6 +56,7 @@ export function ParticipantEditorSheet({
   visible,
   initial,
   existingNames,
+  duplicateNameError,
   onSave,
   onCancel,
 }: Props) {
@@ -77,7 +81,11 @@ export function ParticipantEditorSheet({
   function handleSave() {
     const result = validateParticipantName(name, existingNames);
     if (!result.valid) {
-      setNameError(PARTICIPANT_NAME_ERROR_BY_REASON[result.reason]);
+      setNameError(
+        result.reason === 'duplicate' && duplicateNameError
+          ? duplicateNameError
+          : PARTICIPANT_NAME_ERROR_BY_REASON[result.reason],
+      );
       return;
     }
 
@@ -118,23 +126,23 @@ export function ParticipantEditorSheet({
                 {initial ? copy.participantEditor.editHeading : copy.participantEditor.addHeading}
               </AppText>
 
-            <AppTextInput
-              label={copy.participantEditor.nameLabel}
-              placeholder={copy.participantEditor.namePlaceholder}
-              value={name}
-              onChangeText={setName}
-              maxLength={MAX_PARTICIPANT_NAME_LENGTH}
-              error={nameError ?? undefined}
-            />
-
-            <View style={styles.actions}>
-              <AppButton
-                variant="secondary"
-                label={copy.participantEditor.cancelAction}
-                onPress={onCancel}
+              <AppTextInput
+                label={copy.participantEditor.nameLabel}
+                placeholder={copy.participantEditor.namePlaceholder}
+                value={name}
+                onChangeText={setName}
+                maxLength={MAX_PARTICIPANT_NAME_LENGTH}
+                error={nameError ?? undefined}
               />
-              <AppButton label={copy.participantEditor.saveAction} onPress={handleSave} />
-            </View>
+
+              <View style={styles.actions}>
+                <AppButton
+                  variant="secondary"
+                  label={copy.participantEditor.cancelAction}
+                  onPress={onCancel}
+                />
+                <AppButton label={copy.participantEditor.saveAction} onPress={handleSave} />
+              </View>
             </Pressable>
           </Animated.View>
         </KeyboardAvoidingView>

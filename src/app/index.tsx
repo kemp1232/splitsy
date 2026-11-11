@@ -34,6 +34,11 @@ import {
 } from '@/features/adjustments/buildSplitInputs';
 import { partitionLineItemsByAssignment } from '@/features/assignments/partitionLineItemsByAssignment';
 import { deleteBill } from '@/features/bills/bill.service';
+import {
+  beginCompletedBillEdit,
+  restoreUnchangedBillEdits,
+} from '@/features/bills/billEditSession';
+import { useRestoringBillIds } from '@/features/bills/useRestoringBillIds';
 import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { resolveNextRoute, type NextRoute } from '@/features/bills/resolveNextRoute';
 import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
@@ -42,7 +47,6 @@ import { computeSettlement } from '@/features/splitting/settlement';
 import { buildShareText } from '@/features/splitting/shareText';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import { authClient } from '@/lib/authClient';
-import { nowIso } from '@/lib/date';
 import { shareText } from '@/lib/share';
 import type { ColorTokens } from '@/theme/tokens';
 import { spacing } from '@/theme/tokens';
@@ -282,6 +286,9 @@ export default function HomeScreen() {
   const [state, setState] = useState<LoadState>('loading');
   const [refreshing, setRefreshing] = useState(false);
   const [overflowBill, setOverflowBill] = useState<Bill | null>(null);
+  // The overflow sheet's Edit stays disabled while that bill's edit restore
+  // is still running (billEditSession.ts).
+  const restoringBillIds = useRestoringBillIds();
   const [deletingBill, setDeletingBill] = useState<Bill | null>(null);
 
   const load = useCallback(async () => {
@@ -306,6 +313,9 @@ export default function HomeScreen() {
     useCallback(() => {
       (async () => {
         try {
+          // An Edit bill that changed nothing goes back to COMPLETED before
+          // the list is read (billEditSession.ts). Best-effort: never blocks.
+          await restoreUnchangedBillEdits().catch(() => undefined);
           setEntries(await buildHomeEntries());
           setState('ready');
         } catch {
@@ -376,11 +386,8 @@ export default function HomeScreen() {
     if (!bill) return;
 
     if (bill.status === 'COMPLETED') {
-      await billsRepository.update(bill.id, {
-        status: 'DRAFT',
-        completedAt: null,
-        updatedAt: nowIso(),
-      });
+      // Snapshots first, so an edit that changes nothing is undone on return.
+      await beginCompletedBillEdit(bill);
     }
     router.push(`/bill/${bill.id}/receipt-review`);
   }
@@ -586,6 +593,7 @@ export default function HomeScreen() {
 
       <BillOverflowSheet
         visible={overflowBill !== null}
+        editDisabled={overflowBill !== null && restoringBillIds.has(overflowBill.id)}
         onEdit={handleOverflowEdit}
         onShare={handleOverflowShare}
         onDelete={handleOverflowDelete}
