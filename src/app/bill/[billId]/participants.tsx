@@ -47,6 +47,9 @@ export default function ParticipantsScreen() {
   const { billId } = useLocalSearchParams<{ billId: string }>();
 
   const [state, setState] = useState<LoadState>('loading');
+  // Bumped by the error state's Retry so the load effect below runs again —
+  // setting state back to 'loading' alone never re-triggers it.
+  const [reloadKey, setReloadKey] = useState(0);
   const [participants, setParticipants] = useState<Participant[]>([]);
   // The sheet is edit-only now — new people are added via the inline field.
   const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null);
@@ -75,7 +78,7 @@ export default function ParticipantsScreen() {
         setState('error');
       }
     })();
-  }, [billId]);
+  }, [billId, reloadKey]);
 
   function handleBack() {
     if (router.canGoBack()) {
@@ -207,7 +210,10 @@ export default function ParticipantsScreen() {
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
           retryLabel={copy.global.retryAction}
-          onRetry={() => setState('loading')}
+          onRetry={() => {
+            setState('loading');
+            setReloadKey((key) => key + 1);
+          }}
         />
       </Screen>
     );
@@ -290,10 +296,11 @@ export default function ParticipantsScreen() {
                   variant="subheading"
                   style={styles.sectionTitle}
                   accessibilityRole="header"
-                  accessibilityLabel={copy.participants.sectionAccessibilityLabel.replace(
-                    '{count}',
-                    countText,
-                  )}
+                  accessibilityLabel={
+                    participants.length === 1
+                      ? copy.participants.sectionAccessibilityLabelSingular
+                      : copy.participants.sectionAccessibilityLabel.replace('{count}', countText)
+                  }
                 >
                   {copy.participants.sectionWithCount.replace('{count}', countText)}
                 </AppText>

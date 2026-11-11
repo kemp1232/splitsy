@@ -2,7 +2,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { CameraView, useCameraPermissions, type FlashMode } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
@@ -53,6 +53,12 @@ export default function CaptureScreen() {
   }
 
   if (!permission.granted) {
+    // expo-camera's web permission response always says canAskAgain: true,
+    // but once the browser has blocked the camera, requesting again fails
+    // silently — so on web a denial is final until the user changes it in
+    // the browser.
+    const isWeb = Platform.OS === 'web';
+    const canAskAgain = permission.canAskAgain && !(isWeb && permission.status === 'denied');
     return (
       <Screen tabBarHidden>
         <AppText variant="heading">{copy.cameraPermission.heading}</AppText>
@@ -60,7 +66,7 @@ export default function CaptureScreen() {
           {copy.cameraPermission.body}
         </AppText>
 
-        {permission.canAskAgain ? (
+        {canAskAgain ? (
           <AppButton
             label={copy.cameraPermission.primaryButton}
             onPress={requestPermission}
@@ -73,13 +79,19 @@ export default function CaptureScreen() {
             <View style={styles.deniedRow}>
               <Feather name="alert-circle" size={16} color={colors.danger} />
               <AppText variant="body" color="danger" style={styles.deniedText}>
-                {copy.cameraPermission.permanentDenialBody}
+                {isWeb
+                  ? copy.cameraPermission.webDeniedBody
+                  : copy.cameraPermission.permanentDenialBody}
               </AppText>
             </View>
-            <AppButton
-              label={copy.cameraPermission.settingsButton}
-              onPress={() => Linking.openSettings()}
-            />
+            {/* No app settings screen to open on web (Linking.openSettings
+                would navigate this tab to an "app-settings:" URL). */}
+            {isWeb ? null : (
+              <AppButton
+                label={copy.cameraPermission.settingsButton}
+                onPress={() => Linking.openSettings()}
+              />
+            )}
           </View>
         )}
 

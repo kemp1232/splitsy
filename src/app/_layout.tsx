@@ -102,6 +102,24 @@ function SessionGate({ migrationsReady }: { migrationsReady: boolean }) {
               <Stack.Protected guard={hasSession}>
                 <Stack.Screen name="index" />
                 <Stack.Screen name="settings" />
+                {/* Every bill/trip route too — routes not listed in a
+                    Protected group stay reachable by URL or back navigation
+                    after logging out. */}
+                <Stack.Screen name="bill/new" />
+                <Stack.Screen name="bill/capture" />
+                <Stack.Screen name="bill/preview" />
+                <Stack.Screen name="bill/processing" />
+                <Stack.Screen name="bill/quick-split" />
+                <Stack.Screen name="bill/[billId]/index" />
+                <Stack.Screen name="bill/[billId]/receipt-review" />
+                <Stack.Screen name="bill/[billId]/participants" />
+                <Stack.Screen name="bill/[billId]/assignments" />
+                <Stack.Screen name="bill/[billId]/adjustments" />
+                <Stack.Screen name="bill/[billId]/payments" />
+                <Stack.Screen name="bill/[billId]/summary" />
+                <Stack.Screen name="trip/new" />
+                <Stack.Screen name="trip/[tripId]/index" />
+                <Stack.Screen name="trip/[tripId]/settlement" />
               </Stack.Protected>
               <Stack.Protected guard={!hasSession}>
                 <Stack.Screen name="(auth)" />

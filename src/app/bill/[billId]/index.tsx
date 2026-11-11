@@ -124,6 +124,9 @@ export default function SavedBillDetailScreen() {
   const { billId } = useLocalSearchParams<{ billId: string }>();
 
   const [state, setState] = useState<LoadState>('loading');
+  // Bumped by the error state's Retry so the load effect below runs again —
+  // setting state back to 'loading' alone never re-triggers it.
+  const [reloadKey, setReloadKey] = useState(0);
   const [bill, setBill] = useState<Bill | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [items, setItems] = useState<LineItem[]>([]);
@@ -195,7 +198,7 @@ export default function SavedBillDetailScreen() {
         setState('error');
       }
     })();
-  }, [billId]);
+  }, [billId, reloadKey]);
 
   if (state === 'loading') {
     return (
@@ -212,7 +215,10 @@ export default function SavedBillDetailScreen() {
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
           retryLabel={copy.global.retryAction}
-          onRetry={() => setState('loading')}
+          onRetry={() => {
+            setState('loading');
+            setReloadKey((key) => key + 1);
+          }}
         />
       </Screen>
     );

@@ -57,7 +57,7 @@ export function AppButton({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ disabled: isDisabled }}
+      aria-disabled={isDisabled}
       onPress={onPress}
       disabled={isDisabled}
       style={({ pressed }) => [

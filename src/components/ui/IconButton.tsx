@@ -23,7 +23,7 @@ export function IconButton({ icon, onPress, accessibilityLabel, disabled }: Prop
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled: !!disabled }}
+      aria-disabled={!!disabled}
       disabled={disabled}
       onPress={onPress}
       hitSlop={8}

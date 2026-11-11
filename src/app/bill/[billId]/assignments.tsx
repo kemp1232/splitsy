@@ -510,7 +510,10 @@ export default function AssignmentsScreen() {
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
           retryLabel={copy.global.retryAction}
-          onRetry={() => setState('loading')}
+          onRetry={() => {
+            setState('loading');
+            void enqueueRefresh();
+          }}
         />
       </Screen>
     );

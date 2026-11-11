@@ -269,7 +269,7 @@ export function BottomTabBar() {
               <Pressable
                 key={tab.path}
                 accessibilityRole="tab"
-                accessibilityState={{ selected: isFocused }}
+                aria-selected={isFocused}
                 accessibilityLabel={tab.label}
                 onPress={handlePress}
                 style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]}

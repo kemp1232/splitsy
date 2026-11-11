@@ -56,7 +56,7 @@ import {
   getTotalsMatch,
   type TotalsMatchStatus,
 } from '@/features/receipt-review/buildTotalsSummary';
-import { nowIso } from '@/lib/date';
+import { isValidDateOnly, nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
 import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
 import type { ColorTokens } from '@/theme/tokens';
@@ -64,9 +64,6 @@ import { radius, spacing, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
-
-// Matches spec section 9.1's documented receiptDate shape exactly.
-const RECEIPT_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const STATUS_ICON: Record<OcrStatusTone, keyof typeof Feather.glyphMap> = {
   success: 'check-circle',
@@ -113,6 +110,9 @@ export default function ReceiptReviewScreen() {
   const isTruncated = truncated === '1';
 
   const [state, setState] = useState<LoadState>('loading');
+  // Bumped by the error state's Retry so the load effect below runs again —
+  // setting state back to 'loading' alone never re-triggers it.
+  const [reloadKey, setReloadKey] = useState(0);
   const [bill, setBill] = useState<Bill | null>(null);
   const [items, setItems] = useState<LineItem[]>([]);
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
@@ -172,7 +172,7 @@ export default function ReceiptReviewScreen() {
         setState('error');
       }
     })();
-  }, [billId]);
+  }, [billId, reloadKey]);
 
   // Stable per-row callbacks (they take the item rather than closing over
   // it) so LineItemRow's React.memo can skip unchanged rows.
@@ -226,7 +226,7 @@ export default function ReceiptReviewScreen() {
 
   async function handleDateBlur() {
     const trimmed = receiptDate.trim();
-    if (trimmed !== '' && !RECEIPT_DATE_PATTERN.test(trimmed)) {
+    if (trimmed !== '' && !isValidDateOnly(trimmed)) {
       setDateError(copy.receiptReview.invalidDateError);
       return;
     }
@@ -380,7 +380,10 @@ export default function ReceiptReviewScreen() {
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
           retryLabel={copy.global.retryAction}
-          onRetry={() => setState('loading')}
+          onRetry={() => {
+            setState('loading');
+            setReloadKey((key) => key + 1);
+          }}
         />
       </Screen>
     );
@@ -498,7 +501,7 @@ export default function ReceiptReviewScreen() {
             placeholder={copy.receiptReview.merchantPlaceholder}
             value={merchantName}
             onChangeText={setMerchantName}
-            onEndEditing={handleMerchantBlur}
+            onBlur={handleMerchantBlur}
             leadingIcon={(color) => <Feather name="shopping-bag" size={18} color={color} />}
           />
           <AppTextInput
@@ -509,7 +512,7 @@ export default function ReceiptReviewScreen() {
               setReceiptDate(value);
               setDateError(null);
             }}
-            onEndEditing={handleDateBlur}
+            onBlur={handleDateBlur}
             error={dateError ?? undefined}
             leadingIcon={(color) => <Feather name="calendar" size={18} color={color} />}
           />
@@ -589,7 +592,8 @@ export default function ReceiptReviewScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`${copy.preview.chooseAnotherAction}, ${copy.receiptReview.chooseAnotherCaption}`}
-                accessibilityState={{ busy: choosingAnother, disabled: choosingAnother }}
+                aria-busy={choosingAnother}
+                aria-disabled={choosingAnother}
                 disabled={choosingAnother}
                 onPress={() => setConfirmChooseAnother(true)}
                 style={({ pressed }) => [styles.viewActionRow, pressed && styles.pressed]}
@@ -684,7 +688,7 @@ export default function ReceiptReviewScreen() {
               badge is plain content of this one button, not its own target. */}
           <Pressable
             accessibilityRole="button"
-            accessibilityState={{ expanded: showBreakdown }}
+            aria-expanded={showBreakdown}
             accessibilityLabel={totalHeadlineSpeech}
             accessibilityHint={copy.receiptReview.breakdownToggleHint}
             onPress={() => setShowBreakdown((current) => !current)}

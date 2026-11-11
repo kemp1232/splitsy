@@ -102,6 +102,8 @@ export const copy = {
     emptyHeading: 'No one added yet',
     emptyBody: 'Add everyone sharing this trip to get started.',
     removeConfirmHeading: 'Remove {name} from this trip?',
+    removeAccessibilityLabel: 'Remove {name}',
+    duplicateNameError: 'That name is already in this trip.',
     removeConfirmBody:
       'They will no longer be added automatically to bills you scan into this trip.',
     removeAction: 'Remove person',
@@ -110,6 +112,7 @@ export const copy = {
     activeBadge: 'Active',
     settledBadge: 'Settled',
     billCountLabel: '{count} bills',
+    billCountLabelSingular: '1 bill',
     rosterSectionTitle: 'Trip roster',
     billsSectionTitle: 'Bills in this trip',
     tripTotalLabel: 'Completed so far',
@@ -122,6 +125,9 @@ export const copy = {
     deleteConfirmHeading: 'Delete this trip?',
     deleteConfirmBody:
       'This permanently removes the trip and all {count} bills in it, including their receipt images.',
+    deleteConfirmBodySingular:
+      'This permanently removes the trip and the 1 bill in it, including its receipt image.',
+    deleteConfirmBodyEmpty: 'This permanently removes the trip.',
   },
 
   // Not from the spec — the quick-split entry screen (see PLAN.md's
@@ -146,6 +152,10 @@ export const copy = {
     permanentDenialBody:
       'Camera access is turned off. Enable it in your phone settings, or choose another way to add the receipt.',
     settingsButton: 'Open settings',
+    // Web only: the browser, not the phone, holds the camera permission, and
+    // there's no settings screen an app can open for it.
+    webDeniedBody:
+      'Camera access is blocked for this site. Allow it in your browser settings, or choose another way to add the receipt.',
   },
 
   // Section 13.5 — Camera capture
@@ -331,6 +341,7 @@ export const copy = {
     backAccessibilityLabel: 'Go back',
     sectionWithCount: 'People ({count})',
     sectionAccessibilityLabel: '{count} people',
+    sectionAccessibilityLabelSingular: '1 person',
     removeAccessibilityLabel: 'Remove {name}',
     removeConfirmHeading: 'Remove {name}?',
     removeConfirmBody: 'Their item assignments and custom adjustment amounts will also be removed.',
@@ -370,11 +381,11 @@ export const copy = {
     continueToPaymentsButton: 'Add who paid',
     editAdjustmentsAction: 'Edit fees and discounts',
     blockingErrorHeading: 'Assign every item',
-    blockingErrorBody: '{count} {itemWord} still need {assignmentWord}.',
+    blockingErrorBody: '{count} {itemWord} still {assignmentWord}.',
     itemWordSingular: 'item',
     itemWordPlural: 'items',
-    assignmentWordSingular: 'an assignment',
-    assignmentWordPlural: 'assignments',
+    assignmentWordSingular: 'needs an assignment',
+    assignmentWordPlural: 'need assignments',
     itemsSectionTitle: 'Items',
     itemsSectionWithUnassignedCount: 'Items ({count} unassigned)',
     itemsCaption: 'Tap a name to add or remove that person.',

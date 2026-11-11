@@ -508,9 +508,11 @@ export default function TripHubScreen() {
         label={copy.trip.tripTotalLabel}
         amountCentavos={data.completedTotalCentavos}
         meta={
-          data.bills.length > 0
-            ? copy.trip.billCountLabel.replace('{count}', String(data.bills.length))
-            : undefined
+          data.bills.length === 0
+            ? undefined
+            : data.bills.length === 1
+              ? copy.trip.billCountLabelSingular
+              : copy.trip.billCountLabel.replace('{count}', String(data.bills.length))
         }
       />
 
@@ -533,7 +535,7 @@ export default function TripHubScreen() {
                       {member.name}
                     </AppText>
                     <IconButton
-                      accessibilityLabel={copy.trip.removeConfirmHeading.replace(
+                      accessibilityLabel={copy.trip.removeAccessibilityLabel.replace(
                         '{name}',
                         member.name,
                       )}
@@ -610,6 +612,7 @@ export default function TripHubScreen() {
       </View>
 
       <ParticipantEditorSheet
+        duplicateNameError={copy.trip.duplicateNameError}
         visible={addingMember}
         initial={null}
         existingNames={existingRosterNames}
@@ -656,7 +659,13 @@ export default function TripHubScreen() {
       <ConfirmationDialog
         visible={confirmingDeleteTrip}
         heading={copy.trip.deleteConfirmHeading}
-        body={copy.trip.deleteConfirmBody.replace('{count}', String(data.bills.length))}
+        body={
+          data.bills.length === 0
+            ? copy.trip.deleteConfirmBodyEmpty
+            : data.bills.length === 1
+              ? copy.trip.deleteConfirmBodySingular
+              : copy.trip.deleteConfirmBody.replace('{count}', String(data.bills.length))
+        }
         confirmLabel={copy.trip.deleteTripAction}
         cancelLabel={copy.global.cancelAction}
         destructive
