@@ -1,6 +1,6 @@
 import { adjustmentAllocationsRepository } from '@/db/repositories/adjustmentAllocations.repository';
 import { adjustmentsRepository } from '@/db/repositories/adjustments.repository';
-import { billsRepository } from '@/db/repositories/bills.repository';
+import { billsRepository, type Bill } from '@/db/repositories/bills.repository';
 import { itemAssignmentsRepository } from '@/db/repositories/itemAssignments.repository';
 import { lineItemsRepository } from '@/db/repositories/lineItems.repository';
 import { participantsRepository } from '@/db/repositories/participants.repository';
@@ -9,6 +9,7 @@ import { nowIso } from '@/lib/date';
 import {
   buildBillContentFingerprint,
   shouldRestoreCompletedBill,
+  type BillContent,
   type PendingBillEdit,
 } from './billContentFingerprint';
 
@@ -25,73 +26,113 @@ import {
 // variants), so no platform split is needed here.
 const pendingEdits = new Map<string, PendingBillEdit>();
 
-async function loadBillFingerprint(billId: string): Promise<string | null> {
-  const [bill, items, participants, assignments, adjustments] = await Promise.all([
-    billsRepository.getById(billId),
+// Restores still running, per bill. Exposed (as a set of bill ids, through
+// subscribeRestoringBillIds/getRestoringBillIds — see useRestoringBillIds)
+// so the UI can disable that bill's Edit action until its restore settles,
+// and awaited by beginCompletedBillEdit as a safety net.
+const inFlightRestores = new Map<string, Promise<void>>();
+let restoringBillIds: ReadonlySet<string> = new Set();
+const restoringListeners = new Set<() => void>();
+
+function publishRestoringBillIds() {
+  // A new Set each time, so useSyncExternalStore sees a changed snapshot.
+  restoringBillIds = new Set(inFlightRestores.keys());
+  for (const listener of restoringListeners) listener();
+}
+
+export function subscribeRestoringBillIds(listener: () => void): () => void {
+  restoringListeners.add(listener);
+  return () => {
+    restoringListeners.delete(listener);
+  };
+}
+
+export function getRestoringBillIds(): ReadonlySet<string> {
+  return restoringBillIds;
+}
+
+async function waitForRestore(billId: string): Promise<void> {
+  await inFlightRestores.get(billId)?.catch(() => undefined);
+}
+
+// Everything but the bill row itself, all in parallel; custom allocations in
+// one query for the whole bill.
+async function loadBillContent(billId: string): Promise<Omit<BillContent, 'bill'>> {
+  const [items, participants, assignments, adjustments, allocations] = await Promise.all([
     lineItemsRepository.listByBillId(billId),
     participantsRepository.listByBillId(billId),
     itemAssignmentsRepository.listByBillId(billId),
     adjustmentsRepository.listByBillId(billId),
+    adjustmentAllocationsRepository.listByBillId(billId),
   ]);
-  if (!bill) return null;
-  const allocationLists = await Promise.all(
-    adjustments.map((adjustment) =>
-      adjustmentAllocationsRepository.listByAdjustmentId(adjustment.id),
-    ),
-  );
-  return buildBillContentFingerprint({
-    bill,
-    items,
-    participants,
-    assignments,
-    adjustments,
-    allocations: allocationLists.flat(),
-  });
+  return { items, participants, assignments, adjustments, allocations };
 }
 
 // Flips a COMPLETED bill to DRAFT for editing, remembering its content first.
-// A failed snapshot never blocks editing — it just means no restore later.
-export async function beginCompletedBillEdit(billId: string): Promise<void> {
-  const bill = await billsRepository.getById(billId);
-  if (!bill || bill.status !== 'COMPLETED') return;
-  try {
-    const fingerprint = await loadBillFingerprint(billId);
-    if (fingerprint !== null) {
-      pendingEdits.set(billId, {
-        fingerprint,
-        completedAt: bill.completedAt,
-        updatedAt: bill.updatedAt,
-      });
-    }
-  } catch {
-    pendingEdits.delete(billId);
+// Takes the bill the caller already loaded (no re-read) — unless a restore of
+// this same bill is still running, in which case it waits for that and reads
+// the bill again, since the caller's copy may predate the restore. A failed
+// snapshot never blocks editing — it just means no restore later.
+export async function beginCompletedBillEdit(bill: Bill): Promise<void> {
+  let current: Bill | undefined = bill;
+  if (inFlightRestores.has(bill.id)) {
+    await waitForRestore(bill.id);
+    current = await billsRepository.getById(bill.id);
   }
-  await billsRepository.update(billId, {
+  if (!current || current.status !== 'COMPLETED') return;
+  try {
+    const content = await loadBillContent(current.id);
+    pendingEdits.set(current.id, {
+      fingerprint: buildBillContentFingerprint({ bill: current, ...content }),
+      completedAt: current.completedAt,
+      updatedAt: current.updatedAt,
+    });
+  } catch {
+    pendingEdits.delete(current.id);
+  }
+  await billsRepository.update(current.id, {
     status: 'DRAFT',
     completedAt: null,
     updatedAt: nowIso(),
   });
 }
 
+async function restoreBillIfUnchanged(billId: string, pending: PendingBillEdit): Promise<void> {
+  const [bill, content] = await Promise.all([
+    billsRepository.getById(billId),
+    loadBillContent(billId),
+  ]);
+  if (!bill) return;
+  const fingerprint = buildBillContentFingerprint({ bill, ...content });
+  if (shouldRestoreCompletedBill(pending, bill.status, fingerprint)) {
+    await billsRepository.update(billId, {
+      status: 'COMPLETED',
+      completedAt: pending.completedAt,
+      updatedAt: pending.updatedAt,
+    });
+  }
+}
+
 // Puts every bill whose edit changed nothing back to COMPLETED. Each pending
 // edit is resolved exactly once (restored or dropped). No reads at all when
-// nothing is pending.
+// nothing is pending. Each bill is in the restoring set from the moment this
+// is called until its own restore settles.
 export async function restoreUnchangedBillEdits(): Promise<void> {
   const entries = [...pendingEdits.entries()];
-  for (const [billId, pending] of entries) {
+  if (entries.length === 0) return;
+  const tasks = entries.map(([billId, pending]) => {
     pendingEdits.delete(billId);
-    const bill = await billsRepository.getById(billId);
-    if (!bill || bill.status !== 'DRAFT') continue;
-    const fingerprint = await loadBillFingerprint(billId);
-    if (fingerprint === null) continue;
-    if (shouldRestoreCompletedBill(pending, bill.status, fingerprint)) {
-      await billsRepository.update(billId, {
-        status: 'COMPLETED',
-        completedAt: pending.completedAt,
-        updatedAt: pending.updatedAt,
-      });
-    }
-  }
+    const task = restoreBillIfUnchanged(billId, pending).finally(() => {
+      inFlightRestores.delete(billId);
+      publishRestoringBillIds();
+    });
+    inFlightRestores.set(billId, task);
+    return task;
+  });
+  publishRestoringBillIds();
+  const results = await Promise.allSettled(tasks);
+  const failure = results.find((result) => result.status === 'rejected');
+  if (failure) throw failure.reason;
 }
 
 // For the edit wizard's own screens (receipt-review … summary) on focus: if
@@ -101,7 +142,9 @@ export async function restoreUnchangedBillEdits(): Promise<void> {
 // Re-enter edit mode — fresh snapshot, back to DRAFT — before any further
 // edit writes to it. A no-op for a DRAFT bill (the normal case).
 export async function ensureBillEditable(billId: string): Promise<void> {
-  await beginCompletedBillEdit(billId);
+  await waitForRestore(billId);
+  const bill = await billsRepository.getById(billId);
+  if (bill) await beginCompletedBillEdit(bill);
 }
 
 // "Finish and save" completed the edit itself — nothing left to restore.

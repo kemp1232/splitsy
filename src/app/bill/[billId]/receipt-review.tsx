@@ -58,6 +58,7 @@ import {
   getTotalsMatch,
   type TotalsMatchStatus,
 } from '@/features/receipt-review/buildTotalsSummary';
+import { buildDateRolledOverWarning } from '@/features/receipt-review/buildDateRolledOverWarning';
 import { canRescanReceipt } from '@/features/receipt-review/canRescanReceipt';
 import { isValidDateOnly, nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
@@ -103,12 +104,15 @@ export default function ReceiptReviewScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { billId, ocrSource, fallbackReason, truncated } = useLocalSearchParams<{
+  const { billId, ocrSource, fallbackReason, truncated, dateReadAs } = useLocalSearchParams<{
     billId: string;
     ocrSource?: 'backend' | 'on-device';
     fallbackReason?: OcrFallbackReason;
     // '1' when the backend scan was cut off by its token cap (processing.tsx).
     truncated?: string;
+    // The non-existent date the scan read, when processing saved its
+    // rolled-over real date instead (buildDateRolledOverWarning).
+    dateReadAs?: string;
   }>();
   // Back in edit mode if the bill was re-completed underneath this screen.
   useEnsureBillEditable(billId);
@@ -400,6 +404,7 @@ export default function ReceiptReviewScreen() {
   const detectedTotalCentavos = bill.detectedReceiptTotalCentavos;
   const totalsMatch = getTotalsMatch(computedTotalCentavos, detectedTotalCentavos);
   const negativeTotalWarning = getNegativeTotalWarning(computedTotalCentavos);
+  const dateRolledOverWarning = buildDateRolledOverWarning(dateReadAs, receiptDate);
 
   const ocrStatus = buildOcrStatus(ocrSource, fallbackReason, isTruncated);
   // Only for a gallery draft that arrived here straight from processing.
@@ -531,6 +536,15 @@ export default function ReceiptReviewScreen() {
             error={dateError ?? undefined}
             leadingIcon={(color) => <Feather name="calendar" size={18} color={color} />}
           />
+          {/* Icon + text, not color alone; gone once the date is changed. */}
+          {dateRolledOverWarning ? (
+            <View style={styles.dateWarningRow}>
+              <Feather name="alert-triangle" size={16} color={colors.warning} />
+              <AppText variant="caption" style={styles.reconciliationText}>
+                {dateRolledOverWarning}
+              </AppText>
+            </View>
+          ) : null}
         </SectionCard>
 
         <View style={styles.itemsBlock}>
@@ -1114,6 +1128,11 @@ function createStyles(colors: ColorTokens) {
     },
     reconciliationText: {
       flex: 1,
+    },
+    dateWarningRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
     },
     rawTextScroll: {
       marginTop: spacing.md,

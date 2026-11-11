@@ -54,8 +54,11 @@ export function computeEqualSplitAssignmentUpdates(
 // connection: running several at once (Promise.all) makes every BEGIN after
 // the first fail ("cannot start a transaction within a transaction") while
 // the first still commits — which left an equal split only half-applied
-// when the toggle was turned on and quickly off again. Stops at (and
-// rethrows) the first failure; the next refresh re-syncs whatever is left.
+// when the toggle was turned on and quickly off again. The web db client now
+// serializes every transaction globally (src/db/createTransactionLock.ts);
+// this stays as well because it also stops at (and rethrows) the first
+// failure instead of firing the rest — the next refresh re-syncs whatever
+// is left.
 export async function applyLineItemAssignmentUpdatesSequentially(
   updates: LineItemAssignmentUpdate[],
   write: (lineItemId: string, participantIds: string[]) => Promise<void>,

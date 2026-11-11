@@ -38,6 +38,7 @@ import {
   beginCompletedBillEdit,
   restoreUnchangedBillEdits,
 } from '@/features/bills/billEditSession';
+import { useRestoringBillIds } from '@/features/bills/useRestoringBillIds';
 import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { resolveNextRoute, type NextRoute } from '@/features/bills/resolveNextRoute';
 import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
@@ -285,6 +286,9 @@ export default function HomeScreen() {
   const [state, setState] = useState<LoadState>('loading');
   const [refreshing, setRefreshing] = useState(false);
   const [overflowBill, setOverflowBill] = useState<Bill | null>(null);
+  // The overflow sheet's Edit stays disabled while that bill's edit restore
+  // is still running (billEditSession.ts).
+  const restoringBillIds = useRestoringBillIds();
   const [deletingBill, setDeletingBill] = useState<Bill | null>(null);
 
   const load = useCallback(async () => {
@@ -383,7 +387,7 @@ export default function HomeScreen() {
 
     if (bill.status === 'COMPLETED') {
       // Snapshots first, so an edit that changes nothing is undone on return.
-      await beginCompletedBillEdit(bill.id);
+      await beginCompletedBillEdit(bill);
     }
     router.push(`/bill/${bill.id}/receipt-review`);
   }
@@ -589,6 +593,7 @@ export default function HomeScreen() {
 
       <BillOverflowSheet
         visible={overflowBill !== null}
+        editDisabled={overflowBill !== null && restoringBillIds.has(overflowBill.id)}
         onEdit={handleOverflowEdit}
         onShare={handleOverflowShare}
         onDelete={handleOverflowDelete}

@@ -9,8 +9,10 @@ import { AppText } from '@/components/ui/AppText';
 import { IconButton } from '@/components/ui/IconButton';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { copy } from '@/constants/copy';
 import { useBillSourceActions } from '@/features/bills/useBillSourceActions';
+import { goBackOrHome } from '@/lib/navigation';
 import { radius, spacing, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -44,16 +46,6 @@ export default function CaptureScreen() {
   const [flash, setFlash] = useState<FlashMode>('auto');
   const cameraRef = useRef<CameraView>(null);
 
-  // Falls back to Home when there's no screen behind this one (e.g. a
-  // reloaded web tab opened straight on /bill/capture).
-  function handleBack() {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.dismissTo('/');
-    }
-  }
-
   if (!permission) {
     return (
       <Screen tabBarHidden>
@@ -71,20 +63,15 @@ export default function CaptureScreen() {
     const canAskAgain = permission.canAskAgain && !(isWeb && permission.status === 'denied');
     return (
       <Screen tabBarHidden>
-        {/* Same back-button row as receipt-review.tsx's header. */}
-        <View style={styles.headingRow}>
-          <IconButton
-            accessibilityLabel={copy.cameraPermission.backAccessibilityLabel}
-            onPress={handleBack}
-            icon={<Feather name="arrow-left" size={22} color={colors.textPrimary} />}
+        {/* Shared bill-screen header; its default back is the previous
+            screen, else Home (e.g. a web tab reloaded on /bill/capture). */}
+        <View style={styles.headerBlock}>
+          <ScreenHeader
+            icon="camera"
+            heading={copy.cameraPermission.heading}
+            body={copy.cameraPermission.body}
           />
-          <AppText variant="heading" style={styles.headingText} accessibilityRole="header">
-            {copy.cameraPermission.heading}
-          </AppText>
         </View>
-        <AppText variant="body" color="textSecondary" style={styles.spacedBelow}>
-          {copy.cameraPermission.body}
-        </AppText>
 
         {canAskAgain ? (
           <AppButton
@@ -147,7 +134,7 @@ export default function CaptureScreen() {
       <View style={styles.topBar}>
         <IconButton
           accessibilityLabel={copy.cameraCapture.closeAccessibilityLabel}
-          onPress={() => router.back()}
+          onPress={() => goBackOrHome(router)}
           icon={<Feather name="x" size={22} color={overlay.text} />}
         />
         <Pressable
@@ -219,15 +206,7 @@ export default function CaptureScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: overlay.background },
-  headingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    // Pulls the back button's own touch-target padding flush with the
-    // content edge so the arrow lines up with the text below.
-    marginLeft: -spacing.md,
-  },
-  headingText: { flexShrink: 1 },
+  headerBlock: { marginBottom: spacing.lg },
   spacedBelow: { marginTop: spacing.sm, marginBottom: spacing.lg, gap: spacing.sm },
   deniedRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs },
   deniedText: { flex: 1 },

@@ -25,6 +25,7 @@ import {
   OcrUnauthenticatedError,
   type ReceiptOcrService,
 } from '@/features/receipt-ocr/ReceiptOcrService';
+import { rollOverDateOnly } from '@/lib/date';
 import { spacing } from '@/theme/tokens';
 
 type Stage = 'preparing' | 'reading' | 'organizing' | 'queued' | 'error';
@@ -101,7 +102,14 @@ export default function ProcessingScreen() {
         setRawText(receipt.rawText);
 
         setStage('organizing');
-        await saveParsedReceiptDraft(billId, receipt);
+        // A scanned day that doesn't exist (e.g. "2026-02-31") is saved as the
+        // real date it rolls over to; review is told what was read so it can
+        // say so (dateReadAs below).
+        const dateCheck = receipt.receiptDate ? rollOverDateOnly(receipt.receiptDate) : null;
+        await saveParsedReceiptDraft(
+          billId,
+          dateCheck?.rolledOver ? { ...receipt, receiptDate: dateCheck.date } : receipt,
+        );
         if (cancelled) return;
 
         // ocrSource/fallbackReason/truncated are one-time UI hints for the review
@@ -117,6 +125,9 @@ export default function ProcessingScreen() {
             // String-boolean, like sign-in.tsx's `justReset: '1'` — router
             // params are strings.
             ...(truncated ? { truncated: '1' } : {}),
+            ...(dateCheck?.rolledOver && receipt.receiptDate
+              ? { dateReadAs: receipt.receiptDate }
+              : {}),
           },
         });
       } catch (error) {

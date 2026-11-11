@@ -5,16 +5,14 @@ import { StyleSheet, View } from 'react-native';
 
 import { AmountInput } from '@/components/ui/AmountInput';
 import { AppButton } from '@/components/ui/AppButton';
-import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
-import { IconButton } from '@/components/ui/IconButton';
 import { InlineError } from '@/components/ui/InlineError';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { copy } from '@/constants/copy';
 import { isValidAdjustmentAmount } from '@/features/adjustments/validateAdjustmentAmount';
 import { createQuickSplitBill } from '@/features/bills/bill.service';
 import { spacing } from '@/theme/tokens';
-import { useTheme } from '@/theme/ThemeProvider';
 
 // Not from the spec — post-MVP "split evenly" quick-entry path (see
 // PLAN.md): a lightweight alternative to receipt scanning/manual itemization
@@ -27,22 +25,11 @@ import { useTheme } from '@/theme/ThemeProvider';
 // to.
 export default function QuickSplitScreen() {
   const router = useRouter();
-  const { colors } = useTheme();
   const [title, setTitle] = useState('');
   const [totalCentavos, setTotalCentavos] = useState(0);
   const [amountError, setAmountError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-
-  // Nothing is created until Continue, so going back just leaves. Falls back
-  // to Home when there's no screen behind this one (e.g. a reloaded web tab).
-  function handleBack() {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.dismissTo('/');
-    }
-  }
 
   async function handleContinue() {
     // Reuses validateAdjustmentAmount's isValidAdjustmentAmount rather than
@@ -72,21 +59,13 @@ export default function QuickSplitScreen() {
   return (
     <Screen tabBarHidden scroll>
       <View style={styles.body}>
-        <View style={styles.headingGroup}>
-          <View style={styles.headingRow}>
-            <IconButton
-              accessibilityLabel={copy.quickSplit.backAccessibilityLabel}
-              onPress={handleBack}
-              icon={<Feather name="arrow-left" size={22} color={colors.textPrimary} />}
-            />
-            <AppText variant="heading" style={styles.headingText} accessibilityRole="header">
-              {copy.quickSplit.heading}
-            </AppText>
-          </View>
-          <AppText variant="body" color="textSecondary">
-            {copy.quickSplit.body}
-          </AppText>
-        </View>
+        {/* Shared bill-screen header: nothing is created until Continue, so
+            its default back (previous screen, else Home) just leaves. */}
+        <ScreenHeader
+          icon="divide-circle"
+          heading={copy.quickSplit.heading}
+          body={copy.quickSplit.body}
+        />
 
         <View style={styles.fieldGroup}>
           <AppTextInput
@@ -131,21 +110,6 @@ const styles = StyleSheet.create({
     gap: spacing.xl,
     // No tab-bar clearance: the global BottomTabBar is hidden on /bill/**
     // (Screen's own padding already spaces the last button from the edge).
-  },
-  headingGroup: {
-    gap: spacing.xs,
-  },
-  // Same back-button row as receipt-review.tsx's header.
-  headingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    // Pulls the back button's own touch-target padding flush with the
-    // content edge so the arrow lines up with the fields below.
-    marginLeft: -spacing.md,
-  },
-  headingText: {
-    flexShrink: 1,
   },
   fieldGroup: {
     gap: spacing.md,

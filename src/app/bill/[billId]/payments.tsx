@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 
 import { PaymentContributionRow } from '@/components/bill/PaymentContributionRow';
@@ -11,6 +11,7 @@ import { InlineError } from '@/components/ui/InlineError';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { WarningNote } from '@/components/ui/WarningNote';
 import { copy } from '@/constants/copy';
 import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
 import { adjustmentAllocationsRepository } from '@/db/repositories/adjustmentAllocations.repository';
@@ -34,6 +35,7 @@ import { hasMinimumParticipants } from '@/features/participants/hasMinimumPartic
 import { resolveQuickAddMeName } from '@/features/participants/validateParticipantName';
 import { buildInitialContributions } from '@/features/payments/buildInitialContributions';
 import { computeContributionUpdates } from '@/features/payments/computeContributionUpdates';
+import { getNegativeTotalWarning } from '@/features/receipt-review/buildTotalsSummary';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import type {
@@ -232,6 +234,36 @@ export default function PaymentsScreen() {
     })();
   }, [billId, router, reloadKey]);
 
+  // This screen stays mounted under Summary (and Summary's own Edit bill), so
+  // coming back re-reads just the bill total — the negative-total warning and
+  // "Paid the whole bill" then match the current items/discounts — without
+  // touching the contributions being typed. Skips the first focus (the load
+  // effect above already read it).
+  const hasFocusedRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!hasFocusedRef.current) {
+        hasFocusedRef.current = true;
+        return;
+      }
+      let active = true;
+      (async () => {
+        try {
+          const data = await fetchPaymentsData(billId);
+          if (!data.billRow) return;
+          const { splitResult } = computeSplitAndReconciliation(data);
+          if (active) setComputedTotalCentavos(splitResult.computedTotalCentavos);
+        } catch {
+          // Incomplete bill (calculateSplit threw) or a read failure: keep
+          // the last total; the load effect's guards handle real problems.
+        }
+      })();
+      return () => {
+        active = false;
+      };
+    }, [billId]),
+  );
+
   // Once the data is loaded and the session has resolved (so meName is the
   // real user, not the pending-state 'Me' fallback): if nothing is saved yet,
   // pre-fill the signed-in user as having paid the whole bill. Local only —
@@ -344,14 +376,15 @@ export default function PaymentsScreen() {
     );
   }
 
+  const negativeTotalWarning = getNegativeTotalWarning(computedTotalCentavos);
+
   return (
     <Screen tabBarHidden scroll padded={false}>
       <View style={styles.body}>
-        <ScreenHeader
-          icon="credit-card"
-          heading={copy.payments.heading}
-          body={copy.payments.body}
-        />
+        <ScreenHeader icon="credit-card" heading={copy.payments.heading} body={copy.payments.body}>
+          {/* Derived from the current total, so it goes away once fixed. */}
+          {negativeTotalWarning ? <WarningNote message={negativeTotalWarning} /> : null}
+        </ScreenHeader>
 
         <View style={styles.listBlock}>
           <SectionHeader

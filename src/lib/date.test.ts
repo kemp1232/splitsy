@@ -1,4 +1,4 @@
-import { formatBillListDate, formatShortBillDate, isValidDateOnly } from './date';
+import { formatBillListDate, formatShortBillDate, isValidDateOnly, rollOverDateOnly } from './date';
 
 describe('formatShortBillDate', () => {
   it('formats a date-only receipt date as a short month and day', () => {
@@ -50,5 +50,26 @@ describe('isValidDateOnly', () => {
     expect(isValidDateOnly('2026/11/10')).toBe(false);
     expect(isValidDateOnly('2026-1-5')).toBe(false);
     expect(isValidDateOnly('')).toBe(false);
+  });
+});
+
+describe('rollOverDateOnly', () => {
+  it('rolls a day that does not exist over to the real date', () => {
+    expect(rollOverDateOnly('2026-02-31')).toEqual({ date: '2026-03-03', rolledOver: true });
+    expect(rollOverDateOnly('2026-02-29')).toEqual({ date: '2026-03-01', rolledOver: true });
+    expect(rollOverDateOnly('2026-04-31')).toEqual({ date: '2026-05-01', rolledOver: true });
+  });
+
+  it('rolls an impossible month or day zero over too', () => {
+    expect(rollOverDateOnly('2026-13-01')).toEqual({ date: '2027-01-01', rolledOver: true });
+    expect(rollOverDateOnly('2026-03-00')).toEqual({ date: '2026-02-28', rolledOver: true });
+  });
+
+  it('leaves a real date unchanged', () => {
+    expect(rollOverDateOnly('2028-02-29')).toEqual({ date: '2028-02-29', rolledOver: false });
+  });
+
+  it('leaves anything not shaped YYYY-MM-DD unchanged', () => {
+    expect(rollOverDateOnly('Feb 31')).toEqual({ date: 'Feb 31', rolledOver: false });
   });
 });

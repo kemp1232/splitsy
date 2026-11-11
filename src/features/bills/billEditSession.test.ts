@@ -7,11 +7,13 @@ const mockStore: {
   bills: Map<string, Bill>;
   items: LineItem[];
   billUpdates: { id: string; patch: Partial<Bill> }[];
-} = { bills: new Map(), items: [], billUpdates: [] };
+  reads: number;
+} = { bills: new Map(), items: [], billUpdates: [], reads: 0 };
 
 jest.mock('@/db/repositories/bills.repository', () => ({
   billsRepository: {
     getById: async (id: string) => {
+      mockStore.reads += 1;
       const bill = mockStore.bills.get(id);
       return bill ? { ...bill } : undefined;
     },
@@ -24,8 +26,10 @@ jest.mock('@/db/repositories/bills.repository', () => ({
 }));
 jest.mock('@/db/repositories/lineItems.repository', () => ({
   lineItemsRepository: {
-    listByBillId: async (billId: string) =>
-      mockStore.items.filter((item) => item.billId === billId).map((item) => ({ ...item })),
+    listByBillId: async (billId: string) => {
+      mockStore.reads += 1;
+      return mockStore.items.filter((item) => item.billId === billId).map((item) => ({ ...item }));
+    },
   },
 }));
 jest.mock('@/db/repositories/participants.repository', () => ({
@@ -38,7 +42,7 @@ jest.mock('@/db/repositories/adjustments.repository', () => ({
   adjustmentsRepository: { listByBillId: async () => [] },
 }));
 jest.mock('@/db/repositories/adjustmentAllocations.repository', () => ({
-  adjustmentAllocationsRepository: { listByAdjustmentId: async () => [] },
+  adjustmentAllocationsRepository: { listByBillId: async () => [] },
 }));
 
 const COMPLETED_AT = '2026-01-01T10:00:00.000Z';
@@ -83,23 +87,32 @@ const ramen: LineItem = {
   updatedAt: UPDATED_AT,
 };
 
-// A fresh module (and so a fresh, empty pending-edit map) per test.
-function loadSession(): typeof import('./billEditSession') {
-  let session!: typeof import('./billEditSession');
+type Session = typeof import('./billEditSession');
+
+// A fresh module (and so a fresh, empty pending-edit map) per test. Jest's
+// own loader (not a require() call); the repository mocks above still apply
+// to the module's imports.
+function loadSession(): Session {
+  let session: Session | undefined;
   jest.isolateModules(() => {
-    session = require('./billEditSession');
+    session = jest.requireActual<Session>('./billEditSession');
   });
-  return session;
+  return session!;
 }
 
 function currentBill(): Bill {
   return mockStore.bills.get('bill-1')!;
 }
 
+function statusWrites(): (Bill['status'] | undefined)[] {
+  return mockStore.billUpdates.map((update) => update.patch.status);
+}
+
 beforeEach(() => {
   mockStore.bills = new Map();
   mockStore.items = [{ ...ramen }];
   mockStore.billUpdates = [];
+  mockStore.reads = 0;
 });
 
 describe('billEditSession', () => {
@@ -107,7 +120,7 @@ describe('billEditSession', () => {
     mockStore.bills.set('bill-1', makeBill('COMPLETED'));
     const session = loadSession();
 
-    await session.beginCompletedBillEdit('bill-1');
+    await session.beginCompletedBillEdit(currentBill());
     expect(currentBill().status).toBe('DRAFT');
     expect(currentBill().completedAt).toBeNull();
 
@@ -124,7 +137,7 @@ describe('billEditSession', () => {
     mockStore.bills.set('bill-1', makeBill('COMPLETED'));
     const session = loadSession();
 
-    await session.beginCompletedBillEdit('bill-1');
+    await session.beginCompletedBillEdit(currentBill());
     mockStore.items = [{ ...ramen, lineTotalCentavos: 55000 }];
     await session.restoreUnchangedBillEdits();
 
@@ -137,18 +150,38 @@ describe('billEditSession', () => {
     mockStore.bills.set('bill-1', makeBill('DRAFT'));
     const session = loadSession();
 
-    await session.beginCompletedBillEdit('bill-1');
+    await session.beginCompletedBillEdit(currentBill());
     await session.restoreUnchangedBillEdits();
 
     expect(mockStore.billUpdates).toEqual([]);
     expect(currentBill().status).toBe('DRAFT');
   });
 
+  it('uses the bill it is given instead of reading it again', async () => {
+    mockStore.bills.set('bill-1', makeBill('COMPLETED'));
+    const session = loadSession();
+
+    await session.beginCompletedBillEdit(currentBill());
+
+    // Only the content read (line items here); never billsRepository.getById.
+    expect(mockStore.reads).toBe(1);
+  });
+
+  it('restore makes no reads at all when no edit is pending', async () => {
+    mockStore.bills.set('bill-1', makeBill('COMPLETED'));
+    const session = loadSession();
+
+    await session.restoreUnchangedBillEdits();
+
+    expect(mockStore.reads).toBe(0);
+    expect(mockStore.billUpdates).toEqual([]);
+  });
+
   it('ensureBillEditable puts a re-completed bill back into edit mode', async () => {
     mockStore.bills.set('bill-1', makeBill('COMPLETED'));
     const session = loadSession();
 
-    await session.beginCompletedBillEdit('bill-1');
+    await session.beginCompletedBillEdit(currentBill());
     await session.restoreUnchangedBillEdits();
     expect(currentBill().status).toBe('COMPLETED');
 
@@ -165,7 +198,7 @@ describe('billEditSession', () => {
     mockStore.bills.set('bill-1', makeBill('COMPLETED'));
     const session = loadSession();
 
-    await session.beginCompletedBillEdit('bill-1');
+    await session.beginCompletedBillEdit(currentBill());
     session.endBillEdit('bill-1');
     const writesBeforeRestore = mockStore.billUpdates.length;
 
@@ -173,5 +206,51 @@ describe('billEditSession', () => {
 
     expect(mockStore.billUpdates).toHaveLength(writesBeforeRestore);
     expect(currentBill().status).toBe('DRAFT');
+  });
+
+  it('lists a bill as restoring only while its restore runs, notifying subscribers', async () => {
+    mockStore.bills.set('bill-1', makeBill('COMPLETED'));
+    const session = loadSession();
+    await session.beginCompletedBillEdit(currentBill());
+
+    const snapshots: string[][] = [];
+    const unsubscribe = session.subscribeRestoringBillIds(() => {
+      snapshots.push([...session.getRestoringBillIds()]);
+    });
+    expect(session.getRestoringBillIds().size).toBe(0);
+
+    const restoring = session.restoreUnchangedBillEdits();
+    expect(session.getRestoringBillIds().has('bill-1')).toBe(true);
+    await restoring;
+
+    expect(session.getRestoringBillIds().size).toBe(0);
+    expect(snapshots).toEqual([['bill-1'], []]);
+
+    unsubscribe();
+    await session.beginCompletedBillEdit(currentBill());
+    await session.restoreUnchangedBillEdits();
+    expect(snapshots).toHaveLength(2);
+  });
+
+  it('beginCompletedBillEdit waits for an in-flight restore of the same bill', async () => {
+    mockStore.bills.set('bill-1', makeBill('COMPLETED'));
+    const session = loadSession();
+    await session.beginCompletedBillEdit(currentBill());
+
+    // The caller's copy predates the restore (it still says DRAFT); Edit
+    // starts while the restore is running.
+    const staleCopy = currentBill();
+    const restoring = session.restoreUnchangedBillEdits();
+    await session.beginCompletedBillEdit({ ...staleCopy, status: 'COMPLETED' });
+    await restoring;
+
+    // Restore finished first (COMPLETED), then the edit started from that.
+    expect(statusWrites()).toEqual(['DRAFT', 'COMPLETED', 'DRAFT']);
+    expect(currentBill().status).toBe('DRAFT');
+
+    // And it took a fresh snapshot: leaving unchanged restores again.
+    await session.restoreUnchangedBillEdits();
+    expect(currentBill().status).toBe('COMPLETED');
+    expect(currentBill().completedAt).toBe(COMPLETED_AT);
   });
 });

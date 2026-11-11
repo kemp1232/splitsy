@@ -8,7 +8,6 @@ import { AdjustmentRow } from '@/components/bill/AdjustmentRow';
 import { ReconciliationCard } from '@/components/bill/ReconciliationCard';
 import { ActionRow } from '@/components/ui/ActionRow';
 import { AppButton } from '@/components/ui/AppButton';
-import { AppText } from '@/components/ui/AppText';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -18,6 +17,7 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { WarningNote } from '@/components/ui/WarningNote';
 import { copy } from '@/constants/copy';
 import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
 import { adjustmentAllocationsRepository } from '@/db/repositories/adjustmentAllocations.repository';
@@ -50,7 +50,6 @@ import { createId } from '@/lib/ids';
 import { getNegativeTotalWarning } from '@/features/receipt-review/buildTotalsSummary';
 import { formatCentavos } from '@/lib/money';
 import { spacing } from '@/theme/tokens';
-import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -128,7 +127,6 @@ function computeSplitAndReconciliation(data: LoadedData): {
 
 export default function AdjustmentsScreen() {
   const router = useRouter();
-  const { colors } = useTheme();
   const { billId } = useLocalSearchParams<{ billId: string }>();
   // Back in edit mode if the bill was re-completed underneath this screen.
   useEnsureBillEditable(billId);
@@ -390,14 +388,7 @@ export default function AdjustmentsScreen() {
 
         {/* Same warning as receipt-review's totals card — a warning only,
             Continue stays enabled (icon + text, not color alone). */}
-        {negativeTotalWarning ? (
-          <View style={styles.warningRow}>
-            <Feather name="alert-triangle" size={18} color={colors.warning} />
-            <AppText variant="caption" style={styles.warningText}>
-              {negativeTotalWarning}
-            </AppText>
-          </View>
-        ) : null}
+        {negativeTotalWarning ? <WarningNote message={negativeTotalWarning} /> : null}
 
         {/* Was a sticky BottomActionBar footer — moved inline, per the
             user's own explicit request (2026-08-27) to drop sticky nav
@@ -504,14 +495,6 @@ const styles = StyleSheet.create({
   },
   actionsBlock: {
     gap: spacing.md,
-  },
-  warningRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  warningText: {
-    flex: 1,
   },
   listBlock: {
     gap: spacing.sm,

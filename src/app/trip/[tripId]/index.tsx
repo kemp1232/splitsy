@@ -46,6 +46,11 @@ import {
   beginCompletedBillEdit,
   restoreUnchangedBillEdits,
 } from '@/features/bills/billEditSession';
+import { useRestoringBillIds } from '@/features/bills/useRestoringBillIds';
+import {
+  buildTripDeleteConfirmBody,
+  formatTripBillCount,
+} from '@/features/trips/formatTripBillCount';
 import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { useBillSourceActions } from '@/features/bills/useBillSourceActions';
 import { resolveNextRoute, type NextRoute } from '@/features/bills/resolveNextRoute';
@@ -261,6 +266,9 @@ export default function TripHubScreen() {
   const [removingMember, setRemovingMember] = useState<TripParticipant | null>(null);
 
   const [overflowBill, setOverflowBill] = useState<Bill | null>(null);
+  // The overflow sheet's Edit stays disabled while that bill's edit restore
+  // is still running (billEditSession.ts).
+  const restoringBillIds = useRestoringBillIds();
   const [deletingBill, setDeletingBill] = useState<Bill | null>(null);
 
   const [tripOverflowVisible, setTripOverflowVisible] = useState(false);
@@ -430,7 +438,7 @@ export default function TripHubScreen() {
     if (!bill) return;
     if (bill.status === 'COMPLETED') {
       // Snapshots first, so an edit that changes nothing is undone on return.
-      await beginCompletedBillEdit(bill.id);
+      await beginCompletedBillEdit(bill);
     }
     router.push(`/bill/${bill.id}/receipt-review`);
   }
@@ -514,13 +522,7 @@ export default function TripHubScreen() {
       <GradientHeroCard
         label={copy.trip.tripTotalLabel}
         amountCentavos={data.completedTotalCentavos}
-        meta={
-          data.bills.length === 0
-            ? undefined
-            : data.bills.length === 1
-              ? copy.trip.billCountLabelSingular
-              : copy.trip.billCountLabel.replace('{count}', String(data.bills.length))
-        }
+        meta={formatTripBillCount(data.bills.length) ?? undefined}
       />
 
       <View style={styles.body}>
@@ -640,6 +642,7 @@ export default function TripHubScreen() {
 
       <BillOverflowSheet
         visible={overflowBill !== null}
+        editDisabled={overflowBill !== null && restoringBillIds.has(overflowBill.id)}
         onEdit={handleOverflowEdit}
         onShare={handleOverflowShare}
         onDelete={handleOverflowDelete}
@@ -666,13 +669,7 @@ export default function TripHubScreen() {
       <ConfirmationDialog
         visible={confirmingDeleteTrip}
         heading={copy.trip.deleteConfirmHeading}
-        body={
-          data.bills.length === 0
-            ? copy.trip.deleteConfirmBodyEmpty
-            : data.bills.length === 1
-              ? copy.trip.deleteConfirmBodySingular
-              : copy.trip.deleteConfirmBody.replace('{count}', String(data.bills.length))
-        }
+        body={buildTripDeleteConfirmBody(data.bills.length)}
         confirmLabel={copy.trip.deleteTripAction}
         cancelLabel={copy.global.cancelAction}
         destructive

@@ -140,7 +140,6 @@ export const copy = {
     titlePlaceholder: 'Example: Dinner with friends',
     continueButton: 'Add people',
     invalidAmountError: 'Enter a valid amount.',
-    backAccessibilityLabel: 'Go back',
   },
 
   // Section 13.4 — Camera permission state
@@ -157,7 +156,6 @@ export const copy = {
     // there's no settings screen an app can open for it.
     webDeniedBody:
       'Camera access is blocked for this site. Allow it in your browser settings, or choose another way to add the receipt.',
-    backAccessibilityLabel: 'Go back',
   },
 
   // Section 13.5 — Camera capture
@@ -314,6 +312,10 @@ export const copy = {
     chooseAnotherCaption: 'Scan a different photo instead',
     chooseAnotherConfirmHeading: 'Choose another photo?',
     chooseAnotherConfirmBody: 'The items and people on this bill will be cleared.',
+    // The scan read a day that doesn't exist (e.g. 2026-02-31) and processing
+    // saved the real date it rolls over to (buildDateRolledOverWarning).
+    dateRolledOverWarning:
+      "We read the date as {readDate}, which doesn't exist, so we changed it to {date}. Check the date.",
     // A photo bill whose scan never finished (canRescanReceipt): re-run the
     // scan on the same photo.
     rescanAction: 'Scan this photo',
