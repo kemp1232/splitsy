@@ -66,7 +66,7 @@ export const PersonTotalCard = memo(function PersonTotalCard({
       <Pressable
         onPress={() => setExpanded((current) => !current)}
         accessibilityRole="button"
-        accessibilityState={{ expanded }}
+        aria-expanded={expanded}
         style={styles.header}
       >
         {/* Reference row shape: avatar + name + trailing amount, with the
@@ -110,7 +110,7 @@ export const PersonTotalCard = memo(function PersonTotalCard({
         {/* Decorative only, and hidden from screen readers — the row's own
             visible text already fully describes what pressing it does (spec
             section 17's icon-only-control label rule doesn't apply here,
-            since this row isn't icon-only). accessibilityState.expanded above
+            since this row isn't icon-only). aria-expanded above
             is what actually announces the expand/collapse state. */}
         <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           <Feather
@@ -186,7 +186,8 @@ export const PersonTotalCard = memo(function PersonTotalCard({
   );
 });
 
-function buildPaidAndGetsBack(
+// Also used by TripPersonBalanceCard's header for the same overpaid case.
+export function buildPaidAndGetsBack(
   paidCentavos: number,
   getsBackCentavos: number,
   formatMoney: (centavos: number) => string,

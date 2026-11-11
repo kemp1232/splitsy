@@ -6,6 +6,7 @@ import {
   OcrDailyLimitError,
   OcrQueuedError,
   OcrRateLimitedError,
+  OcrServiceBusyError,
   OcrTruncatedError,
   OcrUnauthenticatedError,
 } from './ReceiptOcrService';
@@ -310,6 +311,37 @@ describe('BackendReceiptOcrService', () => {
       const rejection = service.recognize('file:///receipt.jpg');
       await expect(rejection).rejects.toThrow(/OCR backend request failed \(500\)/);
       await expect(rejection).rejects.not.toBeInstanceOf(OcrRateLimitedError);
+      await expect(rejection).rejects.not.toBeInstanceOf(OcrServiceBusyError);
+    });
+
+    it.each([502, 503, 504])(
+      'throws OcrServiceBusyError when the reading service is busy (%i)',
+      async (status) => {
+        global.fetch = jest.fn().mockResolvedValue({
+          ok: false,
+          status,
+          text: async () =>
+            JSON.stringify({ error: 'Groq request failed (503): over capacity', truncated: false }),
+        });
+        const service = new BackendReceiptOcrService();
+
+        const rejection = service.recognize('file:///receipt.jpg');
+        await expect(rejection).rejects.toBeInstanceOf(OcrServiceBusyError);
+        await expect(rejection).rejects.toMatchObject({ status });
+      },
+    );
+
+    it('keeps OcrTruncatedError ahead of the busy mapping for a truncated 502', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        text: async () => JSON.stringify({ error: 'cut off', truncated: true }),
+      });
+      const service = new BackendReceiptOcrService();
+
+      const rejection = service.recognize('file:///receipt.jpg');
+      await expect(rejection).rejects.toBeInstanceOf(OcrTruncatedError);
+      await expect(rejection).rejects.not.toBeInstanceOf(OcrServiceBusyError);
     });
   });
 });

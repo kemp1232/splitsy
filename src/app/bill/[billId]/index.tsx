@@ -37,6 +37,10 @@ import {
 } from '@/features/adjustments/buildSplitInputs';
 import { groupAssignedParticipantIdsByLineItem } from '@/features/assignments/partitionLineItemsByAssignment';
 import { deleteBill } from '@/features/bills/bill.service';
+import {
+  beginCompletedBillEdit,
+  restoreUnchangedBillEdits,
+} from '@/features/bills/billEditSession';
 import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
@@ -57,7 +61,6 @@ import {
   type SummaryAdjustmentInfo,
   type SummaryItemInfo,
 } from '@/features/summary/buildParticipantShareDisplay';
-import { nowIso } from '@/lib/date';
 import { authClient } from '@/lib/authClient';
 import { shareText } from '@/lib/share';
 import type { ColorTokens } from '@/theme/tokens';
@@ -124,6 +127,9 @@ export default function SavedBillDetailScreen() {
   const { billId } = useLocalSearchParams<{ billId: string }>();
 
   const [state, setState] = useState<LoadState>('loading');
+  // Bumped by the error state's Retry so the load effect below runs again —
+  // setting state back to 'loading' alone never re-triggers it.
+  const [reloadKey, setReloadKey] = useState(0);
   const [bill, setBill] = useState<Bill | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [items, setItems] = useState<LineItem[]>([]);
@@ -148,6 +154,9 @@ export default function SavedBillDetailScreen() {
   useEffect(() => {
     (async () => {
       try {
+        // An Edit bill that changed nothing goes back to COMPLETED before
+        // this reads it (billEditSession.ts). Best-effort: never blocks the load.
+        await restoreUnchangedBillEdits().catch(() => undefined);
         const data = await fetchSavedBillDetailData(billId);
         if (!data.billRow) {
           setState('error');
@@ -195,7 +204,7 @@ export default function SavedBillDetailScreen() {
         setState('error');
       }
     })();
-  }, [billId]);
+  }, [billId, reloadKey]);
 
   if (state === 'loading') {
     return (
@@ -212,7 +221,10 @@ export default function SavedBillDetailScreen() {
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
           retryLabel={copy.global.retryAction}
-          onRetry={() => setState('loading')}
+          onRetry={() => {
+            setState('loading');
+            setReloadKey((key) => key + 1);
+          }}
         />
       </Screen>
     );
@@ -314,12 +326,11 @@ export default function SavedBillDetailScreen() {
   // order), giving the user a full path back through
   // review -> participants -> assignments -> adjustments -> summary to
   // change anything before re-saving.
+  //
+  // beginCompletedBillEdit snapshots the bill first, so leaving the edit
+  // without changing anything puts it back to COMPLETED (billEditSession.ts).
   async function handleEditBill() {
-    await billsRepository.update(billId, {
-      status: 'DRAFT',
-      completedAt: null,
-      updatedAt: nowIso(),
-    });
+    await beginCompletedBillEdit(billId);
     router.replace(`/bill/${billId}/receipt-review`);
   }
 

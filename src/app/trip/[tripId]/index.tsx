@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, View } from 'react-native';
 
 import { BillListItem } from '@/components/bill/BillListItem';
@@ -42,6 +42,10 @@ import {
 } from '@/features/adjustments/buildSplitInputs';
 import { partitionLineItemsByAssignment } from '@/features/assignments/partitionLineItemsByAssignment';
 import { deleteBill } from '@/features/bills/bill.service';
+import {
+  beginCompletedBillEdit,
+  restoreUnchangedBillEdits,
+} from '@/features/bills/billEditSession';
 import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { useBillSourceActions } from '@/features/bills/useBillSourceActions';
 import { resolveNextRoute, type NextRoute } from '@/features/bills/resolveNextRoute';
@@ -282,22 +286,28 @@ export default function TripHubScreen() {
   // inside an effect trips the react-hooks/set-state-in-effect lint rule.
   // This inline IIFE with its own independent try/catch is this codebase's
   // existing convention for a screen's first load (see e.g. src/app/index.tsx's
-  // own copy of this same shape).
-  useEffect(() => {
-    (async () => {
-      try {
-        const loaded = await fetchTripHubData(tripId);
-        if (!loaded) {
+  // own copy of this same shape). Runs on every focus, not just mount (same
+  // as Home): coming back from a bill's edit flow or "Finish and save" must
+  // re-read the bills, and first puts an Edit bill that changed nothing back
+  // to COMPLETED (billEditSession.ts, best-effort).
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        try {
+          await restoreUnchangedBillEdits().catch(() => undefined);
+          const loaded = await fetchTripHubData(tripId);
+          if (!loaded) {
+            setState('error');
+            return;
+          }
+          setData(loaded);
+          setState('ready');
+        } catch {
           setState('error');
-          return;
         }
-        setData(loaded);
-        setState('ready');
-      } catch {
-        setState('error');
-      }
-    })();
-  }, [tripId]);
+      })();
+    }, [tripId]),
+  );
 
   // Same explicit per-screen switch the home screen's own handleOpenBill
   // uses (rather than templating `next.screen` into the path) — typed routes
@@ -419,11 +429,8 @@ export default function TripHubScreen() {
     closeOverflow();
     if (!bill) return;
     if (bill.status === 'COMPLETED') {
-      await billsRepository.update(bill.id, {
-        status: 'DRAFT',
-        completedAt: null,
-        updatedAt: nowIso(),
-      });
+      // Snapshots first, so an edit that changes nothing is undone on return.
+      await beginCompletedBillEdit(bill.id);
     }
     router.push(`/bill/${bill.id}/receipt-review`);
   }
@@ -508,9 +515,11 @@ export default function TripHubScreen() {
         label={copy.trip.tripTotalLabel}
         amountCentavos={data.completedTotalCentavos}
         meta={
-          data.bills.length > 0
-            ? copy.trip.billCountLabel.replace('{count}', String(data.bills.length))
-            : undefined
+          data.bills.length === 0
+            ? undefined
+            : data.bills.length === 1
+              ? copy.trip.billCountLabelSingular
+              : copy.trip.billCountLabel.replace('{count}', String(data.bills.length))
         }
       />
 
@@ -533,7 +542,7 @@ export default function TripHubScreen() {
                       {member.name}
                     </AppText>
                     <IconButton
-                      accessibilityLabel={copy.trip.removeConfirmHeading.replace(
+                      accessibilityLabel={copy.trip.removeAccessibilityLabel.replace(
                         '{name}',
                         member.name,
                       )}
@@ -610,6 +619,7 @@ export default function TripHubScreen() {
       </View>
 
       <ParticipantEditorSheet
+        duplicateNameError={copy.trip.duplicateNameError}
         visible={addingMember}
         initial={null}
         existingNames={existingRosterNames}
@@ -656,7 +666,13 @@ export default function TripHubScreen() {
       <ConfirmationDialog
         visible={confirmingDeleteTrip}
         heading={copy.trip.deleteConfirmHeading}
-        body={copy.trip.deleteConfirmBody.replace('{count}', String(data.bills.length))}
+        body={
+          data.bills.length === 0
+            ? copy.trip.deleteConfirmBodyEmpty
+            : data.bills.length === 1
+              ? copy.trip.deleteConfirmBodySingular
+              : copy.trip.deleteConfirmBody.replace('{count}', String(data.bills.length))
+        }
         confirmLabel={copy.trip.deleteTripAction}
         cancelLabel={copy.global.cancelAction}
         destructive

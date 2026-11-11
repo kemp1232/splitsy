@@ -15,6 +15,17 @@ function parseBillDate(value: string): Date {
     : new Date(value);
 }
 
+// True only for a YYYY-MM-DD string naming a real calendar day — the shape
+// alone would let "2026-02-31" through, which parseBillDate then silently
+// rolls over to Mar 3.
+export function isValidDateOnly(value: string): boolean {
+  const match = DATE_ONLY_PATTERN.exec(value);
+  if (!match) return false;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+}
+
 export function formatBillListDate(isoDate: string): string {
   const date = parseBillDate(isoDate);
   return date.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });

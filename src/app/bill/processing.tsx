@@ -20,6 +20,7 @@ import { MlKitReceiptOcrService } from '@/features/receipt-ocr/MlKitReceiptOcrSe
 import {
   OcrDailyLimitError,
   OcrQueuedError,
+  OcrServiceBusyError,
   OcrTruncatedError,
   OcrUnauthenticatedError,
   type ReceiptOcrService,
@@ -70,6 +71,9 @@ export default function ProcessingScreen() {
   // (OcrDailyLimitError), or an expired session (OcrUnauthenticatedError).
   // null means the generic copy.global.ocrUnavailable. Reset every attempt.
   const [failureNote, setFailureNote] = useState<string | null>(null);
+  // The backend reading service was busy/unavailable (OcrServiceBusyError):
+  // the failure screen says "try again in a moment" instead of blaming the photo.
+  const [isBusy, setIsBusy] = useState(false);
 
   useEffect(() => {
     // Guards against a stale attempt (e.g. a slow scan still in flight when
@@ -80,6 +84,7 @@ export default function ProcessingScreen() {
       setStage('preparing');
       setRawText(null);
       setFailureNote(null);
+      setIsBusy(false);
       try {
         const bill = await billsRepository.getById(billId);
         if (cancelled) return;
@@ -129,6 +134,7 @@ export default function ProcessingScreen() {
         // and easy to disable) — never shown to the end user, unlike the
         // removed DEBUG-text banner this screen used to render here.
         if (__DEV__) console.error('[ProcessingScreen] OCR failed:', error);
+        setIsBusy(error instanceof OcrServiceBusyError);
         setFailureNote(
           error instanceof OcrTruncatedError
             ? copy.ocrFailure.truncatedNote
@@ -206,9 +212,11 @@ export default function ProcessingScreen() {
               needs four distinct actions, not ErrorState's single retry
               button. */}
           <View style={styles.headingGroup} accessibilityLiveRegion="assertive">
-            <AppText variant="heading">{copy.ocrFailure.heading}</AppText>
+            <AppText variant="heading">
+              {isBusy ? copy.ocrFailure.busyHeading : copy.ocrFailure.heading}
+            </AppText>
             <AppText variant="body" color="textSecondary">
-              {copy.ocrFailure.body}
+              {isBusy ? copy.ocrFailure.busyBody : copy.ocrFailure.body}
             </AppText>
             {/* copy.global.ocrUnavailable, not copy.ocrFailure.body's own
                 retry-oriented framing: this catch only ever fires once
@@ -221,9 +229,12 @@ export default function ProcessingScreen() {
                 contract of its own. On web there is no fallback wrapper, so
                 a truncated, daily-limited or signed-out scan lands here
                 directly and gets its own, more specific line instead. */}
-            <AppText variant="body" color="textSecondary">
-              {failureNote ?? copy.global.ocrUnavailable}
-            </AppText>
+            {/* A busy service already says everything in its own body. */}
+            {isBusy ? null : (
+              <AppText variant="body" color="textSecondary">
+                {failureNote ?? copy.global.ocrUnavailable}
+              </AppText>
+            )}
           </View>
 
           <View style={styles.actions}>

@@ -29,6 +29,7 @@ import {
   buildSplitLineItems,
 } from '@/features/adjustments/buildSplitInputs';
 import { partitionLineItemsByAssignment } from '@/features/assignments/partitionLineItemsByAssignment';
+import { useEnsureBillEditable } from '@/features/bills/useEnsureBillEditable';
 import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
 import { resolveQuickAddMeName } from '@/features/participants/validateParticipantName';
 import { buildInitialContributions } from '@/features/payments/buildInitialContributions';
@@ -132,12 +133,17 @@ function computeSplitAndReconciliation(data: LoadedData): {
 export default function PaymentsScreen() {
   const router = useRouter();
   const { billId } = useLocalSearchParams<{ billId: string }>();
+  // Back in edit mode if the bill was re-completed underneath this screen.
+  useEnsureBillEditable(billId);
   // Identifies the signed-in user's participant for the "nothing paid yet"
   // pre-fill — same name rule as participants.tsx's "Add me".
   const { data: session, isPending: isSessionPending } = authClient.useSession();
   const meName = resolveQuickAddMeName(session?.user.name);
 
   const [state, setState] = useState<LoadState>('loading');
+  // Bumped by the error state's Retry so the load effect below runs again —
+  // setting state back to 'loading' alone never re-triggers it.
+  const [reloadKey, setReloadKey] = useState(0);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [computedTotalCentavos, setComputedTotalCentavos] = useState(0);
   // Local, in-progress form state — participant id -> their contribution in
@@ -224,7 +230,7 @@ export default function PaymentsScreen() {
         setState('error');
       }
     })();
-  }, [billId, router]);
+  }, [billId, router, reloadKey]);
 
   // Once the data is loaded and the session has resolved (so meName is the
   // real user, not the pending-state 'Me' fallback): if nothing is saved yet,
@@ -329,7 +335,10 @@ export default function PaymentsScreen() {
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
           retryLabel={copy.global.retryAction}
-          onRetry={() => setState('loading')}
+          onRetry={() => {
+            setState('loading');
+            setReloadKey((key) => key + 1);
+          }}
         />
       </Screen>
     );

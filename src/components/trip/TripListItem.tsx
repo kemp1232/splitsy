@@ -73,7 +73,7 @@ export const TripListItem = memo(function TripListItem({
               <AppText variant="caption" color="textSecondary">
                 {formatBillListDate(trip.updatedAt)}
                 {billCount > 0
-                  ? ` · ${copy.trip.billCountLabel.replace('{count}', String(billCount))}`
+                  ? ` · ${billCount === 1 ? copy.trip.billCountLabelSingular : copy.trip.billCountLabel.replace('{count}', String(billCount))}`
                   : ''}
               </AppText>
               {rosterNames.length > 0 ? (

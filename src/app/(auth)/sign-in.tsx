@@ -2,8 +2,8 @@ import Feather from '@expo/vector-icons/Feather';
 import { Image } from 'expo-image';
 import * as Linking from 'expo-linking';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Pressable, StyleSheet, View, type TextInput } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
@@ -12,6 +12,7 @@ import { InlineError } from '@/components/ui/InlineError';
 import { Screen } from '@/components/ui/Screen';
 import appInfo from '@/constants/appInfo.json';
 import { copy } from '@/constants/copy';
+import { VERIFY_EMAIL_SUCCESS_PARAMS } from '@/features/auth/resolveVerifyEmailOutcome';
 import { validateEmail, validateSignInPassword } from '@/features/auth/validateAuthForm';
 import { authClient } from '@/lib/authClient';
 import { spacing } from '@/theme/tokens';
@@ -49,6 +50,8 @@ export default function SignInScreen() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Enter on the email field moves to the password field; Enter there signs in.
+  const passwordInputRef = useRef<TextInput>(null);
   // Set only on an EMAIL_NOT_VERIFIED failure — offers a way to recover
   // (server/src/auth.ts already resends on a blocked sign-in attempt via
   // sendOnSignIn, but the user may have missed that first one too) rather
@@ -64,7 +67,12 @@ export default function SignInScreen() {
     try {
       await authClient.sendVerificationEmail({
         email: emailResult.email,
-        callbackURL: Linking.createURL('verify-email', { scheme: appInfo.scheme }),
+        callbackURL: Linking.createURL('verify-email', {
+          scheme: appInfo.scheme,
+          // Success marker for verify-email.tsx: Better Auth redirects to this
+          // URL as-is on success and appends `&error=…` on failure.
+          queryParams: VERIFY_EMAIL_SUCCESS_PARAMS,
+        }),
       });
       setResendSent(true);
     } catch {
@@ -75,6 +83,8 @@ export default function SignInScreen() {
   }
 
   async function handleSignIn() {
+    // Enter can't start a second sign-in while one is in flight.
+    if (submitting) return;
     setShowResendVerification(false);
     setResendSent(false);
     const emailResult = validateEmail(email);
@@ -162,10 +172,14 @@ export default function SignInScreen() {
             keyboardType="email-address"
             textContentType="emailAddress"
             autoComplete="email"
+            returnKeyType="next"
+            submitBehavior="submit"
+            onSubmitEditing={() => passwordInputRef.current?.focus()}
             leadingIcon={(color) => <Feather name="mail" size={18} color={color} />}
           />
 
           <AppTextInput
+            ref={passwordInputRef}
             label={copy.auth.passwordLabel}
             value={password}
             onChangeText={(value) => {
@@ -176,6 +190,8 @@ export default function SignInScreen() {
             secureTextEntry={!showPassword}
             textContentType="password"
             autoComplete="current-password"
+            returnKeyType="go"
+            onSubmitEditing={handleSignIn}
             leadingIcon={(color) => <Feather name="lock" size={18} color={color} />}
             trailingIcon={(color) => (
               <Pressable

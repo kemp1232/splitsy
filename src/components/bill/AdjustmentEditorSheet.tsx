@@ -172,6 +172,13 @@ export function AdjustmentEditorSheet({
   }
 
   function handleTypeChange(nextType: AdjustmentType) {
+    // A label that's just the previous type's default name (what handleSave
+    // fills in for a blank label, or what OCR detected) would otherwise stick
+    // after a type switch — e.g. a "Discount" that now adds to the bill.
+    // Clearing it lets handleSave fall back to the new type's name.
+    if (label.trim().toLowerCase() === TYPE_LABELS[type].toLowerCase()) {
+      setLabel('');
+    }
     setType(nextType);
     if (!allocationMethodTouched) {
       setAllocationMethod(defaultAllocationMethodForType(nextType));
@@ -395,7 +402,7 @@ function TypeChip({ label, selected, onPress }: TypeChipProps) {
     <Pressable
       onPress={onPress}
       accessibilityRole="radio"
-      accessibilityState={{ selected }}
+      aria-checked={selected}
       accessibilityLabel={label}
       style={({ pressed }) => [
         styles.typeChip,
@@ -426,7 +433,7 @@ function AllocationOptionRow({ label, detail, selected, onPress }: AllocationOpt
     <Pressable
       onPress={onPress}
       accessibilityRole="radio"
-      accessibilityState={{ selected }}
+      aria-checked={selected}
       style={({ pressed }) => [
         styles.allocationRow,
         selected && styles.allocationRowSelected,

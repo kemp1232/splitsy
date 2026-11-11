@@ -7,12 +7,14 @@ import { AmountInput } from '@/components/ui/AmountInput';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
+import { IconButton } from '@/components/ui/IconButton';
 import { InlineError } from '@/components/ui/InlineError';
 import { Screen } from '@/components/ui/Screen';
 import { copy } from '@/constants/copy';
 import { isValidAdjustmentAmount } from '@/features/adjustments/validateAdjustmentAmount';
 import { createQuickSplitBill } from '@/features/bills/bill.service';
 import { spacing } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 // Not from the spec — post-MVP "split evenly" quick-entry path (see
 // PLAN.md): a lightweight alternative to receipt scanning/manual itemization
@@ -25,11 +27,22 @@ import { spacing } from '@/theme/tokens';
 // to.
 export default function QuickSplitScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const [title, setTitle] = useState('');
   const [totalCentavos, setTotalCentavos] = useState(0);
   const [amountError, setAmountError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Nothing is created until Continue, so going back just leaves. Falls back
+  // to Home when there's no screen behind this one (e.g. a reloaded web tab).
+  function handleBack() {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.dismissTo('/');
+    }
+  }
 
   async function handleContinue() {
     // Reuses validateAdjustmentAmount's isValidAdjustmentAmount rather than
@@ -60,7 +73,16 @@ export default function QuickSplitScreen() {
     <Screen tabBarHidden scroll>
       <View style={styles.body}>
         <View style={styles.headingGroup}>
-          <AppText variant="heading">{copy.quickSplit.heading}</AppText>
+          <View style={styles.headingRow}>
+            <IconButton
+              accessibilityLabel={copy.quickSplit.backAccessibilityLabel}
+              onPress={handleBack}
+              icon={<Feather name="arrow-left" size={22} color={colors.textPrimary} />}
+            />
+            <AppText variant="heading" style={styles.headingText} accessibilityRole="header">
+              {copy.quickSplit.heading}
+            </AppText>
+          </View>
           <AppText variant="body" color="textSecondary">
             {copy.quickSplit.body}
           </AppText>
@@ -112,6 +134,18 @@ const styles = StyleSheet.create({
   },
   headingGroup: {
     gap: spacing.xs,
+  },
+  // Same back-button row as receipt-review.tsx's header.
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    // Pulls the back button's own touch-target padding flush with the
+    // content edge so the arrow lines up with the fields below.
+    marginLeft: -spacing.md,
+  },
+  headingText: {
+    flexShrink: 1,
   },
   fieldGroup: {
     gap: spacing.md,

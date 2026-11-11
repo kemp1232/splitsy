@@ -37,7 +37,9 @@ import {
   groupAssignedParticipantIdsByLineItem,
   partitionLineItemsByAssignment,
 } from '@/features/assignments/partitionLineItemsByAssignment';
+import { endBillEdit } from '@/features/bills/billEditSession';
 import { getBillCustomName, getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
+import { useEnsureBillEditable } from '@/features/bills/useEnsureBillEditable';
 import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
 import {
   buildParticipantAdjustmentShareDisplay,
@@ -73,7 +75,8 @@ type LoadState = 'loading' | 'ready' | 'error';
 // yet, so this screen builds the smallest thing that works rather than
 // pulling in a new dependency).
 const TOAST_VISIBLE_MS = 2000;
-// How long "Bill saved." stays on screen before navigating back to Home —
+// How long "Bill saved." stays on screen before navigating back to Home (or
+// to the bill's trip page, for a bill in a trip) —
 // short enough not to feel like a stall, long enough that
 // the confirmation is actually readable before the screen changes.
 const SAVE_NAVIGATE_DELAY_MS = 700;
@@ -156,8 +159,13 @@ export default function SummaryScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { billId } = useLocalSearchParams<{ billId: string }>();
+  // Back in edit mode if the bill was re-completed underneath this screen.
+  useEnsureBillEditable(billId);
 
   const [state, setState] = useState<LoadState>('loading');
+  // Bumped by the error state's Retry so the load effect below runs again —
+  // setting state back to 'loading' alone never re-triggers it.
+  const [reloadKey, setReloadKey] = useState(0);
   const [bill, setBill] = useState<Bill | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [items, setItems] = useState<LineItem[]>([]);
@@ -255,7 +263,7 @@ export default function SummaryScreen() {
         setState('error');
       }
     })();
-  }, [billId, router]);
+  }, [billId, router, reloadKey]);
 
   if (state === 'loading') {
     return (
@@ -272,7 +280,10 @@ export default function SummaryScreen() {
           heading={copy.global.genericErrorHeading}
           body={copy.global.genericErrorBody}
           retryLabel={copy.global.retryAction}
-          onRetry={() => setState('loading')}
+          onRetry={() => {
+            setState('loading');
+            setReloadKey((key) => key + 1);
+          }}
         />
       </Screen>
     );
@@ -358,12 +369,21 @@ export default function SummaryScreen() {
         completedAt: timestamp,
         updatedAt: timestamp,
       });
+      // Saved for real: an earlier Edit bill snapshot has nothing to restore.
+      endBillEdit(billId);
       showToast(copy.summary.savedToast);
       // Back to Home, where the saved bill is listed and still openable.
       // dismissTo (not replace) pops the whole bill flow off the stack — same
-      // as receipt-review.tsx's/index.tsx's own back-to-Home handling.
+      // as receipt-review.tsx's/index.tsx's own back-to-Home handling. A bill
+      // in a trip then goes on to its trip page: pushed on top of Home rather
+      // than dismissTo('/trip/…'), which, when the flow wasn't started from
+      // the trip page, would leave the stale wizard screens underneath it.
+      const tripId = tripLink?.id;
       setTimeout(() => {
         router.dismissTo('/');
+        if (tripId) {
+          router.push({ pathname: '/trip/[tripId]', params: { tripId } });
+        }
       }, SAVE_NAVIGATE_DELAY_MS);
     } catch {
       // No spec-mandated copy for a bill-save failure on this screen (spec

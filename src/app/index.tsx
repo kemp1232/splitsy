@@ -34,6 +34,10 @@ import {
 } from '@/features/adjustments/buildSplitInputs';
 import { partitionLineItemsByAssignment } from '@/features/assignments/partitionLineItemsByAssignment';
 import { deleteBill } from '@/features/bills/bill.service';
+import {
+  beginCompletedBillEdit,
+  restoreUnchangedBillEdits,
+} from '@/features/bills/billEditSession';
 import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { resolveNextRoute, type NextRoute } from '@/features/bills/resolveNextRoute';
 import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
@@ -42,7 +46,6 @@ import { computeSettlement } from '@/features/splitting/settlement';
 import { buildShareText } from '@/features/splitting/shareText';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import { authClient } from '@/lib/authClient';
-import { nowIso } from '@/lib/date';
 import { shareText } from '@/lib/share';
 import type { ColorTokens } from '@/theme/tokens';
 import { spacing } from '@/theme/tokens';
@@ -306,6 +309,9 @@ export default function HomeScreen() {
     useCallback(() => {
       (async () => {
         try {
+          // An Edit bill that changed nothing goes back to COMPLETED before
+          // the list is read (billEditSession.ts). Best-effort: never blocks.
+          await restoreUnchangedBillEdits().catch(() => undefined);
           setEntries(await buildHomeEntries());
           setState('ready');
         } catch {
@@ -376,11 +382,8 @@ export default function HomeScreen() {
     if (!bill) return;
 
     if (bill.status === 'COMPLETED') {
-      await billsRepository.update(bill.id, {
-        status: 'DRAFT',
-        completedAt: null,
-        updatedAt: nowIso(),
-      });
+      // Snapshots first, so an edit that changes nothing is undone on return.
+      await beginCompletedBillEdit(bill.id);
     }
     router.push(`/bill/${bill.id}/receipt-review`);
   }

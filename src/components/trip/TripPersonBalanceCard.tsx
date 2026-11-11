@@ -1,6 +1,7 @@
 import { memo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { buildPaidAndGetsBack } from '@/components/bill/PersonTotalCard';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { Divider } from '@/components/ui/Divider';
@@ -8,6 +9,8 @@ import { InitialsAvatar } from '@/components/ui/InitialsAvatar';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { copy } from '@/constants/copy';
+import { computeGetsBackCentavos } from '@/features/summary/computeGetsBackCentavos';
+import type { TripAdjustmentShareDisplay } from '@/features/trips/buildTripParticipantAdjustmentShareDisplay';
 import type { TripItemShareDisplay } from '@/features/trips/buildTripParticipantItemShareDisplay';
 import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
 import { spacing } from '@/theme/tokens';
@@ -16,16 +19,17 @@ type TripPersonBillItems = {
   billId: string;
   billLabel: string;
   items: TripItemShareDisplay[];
+  // This person's share of each fee/tax/discount on the bill, after the items.
+  adjustments: TripAdjustmentShareDisplay[];
 };
 
 type Props = {
   name: string;
   fairShareCentavos: number;
   contributedCentavos: number;
-  // Every bill this person has a nonzero item share in, in bill order — the
-  // expanded section's whole reason to exist. Empty when there's nothing to
-  // show (e.g. every one of their shares happened to be an adjustment-only
-  // charge with no assigned items), in which case no "View items" button
+  // Every bill this person has a nonzero item or fee/discount share in, in
+  // bill order — the expanded section's whole reason to exist. Empty when
+  // there's nothing to show, in which case no "View breakdown" button
   // renders at all rather than expanding into an empty section.
   billItems: TripPersonBillItems[];
 };
@@ -34,12 +38,14 @@ type Props = {
 // payment-progress bar (bill/[billId]/summary.tsx), reused for one identity's
 // combined balance across every COMPLETED bill in a trip
 // (computeTripSettlement.ts). Unlike PersonTotalCard, expanding this card
-// doesn't reveal one bill's item/adjustment breakdown — it reveals every item
-// this person is assigned to across every bill in the trip, grouped per
-// bill (a trip spans multiple receipts, so an ungrouped flat list could
-// collide two different restaurants' same-named items), each labeled with
-// who else shared it by name (buildTripParticipantItemShareDisplay), ending
-// in the amount they've actually paid. This is a deliberate, explicit
+// doesn't reveal one bill's breakdown — it reveals every item this person is
+// assigned to across every bill in the trip, grouped per bill (a trip spans
+// multiple receipts, so an ungrouped flat list could collide two different
+// restaurants' same-named items), each labeled with who else shared it by
+// name (buildTripParticipantItemShareDisplay), followed by their share of
+// that bill's fees/tax/discounts (buildTripParticipantAdjustmentShareDisplay)
+// so the lines add up to what they owe, ending in the amount they've
+// actually paid. This is a deliberate, explicit
 // "expand" action (a button under the paid section) rather than a tappable
 // header the way PersonTotalCard does it, since the user asked for this to
 // be obvious rather than discovered by tapping the row.
@@ -56,7 +62,10 @@ export const TripPersonBalanceCard = memo(function TripPersonBalanceCard({
   const [expanded, setExpanded] = useState(false);
   const fraction = fairShareCentavos > 0 ? contributedCentavos / fairShareCentavos : 0;
   const isPaidInFull = contributedCentavos >= fairShareCentavos;
-  const hasItems = billItems.some((bill) => bill.items.length > 0);
+  const hasItems = billItems.some((bill) => bill.items.length > 0 || bill.adjustments.length > 0);
+  // Paid more than their share: "Paid X · gets back Y", not "{name} owes",
+  // same treatment as PersonTotalCard on a single bill's summary.
+  const getsBackCentavos = computeGetsBackCentavos(contributedCentavos, fairShareCentavos);
 
   return (
     <SectionCard>
@@ -67,12 +76,29 @@ export const TripPersonBalanceCard = memo(function TripPersonBalanceCard({
         <InitialsAvatar name={name} size={36} />
         <View style={styles.headerText}>
           <AppText variant="subheading">
-            {copy.summary.participantOwes.replace('{name}', name)}
+            {getsBackCentavos !== null
+              ? name
+              : copy.summary.participantOwes.replace('{name}', () => name)}
           </AppText>
+          {getsBackCentavos !== null ? (
+            <AppText
+              variant="subheading"
+              color="success"
+              accessibilityLabel={buildPaidAndGetsBack(
+                contributedCentavos,
+                getsBackCentavos,
+                formatCentavosForSpeech,
+              )}
+            >
+              {buildPaidAndGetsBack(contributedCentavos, getsBackCentavos, formatCentavos)}
+            </AppText>
+          ) : null}
         </View>
-        <AppText variant="amount" accessibilityLabel={formatCentavosForSpeech(fairShareCentavos)}>
-          {formatCentavos(fairShareCentavos)}
-        </AppText>
+        {getsBackCentavos !== null ? null : (
+          <AppText variant="amount" accessibilityLabel={formatCentavosForSpeech(fairShareCentavos)}>
+            {formatCentavos(fairShareCentavos)}
+          </AppText>
+        )}
       </View>
       <ProgressBar
         fraction={fraction}
@@ -99,7 +125,7 @@ export const TripPersonBalanceCard = memo(function TripPersonBalanceCard({
       {expanded && hasItems ? (
         <View style={styles.details}>
           {billItems.map((bill) =>
-            bill.items.length > 0 ? (
+            bill.items.length > 0 || bill.adjustments.length > 0 ? (
               <View key={bill.billId} style={styles.section}>
                 <AppText variant="caption" color="textSecondary">
                   {bill.billLabel}
@@ -115,6 +141,21 @@ export const TripPersonBalanceCard = memo(function TripPersonBalanceCard({
                         : item.name}
                     </AppText>
                     <AppText variant="body">{formatCentavos(item.amountCentavos)}</AppText>
+                  </View>
+                ))}
+                {bill.adjustments.map((adjustment) => (
+                  <View key={adjustment.adjustmentId} style={styles.row}>
+                    <AppText
+                      variant="body"
+                      color="textSecondary"
+                      numberOfLines={1}
+                      style={styles.rowLabel}
+                    >
+                      {adjustment.label}
+                    </AppText>
+                    <AppText variant="body" color="textSecondary">
+                      {formatCentavos(adjustment.amountCentavos)}
+                    </AppText>
                   </View>
                 ))}
               </View>
@@ -162,5 +203,6 @@ const styles = StyleSheet.create({
   },
   rowLabel: {
     flex: 1,
+    minWidth: 0,
   },
 });

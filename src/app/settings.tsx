@@ -4,7 +4,7 @@ import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import type { ComponentProps } from 'react';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
 import { PrivacyDetailsModal } from '@/components/settings/PrivacyDetailsModal';
@@ -104,7 +104,8 @@ function SettingsRow({
       accessibilityRole="button"
       accessibilityLabel={caption ? `${title}, ${caption}` : title}
       accessibilityHint={accessibilityHint}
-      accessibilityState={{ disabled: !!loading, busy: !!loading }}
+      aria-disabled={!!loading}
+      aria-busy={!!loading}
       disabled={loading}
       onPress={onPress}
       style={({ pressed }) => [
@@ -178,6 +179,12 @@ export default function SettingsScreen() {
   async function openExternal(url: string) {
     setLinkError(null);
     try {
+      // expo-linking's web openURL assigns window.location, which would
+      // replace the app in this tab — open a new tab instead.
+      if (Platform.OS === 'web') {
+        window.open(url, '_blank', 'noopener,noreferrer');
+        return;
+      }
       await Linking.openURL(url);
     } catch {
       setLinkError(copy.settings.linkOpenFailure);
@@ -247,7 +254,7 @@ export default function SettingsScreen() {
                   onPress={() => setPreference(option.value)}
                   accessibilityRole="radio"
                   accessibilityLabel={option.label}
-                  accessibilityState={{ selected }}
+                  aria-checked={selected}
                   style={({ pressed }) => [
                     styles.segment,
                     selected && styles.segmentSelected,

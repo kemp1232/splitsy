@@ -10,6 +10,7 @@ import {
   OcrDailyLimitError,
   OcrQueuedError,
   OcrRateLimitedError,
+  OcrServiceBusyError,
   OcrTruncatedError,
   OcrUnauthenticatedError,
   type OcrRecognitionResult,
@@ -206,6 +207,14 @@ export class BackendReceiptOcrService implements ReceiptOcrService {
           );
         }
         throw new OcrRateLimitedError(`OCR backend rate-limited (429): ${detail}`);
+      }
+      // Same message shape as the generic failure below, just a distinct
+      // class the processing screen can explain ("busy, try again").
+      if (response.status === 502 || response.status === 503 || response.status === 504) {
+        throw new OcrServiceBusyError(
+          `OCR backend request failed (${response.status}): ${detail}`,
+          response.status,
+        );
       }
       throw new Error(`OCR backend request failed (${response.status}): ${detail}`);
     }

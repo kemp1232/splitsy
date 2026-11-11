@@ -35,6 +35,10 @@ import { groupAssignedParticipantIdsByLineItem } from '@/features/assignments/pa
 import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import {
+  buildTripParticipantAdjustmentShareDisplay,
+  type TripAdjustmentShareDisplay,
+} from '@/features/trips/buildTripParticipantAdjustmentShareDisplay';
+import {
   buildTripParticipantItemShareDisplay,
   type TripItemInfo,
   type TripItemShareDisplay,
@@ -56,10 +60,13 @@ type LoadState = 'loading' | 'ready' | 'error';
 // person is assigned to" (the expanded card's whole reason to exist) reads as
 // a list grouped per bill, not one undifferentiated pile of item names that
 // might collide across two different restaurants' menus.
+// Followed by their share of each fee/tax/discount on that bill, so one
+// bill's lines add up to what they owe for it.
 type TripPersonBillItems = {
   billId: string;
   billLabel: string;
   items: TripItemShareDisplay[];
+  adjustments: TripAdjustmentShareDisplay[];
 };
 
 type LoadedTripSettlementData = {
@@ -70,7 +77,7 @@ type LoadedTripSettlementData = {
   result: TripSettlementResult | null;
   nameByIdentityId: Map<string, string>;
   tripTotalCentavos: number;
-  // Every identity's item shares, grouped per bill, in bill order — feeds the
+  // Every identity's item and fee/discount shares, grouped per bill, in bill order — feeds the
   // expanded section of TripPersonBalanceCard. Empty array for an identity
   // with no nonzero item shares in any COMPLETED bill (shouldn't normally
   // happen, but the card renders correctly either way).
@@ -176,6 +183,9 @@ async function fetchTripSettlementData(tripId: string): Promise<LoadedTripSettle
         participantRows.map((participant) => [participant.id, participant.name]),
       );
       const billLabel = getBillDisplayTitle(entry.bill);
+      const labelByAdjustmentId = new Map(
+        adjustmentRows.map((adjustment) => [adjustment.id, adjustment.label]),
+      );
 
       const personItems = participantRows.map((participant) => {
         const share = billSplit.participantShares.find((s) => s.participantId === participant.id);
@@ -187,7 +197,10 @@ async function fetchTripSettlementData(tripId: string): Promise<LoadedTripSettle
               nameByParticipantId,
             )
           : [];
-        return { identityId: identityByParticipantId.get(participant.id)!, items };
+        const adjustments = share
+          ? buildTripParticipantAdjustmentShareDisplay(share.adjustmentShares, labelByAdjustmentId)
+          : [];
+        return { identityId: identityByParticipantId.get(participant.id)!, items, adjustments };
       });
 
       return { tripBillData, billLabel, personItems };
@@ -195,10 +208,10 @@ async function fetchTripSettlementData(tripId: string): Promise<LoadedTripSettle
   );
 
   for (const { tripBillData, billLabel, personItems } of perBillResults) {
-    for (const { identityId, items } of personItems) {
-      if (items.length === 0) continue;
+    for (const { identityId, items, adjustments } of personItems) {
+      if (items.length === 0 && adjustments.length === 0) continue;
       const existing = billItemsByIdentityId.get(identityId) ?? [];
-      existing.push({ billId: tripBillData.billId, billLabel, items });
+      existing.push({ billId: tripBillData.billId, billLabel, items, adjustments });
       billItemsByIdentityId.set(identityId, existing);
     }
   }
