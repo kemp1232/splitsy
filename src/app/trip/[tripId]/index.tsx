@@ -502,7 +502,7 @@ export default function TripHubScreen() {
     <Screen scroll padded={false}>
       <View style={styles.headerRow}>
         <View style={styles.headerText}>
-          <AppText variant="heading">{title}</AppText>
+          <AppText variant="title">{title}</AppText>
           <StatusBadge
             label={data.trip.status === 'SETTLED' ? copy.trip.settledBadge : copy.trip.activeBadge}
             tone={data.trip.status === 'SETTLED' ? 'success' : 'neutral'}
@@ -520,6 +520,8 @@ export default function TripHubScreen() {
           total, unlike the home screen's own list-of-independent-bills view
           (which deliberately doesn't get one of these). */}
       <GradientHeroCard
+        roundTopCorners
+        sideInset
         label={copy.trip.tripTotalLabel}
         amountCentavos={data.completedTotalCentavos}
         meta={formatTripBillCount(data.bills.length) ?? undefined}
@@ -532,7 +534,7 @@ export default function TripHubScreen() {
           <SectionCard>
             <View style={styles.rosterHeader}>
               <Feather name="users" size={18} color={colors.textPrimary} />
-              <AppText variant="subheading">{copy.trip.rosterSectionTitle}</AppText>
+              <AppText variant="cardTitle">{copy.trip.rosterSectionTitle}</AppText>
             </View>
             {data.roster.length === 0 ? (
               <AppText color="textSecondary">{copy.trip.emptyBody}</AppText>
@@ -576,7 +578,7 @@ export default function TripHubScreen() {
         ) : null}
 
         <View style={styles.billsBlock}>
-          <AppText variant="subheading">{copy.trip.billsSectionTitle}</AppText>
+          <AppText variant="cardTitle">{copy.trip.billsSectionTitle}</AppText>
 
           {data.bills.length === 0 ? (
             <EmptyState heading={copy.trip.emptyBillsHeading} body={copy.trip.emptyBillsBody} />

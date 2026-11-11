@@ -605,8 +605,11 @@ export default function AssignmentsScreen() {
           <Switch
             value={bill.splitMode === 'EQUAL'}
             onValueChange={handleToggleSplitEqually}
-            trackColor={{ false: colors.border, true: colors.primary }}
-            thumbColor={colors.surface}
+            // Off: a mid-grey thumb on a stronger track, so the switch stays
+            // visible on the card (a surface-colored thumb vanished into it).
+            trackColor={{ false: colors.borderStrong, true: colors.primary }}
+            ios_backgroundColor={colors.borderStrong}
+            thumbColor={bill.splitMode === 'EQUAL' ? colors.onPrimary : colors.textSecondary}
             accessibilityLabel={copy.assignments.splitEquallyToggleLabel}
           />
         </View>
@@ -696,8 +699,7 @@ export default function AssignmentsScreen() {
                 ? copy.assignments.continueToPaymentsButton
                 : copy.assignments.continueButton
             }
-            icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
-            iconPosition="trailing"
+            trailingArrow
             onPress={handleContinue}
           />
           {/* Keeps the skipped adjustments screen reachable. Hidden while
@@ -779,7 +781,7 @@ function createStyles(colors: ColorTokens) {
       gap: spacing.md,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       borderCurve: 'continuous',
       backgroundColor: colors.surface,
       borderWidth: 1,
@@ -789,9 +791,9 @@ function createStyles(colors: ColorTokens) {
       flex: 1,
     },
     iconTile: {
-      width: 36,
-      height: 36,
-      borderRadius: radius.sm,
+      width: 40,
+      height: 40,
+      borderRadius: radius.tile,
       borderCurve: 'continuous',
       backgroundColor: tint(colors.primary),
       alignItems: 'center',
@@ -831,7 +833,7 @@ function createStyles(colors: ColorTokens) {
       alignItems: 'flex-start',
       gap: spacing.sm,
       padding: spacing.md,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       borderCurve: 'continuous',
       borderWidth: 1,
       borderColor: colors.danger,

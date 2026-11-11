@@ -215,7 +215,7 @@ export default function ProcessingScreen() {
 
   if (stage === 'error') {
     return (
-      <Screen tabBarHidden scroll>
+      <Screen tabBarHidden scroll background="loading">
         <View style={styles.failureBody}>
           {/* Spec §17: announce processing completion/failure — matches
               ErrorState's own live-region treatment used everywhere else in
@@ -223,7 +223,7 @@ export default function ProcessingScreen() {
               needs four distinct actions, not ErrorState's single retry
               button. */}
           <View style={styles.headingGroup} accessibilityLiveRegion="assertive">
-            <AppText variant="heading">
+            <AppText variant="title">
               {isBusy ? copy.ocrFailure.busyHeading : copy.ocrFailure.heading}
             </AppText>
             <AppText variant="body" color="textSecondary">
@@ -293,7 +293,7 @@ export default function ProcessingScreen() {
       : null;
 
   return (
-    <Screen tabBarHidden>
+    <Screen tabBarHidden background="loading">
       <View style={styles.centered}>
         {/* Both panels share this positioned area and crossfade over each
             other (see panelHeight's own comment above for why) — grouped

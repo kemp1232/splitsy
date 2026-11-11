@@ -9,7 +9,7 @@ import { AppText } from '@/components/ui/AppText';
 import { isTabBarHiddenForPath } from '@/components/ui/tabBarVisibility';
 import { copy } from '@/constants/copy';
 import type { ColorTokens } from '@/theme/tokens';
-import { CONTENT_MAX_WIDTH, radius, spacing, touchTarget } from '@/theme/tokens';
+import { CONTENT_MAX_WIDTH, radius, shadows, spacing, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 // ---- Tunable constants -----------------------------------------------------
@@ -378,6 +378,10 @@ function createStyles(colors: ColorTokens) {
       borderRadius: radius.pill,
       borderCurve: 'continuous',
       backgroundColor: colors.primary,
+      // 2026-11 redesign: a thin accent ring so the lavender button reads
+      // as lifted off the charcoal bar.
+      borderWidth: 1.5,
+      borderColor: colors.accent,
       alignItems: 'center',
       justifyContent: 'center',
       // CSS box-shadow syntax (vercel-react-native-skills' ui-styling rule)
@@ -385,7 +389,7 @@ function createStyles(colors: ColorTokens) {
       // shadowRadius/elevation quintet — one string renders on both iOS and
       // Android on the New Architecture (this app's default on Expo SDK 57),
       // so nothing here is Android-only elevation lost in the conversion.
-      boxShadow: '0 6px 12px rgba(0, 0, 0, 0.28)',
+      boxShadow: shadows.fab,
     },
     centerButtonPressed: {
       backgroundColor: colors.primaryPressed,

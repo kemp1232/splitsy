@@ -12,11 +12,20 @@ type Props = {
   accessibilityLabel: string;
   // Optional and additive: omitted by every existing call site.
   disabled?: boolean;
+  // 'surface' (2026-11 redesign) draws the round dark surface button used for
+  // header back/settings controls; 'plain' (default) keeps the bare icon.
+  variant?: 'plain' | 'surface';
 };
 
 // Icon-only controls must always carry a screen-reader label (spec section 17) —
 // accessibilityLabel is required, not optional, on this component.
-export function IconButton({ icon, onPress, accessibilityLabel, disabled }: Props) {
+export function IconButton({
+  icon,
+  onPress,
+  accessibilityLabel,
+  disabled,
+  variant = 'plain',
+}: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   return (
@@ -27,7 +36,12 @@ export function IconButton({ icon, onPress, accessibilityLabel, disabled }: Prop
       disabled={disabled}
       onPress={onPress}
       hitSlop={8}
-      style={({ pressed }) => [styles.base, pressed && styles.pressed, disabled && styles.disabled]}
+      style={({ pressed }) => [
+        styles.base,
+        variant === 'surface' && styles.surface,
+        pressed && styles.pressed,
+        disabled && styles.disabled,
+      ]}
     >
       {icon}
     </Pressable>
@@ -46,8 +60,14 @@ function createStyles(colors: ColorTokens) {
       borderRadius: radius.pill,
       borderCurve: 'continuous',
     },
+    surface: {
+      backgroundColor: colors.surfaceElevated,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
     pressed: {
-      backgroundColor: colors.surfaceMuted,
+      backgroundColor: colors.surfaceElevated,
+      opacity: 0.8,
     },
     disabled: {
       opacity: 0.4,

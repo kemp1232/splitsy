@@ -167,7 +167,7 @@ function createStyles(colors: ColorTokens) {
     iconTile: {
       width: 36,
       height: 36,
-      borderRadius: radius.sm,
+      borderRadius: radius.tile,
       borderCurve: 'continuous',
       backgroundColor: tint(colors.primary),
       alignItems: 'center',
@@ -204,7 +204,7 @@ function createStyles(colors: ColorTokens) {
       gap: spacing.sm,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       borderCurve: 'continuous',
       borderWidth: 1,
     },

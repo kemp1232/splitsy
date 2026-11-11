@@ -2,6 +2,7 @@ import { memo, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import type { ColorTokens } from '@/theme/tokens';
+import { avatarPalette, onBadge } from '@/theme/palettes';
 import { radius } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -13,19 +14,11 @@ import { AppText } from './AppText';
 // hashed-per-name fill from a small fixed palette, rather than a random or
 // always-primary color, so the same person reads as the same color everywhere
 // they appear (a list row today, an expanded card tomorrow). Every tone here
-// is a blue/indigo/teal-blue "accent-adjacent" hue (194°-232°, the same
-// family as `primary`'s own 232° — never drifting toward purple), and every
-// one clears 4.5:1 contrast against the fixed white initials label, so this
+// (lavender/indigo/violet/teal, matching the 2026-11 palette) is dark enough
+// that it clears 4.5:1 contrast against the fixed white initials label, so this
 // palette doesn't need a separate light/dark variant of its own the way
 // surface-dependent tokens do.
-const AVATAR_PALETTE = [
-  '#2F3EA6', // indigo (primary's own hue)
-  '#3A5AA0', // steel blue
-  '#2E5C8A', // deep blue
-  '#245C99', // blue
-  '#456BC4', // medium blue
-  '#146B85', // teal-blue
-] as const;
+// The palette itself lives in src/theme/palettes.ts (avatarPalette).
 
 function hashName(name: string): number {
   let hash = 0;
@@ -36,8 +29,8 @@ function hashName(name: string): number {
 }
 
 function colorForName(name: string): string {
-  const index = hashName(name.trim().toLowerCase() || '?') % AVATAR_PALETTE.length;
-  return AVATAR_PALETTE[index]!;
+  const index = hashName(name.trim().toLowerCase() || '?') % avatarPalette.length;
+  return avatarPalette[index]!;
 }
 
 // First whole code point, not first UTF-16 unit: slice(0, 1) on "🍜" returns
@@ -83,7 +76,7 @@ export const InitialsAvatar = memo(function InitialsAvatar({
       accessibilityElementsHidden={decorative}
       importantForAccessibility={decorative ? 'no-hide-descendants' : 'yes'}
     >
-      <AppText style={{ fontSize, lineHeight: fontSize + 2, color: '#FFFFFF', fontWeight: '700' }}>
+      <AppText style={[styles.initials, { fontSize, lineHeight: fontSize + 2 }]}>
         {initials}
       </AppText>
     </View>
@@ -152,6 +145,10 @@ const styles = StyleSheet.create({
   circle: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  initials: {
+    color: onBadge,
+    fontWeight: '700',
   },
 });
 

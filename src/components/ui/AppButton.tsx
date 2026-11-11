@@ -1,12 +1,15 @@
+import Feather from '@expo/vector-icons/Feather';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
-import { useMemo } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, View } from 'react-native';
 
 import type { ColorTokens } from '@/theme/tokens';
 import { radius, spacing, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 import { AppText } from './AppText';
+import { usePressFeedback } from './usePressFeedback';
 
 type Variant = 'primary' | 'secondary' | 'text' | 'destructive';
 
@@ -16,11 +19,12 @@ type Props = {
   variant?: Variant;
   disabled?: boolean;
   loading?: boolean;
-  // Opts this button into the reference UI's fully-rounded "pill" shape
-  // (radius.pill instead of the usual radius.md) for the app's most
-  // prominent bottom-of-screen primary actions (e.g. "Settle up", "Finish
-  // and save") — left off by default so every other button keeps its
-  // existing, less attention-grabbing corner radius.
+  /**
+   * @deprecated No-op since the 2026-11 redesign: every AppButton variant
+   * now renders as a fully-rounded pill (radius.pill) by default. Kept only
+   * so existing call sites (e.g. "Settle up") still type-check; it no longer
+   * changes the button's shape.
+   */
   pill?: boolean;
   // Opts this button into a taller (52 instead of 48) hit area for a screen's
   // single dominant full-width action (e.g. a docked "Add people" CTA).
@@ -35,6 +39,9 @@ type Props = {
   // `icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}`
   icon?: (color: string) => ReactNode;
   iconPosition?: 'leading' | 'trailing';
+  // 2026-11 redesign: the reference's trailing arrow-in-a-circle on a
+  // screen's main forward CTA. Optional; omitted everywhere by default.
+  trailingArrow?: boolean;
 };
 
 export function AppButton({
@@ -43,32 +50,65 @@ export function AppButton({
   variant = 'primary',
   disabled,
   loading,
-  pill,
   large,
   icon,
   iconPosition = 'leading',
+  trailingArrow,
 }: Props) {
-  const { colors, scheme } = useTheme();
+  const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const press = usePressFeedback();
+  // Tracked here (not via Pressable's style/children function) because the
+  // pressable itself is the animated element below.
+  const [pressed, setPressed] = useState(false);
   const isDisabled = disabled || loading;
+  const isPressed = pressed && !isDisabled;
   const contentColor =
     variant === 'primary' || variant === 'destructive' ? colors.onPrimary : colors.primary;
 
   return (
-    <Pressable
+    // The pressable itself carries all the visible chrome (radius, fill,
+    // border, min height) and the press-scale transform, so the pill always
+    // fills exactly the box the parent lays out — equal heights side by side
+    // in a row (e.g. ConfirmationDialog's actions) at any font scale — and
+    // the web focus outline follows the pill's own radius.
+    <AnimatedPressable
       accessibilityRole="button"
       aria-disabled={isDisabled}
       onPress={onPress}
+      onPressIn={() => {
+        setPressed(true);
+        press.onPressIn();
+      }}
+      onPressOut={() => {
+        setPressed(false);
+        press.onPressOut();
+      }}
       disabled={isDisabled}
-      style={({ pressed }) => [
+      style={[
         styles.base,
         styles[variant],
-        pill && styles.pill,
         large && styles.large,
-        pressed && !isDisabled && pressedStyles(colors, scheme)[variant],
+        isPressed && styles[PRESSED_STYLE[variant]],
         isDisabled && styles.disabled,
+        press.animatedStyle,
       ]}
     >
+      {/* The primary CTA's lavender gradient fill (2026-11 redesign); a flat
+          primaryPressed fill while pressed for a clearly stronger pressed
+          state. */}
+      {variant === 'primary' ? (
+        <LinearGradient
+          colors={
+            isPressed
+              ? [colors.primaryPressed, colors.primaryPressed]
+              : [colors.gradientStart, colors.gradientEnd]
+          }
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={StyleSheet.absoluteFill}
+        />
+      ) : null}
       {loading ? (
         <ActivityIndicator color={contentColor} />
       ) : (
@@ -82,75 +122,86 @@ export function AppButton({
             {label}
           </AppText>
           {icon && iconPosition === 'trailing' ? icon(contentColor) : null}
+          {trailingArrow ? (
+            <View
+              style={[styles.arrowCircle, { borderColor: contentColor }]}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              <Feather name="arrow-right" size={14} color={contentColor} />
+            </View>
+          ) : null}
         </View>
       )}
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+const PRESSED_STYLE = {
+  primary: 'primaryPressed',
+  secondary: 'secondaryPressed',
+  text: 'textPressed',
+  destructive: 'destructivePressed',
+} as const satisfies Record<Variant, string>;
+
 function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
+    // 2026-11 redesign: every button is a fully-rounded pill (the reference's
+    // CTA shape) — see the deprecated `pill` prop.
     base: {
       minHeight: touchTarget.preferred,
-      borderRadius: radius.md,
+      borderRadius: radius.pill,
       borderCurve: 'continuous',
       alignItems: 'center',
       justifyContent: 'center',
-      paddingHorizontal: spacing.lg,
+      // 12, not 20: leaves room for an icon + two-word label on one line in
+      // a half-width slot on a ~390dp phone (Share summary / Copy breakdown,
+      // Choose from photos / Scan next bill). Larger font scales still wrap.
+      // Full-width CTAs are unaffected (their content is centered).
+      paddingHorizontal: spacing.md,
+      overflow: 'hidden',
     },
     content: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: spacing.xs,
+      gap: spacing.sm,
     },
-    // App-wide (2026-08-27): every button's label renders at this one size —
-    // matches the item-title size established in LineItemRow.tsx/
-    // BillListItem.tsx (13px/18 line height, the same as the `caption`
-    // variant). `variant="subheading"` above still carries its own 600
-    // weight, which is what keeps a button's label reading as a button
-    // rather than plain body text now that size no longer does that job.
-    // One change here covers every AppButton in the app, since this is the
-    // single component all of them render their label through.
+    // App-wide: every button's label renders at this one size (the single
+    // component every AppButton renders its label through).
+    // `variant="subheading"` still carries its 600 weight.
     label: {
-      fontSize: 14,
-      lineHeight: 19,
+      fontSize: 15,
+      lineHeight: 20,
+    },
+    arrowCircle: {
+      width: 24,
+      height: 24,
+      borderRadius: radius.pill,
+      borderWidth: 1.5,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     disabled: {
       opacity: 0.5,
-    },
-    pill: {
-      borderRadius: radius.pill,
-      borderCurve: 'continuous',
     },
     large: {
       minHeight: 52,
     },
     primary: { backgroundColor: colors.primary },
-    secondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primary },
+    secondary: {
+      backgroundColor: 'transparent',
+      borderWidth: 1.5,
+      borderColor: colors.primary,
+    },
     text: { backgroundColor: 'transparent' },
     destructive: { backgroundColor: colors.danger },
+    primaryPressed: { backgroundColor: colors.primaryPressed },
+    secondaryPressed: { backgroundColor: colors.surfaceElevated },
+    textPressed: { backgroundColor: colors.surfaceElevated },
+    // Theme-aware darker/dimmer `danger` (see tokens.ts's dangerPressed).
+    destructivePressed: { backgroundColor: colors.dangerPressed },
   });
-}
-
-// A pressed-state palette rather than a static StyleSheet — computed fresh
-// per render alongside `styles` above (both are cheap object literals), kept
-// as its own small function only to mirror the variant-keyed shape of
-// createStyles rather than inlining a lookup at each call site.
-//
-// `destructive`'s pressed color isn't a token — `danger` itself flips between
-// a dark red (light theme) and a light coral (dark theme, see tokens.ts's
-// header comment), so "pressed" needs its own theme-aware darker/dimmer shade
-// in each direction rather than one fixed hex that would only work for one
-// theme.
-function pressedStyles(
-  colors: ColorTokens,
-  scheme: 'light' | 'dark',
-): Record<Variant, { backgroundColor: string }> {
-  return {
-    primary: { backgroundColor: colors.primaryPressed },
-    secondary: { backgroundColor: colors.surfaceMuted },
-    text: { backgroundColor: colors.surfaceMuted },
-    destructive: { backgroundColor: scheme === 'dark' ? '#E56F63' : '#8C1D17' },
-  };
 }

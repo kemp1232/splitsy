@@ -218,7 +218,7 @@ function createStyles(colors: ColorTokens) {
       // Fully rounded card (reference row shape) now that this row no longer
       // pairs with a ReceiptTornEdge underneath it, which needed the bottom
       // corners left square to sit flush against.
-      borderRadius: radius.xl,
+      borderRadius: radius.card,
       borderCurve: 'continuous',
       backgroundColor: colors.surface,
       borderWidth: 1,

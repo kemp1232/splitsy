@@ -160,7 +160,7 @@ function createStyles(colors: ColorTokens) {
       marginTop: spacing.xs,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       borderCurve: 'continuous',
       borderWidth: 1,
     },

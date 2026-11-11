@@ -82,7 +82,7 @@ export default function PreviewScreen() {
     <Screen tabBarHidden scroll padded={false}>
       <View style={styles.body}>
         <View style={styles.headingGroup}>
-          <AppText variant="heading">{copy.preview.heading}</AppText>
+          <AppText variant="title">{copy.preview.heading}</AppText>
           <AppText variant="body" color="textSecondary">
             {copy.preview.body}
           </AppText>
@@ -152,8 +152,8 @@ function createStyles(colors: ColorTokens) {
       gap: spacing.sm,
     },
     imageCard: {
-      borderTopLeftRadius: radius.lg,
-      borderTopRightRadius: radius.lg,
+      borderTopLeftRadius: radius.card,
+      borderTopRightRadius: radius.card,
       borderCurve: 'continuous',
       overflow: 'hidden',
       backgroundColor: colors.surfaceMuted,

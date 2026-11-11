@@ -57,6 +57,8 @@ export const copy = {
   newBill: {
     heading: 'Add a receipt',
     body: 'Choose the fastest way to start your split.',
+    // Short line laid over the mascot's speech bubble (GreetingBubble.tsx).
+    mascotGreeting: "Let's split it!",
     cameraTitle: 'Take a photo',
     cameraDescription: 'Best for a receipt in front of you.',
     galleryTitle: 'Choose from photos',
@@ -623,7 +625,8 @@ export const copy = {
   settings: {
     heading: 'Settings',
     // Not from the spec — the visual revamp's manual light/dark override
-    // (defaults to following the system setting; see ThemeProvider.tsx).
+    // (defaults to dark until the user picks otherwise; see ThemeProvider.tsx's
+    // DEFAULT_PREFERENCE).
     appearanceSection: 'Appearance',
     appearanceCaption: 'Choose your app theme.',
     appearanceSystem: 'Match system',

@@ -434,8 +434,7 @@ export default function PaymentsScreen() {
             onPress={handleContinue}
             loading={saving}
             disabled={saving}
-            icon={(color) => <Feather name="arrow-right-circle" size={18} color={color} />}
-            iconPosition="trailing"
+            trailingArrow
           />
         </View>
       </View>

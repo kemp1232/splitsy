@@ -62,7 +62,7 @@ export function ConfirmationDialog({
           inner Pressable needs its own no-op onPress. */}
       <Pressable style={styles.backdrop} onPress={onCancel}>
         <Pressable style={styles.dialog} accessibilityRole="alert" onPress={() => {}}>
-          <AppText variant="subheading">{heading}</AppText>
+          <AppText variant="cardTitle">{heading}</AppText>
           <AppText variant="body" color="textSecondary">
             {body}
           </AppText>
@@ -91,7 +91,7 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     backdrop: {
       flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.4)',
+      backgroundColor: colors.scrim,
       alignItems: 'center',
       justifyContent: 'center',
       padding: spacing.xl,
@@ -100,9 +100,11 @@ function createStyles(colors: ColorTokens) {
       width: '100%',
       maxWidth: 400,
       backgroundColor: colors.surface,
-      borderRadius: radius.lg,
+      borderRadius: radius.card,
       borderCurve: 'continuous',
-      padding: spacing.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: spacing.xl20,
       gap: spacing.md,
     },
     actions: {

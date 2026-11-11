@@ -1,6 +1,12 @@
 import type { TextStyle } from 'react-native';
 
 export const typography = {
+  // 2026-11 redesign: the large bold screen title in every ScreenHeader.
+  title: { fontSize: 28, fontWeight: '700', lineHeight: 34 },
+  // Section headings inside a screen ("Your bills", "Everyone's share").
+  sectionTitle: { fontSize: 21, fontWeight: '700', lineHeight: 27 },
+  // Option / list card titles.
+  cardTitle: { fontSize: 17, fontWeight: '600', lineHeight: 22 },
   heading: { fontSize: 22, fontWeight: '700', lineHeight: 28 },
   subheading: { fontSize: 17, fontWeight: '600', lineHeight: 22 },
   body: { fontSize: 15, fontWeight: '400', lineHeight: 21 },

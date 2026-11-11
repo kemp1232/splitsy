@@ -215,7 +215,7 @@ function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     backdrop: {
       flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.4)',
+      backgroundColor: colors.scrim,
     },
     // See ParticipantEditorSheet's identical style for why flex: 1 +
     // justifyContent: 'flex-end' belongs here and not on `backdrop`: it's what
@@ -233,8 +233,11 @@ function createStyles(colors: ColorTokens) {
     },
     sheet: {
       backgroundColor: colors.surface,
-      borderTopLeftRadius: radius.lg,
-      borderTopRightRadius: radius.lg,
+      borderTopLeftRadius: radius.hero,
+      borderTopRightRadius: radius.hero,
+      borderWidth: 1,
+      borderBottomWidth: 0,
+      borderColor: colors.border,
       borderCurve: 'continuous',
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.sm,
@@ -285,7 +288,7 @@ function createStyles(colors: ColorTokens) {
       minHeight: touchTarget.preferred,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       borderCurve: 'continuous',
       backgroundColor: colors.surface,
       justifyContent: 'center',

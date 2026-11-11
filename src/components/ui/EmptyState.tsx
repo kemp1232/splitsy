@@ -15,7 +15,7 @@ type Props = {
 export function EmptyState({ heading, body, actionLabel, onAction }: Props) {
   return (
     <View style={styles.container}>
-      <AppText variant="subheading" style={styles.center}>
+      <AppText variant="cardTitle" style={styles.center}>
         {heading}
       </AppText>
       <AppText variant="body" color="textSecondary" style={styles.center}>

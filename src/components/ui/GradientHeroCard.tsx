@@ -1,11 +1,9 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
-import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
-import type { ColorTokens } from '@/theme/tokens';
-import { radius, spacing } from '@/theme/tokens';
+import { radius, shadows, spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 import { AppText } from './AppText';
@@ -27,16 +25,14 @@ type Props = {
   // for every possible caller.
   icon?: (color: string) => ReactNode;
   // Rounds the top corners to match the bottom ones, instead of this card's
-  // default flush-with-the-screen-top shape. Opt-in: the trip hub/settlement
-  // screens render this as the literal first thing on the screen (see the
-  // component's own header comment) and keep the flush top; summary.tsx
-  // renders its own heading above this card, so a flush top edge there reads
-  // as an odd square notch rather than matching the screen's actual edge.
+  // default flush-with-the-screen-top shape. Every current caller (trip hub,
+  // trip settlement) opts in since the 2026-11 redesign, where all cards are
+  // inset with full rounded corners; the flush default is kept for
+  // compatibility.
   roundTopCorners?: boolean;
   // Adds spacing.lg left/right margin — the same horizontal inset `body`'s
-  // own padding gives PersonTotalCard below it — instead of this card's
-  // default flush-with-the-screen-sides shape. Opt-in for the same reason as
-  // `roundTopCorners`: the trip hub/settlement screens keep the flush sides.
+  // own padding gives the cards below it — instead of this card's default
+  // flush-with-the-screen-sides shape. Opt-in, like `roundTopCorners`.
   sideInset?: boolean;
   // Optional status badge shown directly below the amount — e.g.
   // summary.tsx's own "matches the receipt"/mismatch badge, placed here so
@@ -64,14 +60,17 @@ export function GradientHeroCard({
   statusBadge,
 }: Props) {
   const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
     <LinearGradient
       colors={[colors.gradientStart, colors.gradientEnd]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={[styles.card, roundTopCorners && styles.cardRoundTop, sideInset && styles.cardSideInset]}
+      style={[
+        styles.card,
+        roundTopCorners && styles.cardRoundTop,
+        sideInset && styles.cardSideInset,
+      ]}
     >
       {/* Subtitle/meta (which bill/trip this is) now reads first, above the
           label+amount — telling the user what they're looking at before the
@@ -113,49 +112,41 @@ export function GradientHeroCard({
   );
 }
 
-function createStyles(colors: ColorTokens) {
-  return StyleSheet.create({
-    card: {
-      borderBottomLeftRadius: radius.xl,
-      borderBottomRightRadius: radius.xl,
-      borderCurve: 'continuous',
-      paddingHorizontal: spacing.lg,
-      paddingTop: spacing.xl,
-      paddingBottom: spacing.xl,
-      gap: spacing.xs,
-      // Shadow is theme-neutral (always a dark shadow) since the card itself
-      // is always dark-ish (light theme's own deep-indigo gradient) or
-      // bright (dark theme's periwinkle gradient) — either way a soft dark
-      // shadow reads correctly sitting on top of `colors.background` behind it.
-      shadowColor: colors.textPrimary,
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.15,
-      shadowRadius: 12,
-      elevation: 4,
-    },
-    cardRoundTop: {
-      borderTopLeftRadius: radius.xl,
-      borderTopRightRadius: radius.xl,
-    },
-    cardSideInset: {
-      marginHorizontal: spacing.lg,
-    },
-    labelRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.xs,
-    },
-    label: {
-      opacity: 0.85,
-    },
-    contextRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: spacing.sm,
-    },
-    subtitle: {
-      flex: 1,
-    },
-  });
-}
+const styles = StyleSheet.create({
+  card: {
+    borderBottomLeftRadius: radius.hero,
+    borderBottomRightRadius: radius.hero,
+    borderCurve: 'continuous',
+    paddingHorizontal: spacing.xl20,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xl,
+    gap: spacing.xs,
+    // Always a soft dark shadow (theme-neutral) — reads on both the dark
+    // ambient background and the light lavender one.
+    boxShadow: shadows.card,
+  },
+  cardRoundTop: {
+    borderTopLeftRadius: radius.hero,
+    borderTopRightRadius: radius.hero,
+  },
+  cardSideInset: {
+    marginHorizontal: spacing.lg,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  label: {
+    opacity: 0.85,
+  },
+  contextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  subtitle: {
+    flex: 1,
+  },
+});

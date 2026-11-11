@@ -46,7 +46,11 @@ export const ParticipantChip = memo(function ParticipantChip({
     >
       {/* Selection is conveyed by the check mark text, not only the pill's
           background color (spec section 17). */}
-      <AppText variant="body" color={selected ? 'onPrimary' : 'textPrimary'}>
+      <AppText
+        variant="body"
+        color={selected ? 'onPrimary' : 'textPrimary'}
+        style={selected ? styles.labelSelected : undefined}
+      >
         {selected ? `✓ ${name}` : name}
       </AppText>
     </Pressable>
@@ -58,10 +62,11 @@ function createStyles(colors: ColorTokens) {
     chip: {
       minHeight: touchTarget.min,
       justifyContent: 'center',
-      paddingHorizontal: spacing.md,
+      paddingHorizontal: spacing.lg,
       paddingVertical: spacing.sm,
       borderRadius: radius.pill,
-      borderWidth: 1,
+      borderCurve: 'continuous',
+      borderWidth: 1.5,
       borderColor: colors.border,
       backgroundColor: colors.surfaceMuted,
     },
@@ -71,6 +76,9 @@ function createStyles(colors: ColorTokens) {
     },
     chipPressed: {
       opacity: 0.85,
+    },
+    labelSelected: {
+      fontWeight: '600',
     },
   });
 }
