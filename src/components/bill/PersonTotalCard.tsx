@@ -186,7 +186,8 @@ export const PersonTotalCard = memo(function PersonTotalCard({
   );
 });
 
-function buildPaidAndGetsBack(
+// Also used by TripPersonBalanceCard's header for the same overpaid case.
+export function buildPaidAndGetsBack(
   paidCentavos: number,
   getsBackCentavos: number,
   formatMoney: (centavos: number) => string,

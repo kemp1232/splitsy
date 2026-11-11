@@ -1,7 +1,7 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { StyleSheet, View, type TextInput } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
@@ -34,6 +34,8 @@ export default function ResetPasswordScreen() {
   const [confirmPasswordError, setConfirmPasswordError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Enter on the new password moves to the confirmation; Enter there submits.
+  const confirmInputRef = useRef<TextInput>(null);
 
   if (!token) {
     return (
@@ -55,6 +57,8 @@ export default function ResetPasswordScreen() {
   }
 
   async function handleResetPassword() {
+    // Enter can't start a second reset while one is in flight.
+    if (submitting) return;
     const passwordResult = validateNewPassword(newPassword);
     setNewPasswordError(
       passwordResult.valid
@@ -119,9 +123,13 @@ export default function ResetPasswordScreen() {
             secureTextEntry
             textContentType="newPassword"
             autoComplete="new-password"
+            returnKeyType="next"
+            submitBehavior="submit"
+            onSubmitEditing={() => confirmInputRef.current?.focus()}
           />
 
           <AppTextInput
+            ref={confirmInputRef}
             label={copy.auth.confirmPasswordLabel}
             value={confirmPassword}
             onChangeText={(value) => {
@@ -132,6 +140,8 @@ export default function ResetPasswordScreen() {
             secureTextEntry
             textContentType="newPassword"
             autoComplete="new-password"
+            returnKeyType="go"
+            onSubmitEditing={handleResetPassword}
           />
         </View>
 

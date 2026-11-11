@@ -9,8 +9,10 @@ import { AppText } from '@/components/ui/AppText';
 import { IconButton } from '@/components/ui/IconButton';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { copy } from '@/constants/copy';
 import { useBillSourceActions } from '@/features/bills/useBillSourceActions';
+import { goBackOrHome } from '@/lib/navigation';
 import { radius, spacing, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -61,10 +63,15 @@ export default function CaptureScreen() {
     const canAskAgain = permission.canAskAgain && !(isWeb && permission.status === 'denied');
     return (
       <Screen tabBarHidden>
-        <AppText variant="heading">{copy.cameraPermission.heading}</AppText>
-        <AppText variant="body" color="textSecondary" style={styles.spacedBelow}>
-          {copy.cameraPermission.body}
-        </AppText>
+        {/* Shared bill-screen header; its default back is the previous
+            screen, else Home (e.g. a web tab reloaded on /bill/capture). */}
+        <View style={styles.headerBlock}>
+          <ScreenHeader
+            icon="camera"
+            heading={copy.cameraPermission.heading}
+            body={copy.cameraPermission.body}
+          />
+        </View>
 
         {canAskAgain ? (
           <AppButton
@@ -127,7 +134,7 @@ export default function CaptureScreen() {
       <View style={styles.topBar}>
         <IconButton
           accessibilityLabel={copy.cameraCapture.closeAccessibilityLabel}
-          onPress={() => router.back()}
+          onPress={() => goBackOrHome(router)}
           icon={<Feather name="x" size={22} color={overlay.text} />}
         />
         <Pressable
@@ -199,6 +206,7 @@ export default function CaptureScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: overlay.background },
+  headerBlock: { marginBottom: spacing.lg },
   spacedBelow: { marginTop: spacing.sm, marginBottom: spacing.lg, gap: spacing.sm },
   deniedRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs },
   deniedText: { flex: 1 },

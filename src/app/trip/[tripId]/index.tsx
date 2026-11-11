@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, View } from 'react-native';
 
 import { BillListItem } from '@/components/bill/BillListItem';
@@ -42,6 +42,15 @@ import {
 } from '@/features/adjustments/buildSplitInputs';
 import { partitionLineItemsByAssignment } from '@/features/assignments/partitionLineItemsByAssignment';
 import { deleteBill } from '@/features/bills/bill.service';
+import {
+  beginCompletedBillEdit,
+  restoreUnchangedBillEdits,
+} from '@/features/bills/billEditSession';
+import { useRestoringBillIds } from '@/features/bills/useRestoringBillIds';
+import {
+  buildTripDeleteConfirmBody,
+  formatTripBillCount,
+} from '@/features/trips/formatTripBillCount';
 import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { useBillSourceActions } from '@/features/bills/useBillSourceActions';
 import { resolveNextRoute, type NextRoute } from '@/features/bills/resolveNextRoute';
@@ -257,6 +266,9 @@ export default function TripHubScreen() {
   const [removingMember, setRemovingMember] = useState<TripParticipant | null>(null);
 
   const [overflowBill, setOverflowBill] = useState<Bill | null>(null);
+  // The overflow sheet's Edit stays disabled while that bill's edit restore
+  // is still running (billEditSession.ts).
+  const restoringBillIds = useRestoringBillIds();
   const [deletingBill, setDeletingBill] = useState<Bill | null>(null);
 
   const [tripOverflowVisible, setTripOverflowVisible] = useState(false);
@@ -282,22 +294,28 @@ export default function TripHubScreen() {
   // inside an effect trips the react-hooks/set-state-in-effect lint rule.
   // This inline IIFE with its own independent try/catch is this codebase's
   // existing convention for a screen's first load (see e.g. src/app/index.tsx's
-  // own copy of this same shape).
-  useEffect(() => {
-    (async () => {
-      try {
-        const loaded = await fetchTripHubData(tripId);
-        if (!loaded) {
+  // own copy of this same shape). Runs on every focus, not just mount (same
+  // as Home): coming back from a bill's edit flow or "Finish and save" must
+  // re-read the bills, and first puts an Edit bill that changed nothing back
+  // to COMPLETED (billEditSession.ts, best-effort).
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        try {
+          await restoreUnchangedBillEdits().catch(() => undefined);
+          const loaded = await fetchTripHubData(tripId);
+          if (!loaded) {
+            setState('error');
+            return;
+          }
+          setData(loaded);
+          setState('ready');
+        } catch {
           setState('error');
-          return;
         }
-        setData(loaded);
-        setState('ready');
-      } catch {
-        setState('error');
-      }
-    })();
-  }, [tripId]);
+      })();
+    }, [tripId]),
+  );
 
   // Same explicit per-screen switch the home screen's own handleOpenBill
   // uses (rather than templating `next.screen` into the path) — typed routes
@@ -419,11 +437,8 @@ export default function TripHubScreen() {
     closeOverflow();
     if (!bill) return;
     if (bill.status === 'COMPLETED') {
-      await billsRepository.update(bill.id, {
-        status: 'DRAFT',
-        completedAt: null,
-        updatedAt: nowIso(),
-      });
+      // Snapshots first, so an edit that changes nothing is undone on return.
+      await beginCompletedBillEdit(bill);
     }
     router.push(`/bill/${bill.id}/receipt-review`);
   }
@@ -507,13 +522,7 @@ export default function TripHubScreen() {
       <GradientHeroCard
         label={copy.trip.tripTotalLabel}
         amountCentavos={data.completedTotalCentavos}
-        meta={
-          data.bills.length === 0
-            ? undefined
-            : data.bills.length === 1
-              ? copy.trip.billCountLabelSingular
-              : copy.trip.billCountLabel.replace('{count}', String(data.bills.length))
-        }
+        meta={formatTripBillCount(data.bills.length) ?? undefined}
       />
 
       <View style={styles.body}>
@@ -633,6 +642,7 @@ export default function TripHubScreen() {
 
       <BillOverflowSheet
         visible={overflowBill !== null}
+        editDisabled={overflowBill !== null && restoringBillIds.has(overflowBill.id)}
         onEdit={handleOverflowEdit}
         onShare={handleOverflowShare}
         onDelete={handleOverflowDelete}
@@ -659,13 +669,7 @@ export default function TripHubScreen() {
       <ConfirmationDialog
         visible={confirmingDeleteTrip}
         heading={copy.trip.deleteConfirmHeading}
-        body={
-          data.bills.length === 0
-            ? copy.trip.deleteConfirmBodyEmpty
-            : data.bills.length === 1
-              ? copy.trip.deleteConfirmBodySingular
-              : copy.trip.deleteConfirmBody.replace('{count}', String(data.bills.length))
-        }
+        body={buildTripDeleteConfirmBody(data.bills.length)}
         confirmLabel={copy.trip.deleteTripAction}
         cancelLabel={copy.global.cancelAction}
         destructive

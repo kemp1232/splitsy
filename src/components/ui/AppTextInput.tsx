@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from 'react';
+import type { ComponentProps, ReactNode, Ref } from 'react';
 import { useId, useMemo } from 'react';
 import { StyleSheet, TextInput, View, type TextInput as RNTextInput } from 'react-native';
 
@@ -30,6 +30,9 @@ type Props = ComponentProps<typeof RNTextInput> & {
   // render the message elsewhere (e.g. full-width below a two-up row so it
   // doesn't make one column taller than its neighbour).
   hideErrorMessage?: boolean;
+  // React 19 passes `ref` as a plain prop; it reaches the TextInput through
+  // `...rest` (e.g. so a form can move focus to its next field on Enter).
+  ref?: Ref<RNTextInput>;
 };
 
 export function AppTextInput({

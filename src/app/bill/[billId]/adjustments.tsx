@@ -17,6 +17,7 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { WarningNote } from '@/components/ui/WarningNote';
 import { copy } from '@/constants/copy';
 import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
 import { adjustmentAllocationsRepository } from '@/db/repositories/adjustmentAllocations.repository';
@@ -36,6 +37,7 @@ import {
   buildSplitLineItems,
 } from '@/features/adjustments/buildSplitInputs';
 import { useAdjustmentEditor } from '@/features/adjustments/useAdjustmentEditor';
+import { useEnsureBillEditable } from '@/features/bills/useEnsureBillEditable';
 import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
@@ -45,6 +47,7 @@ import type {
 } from '@/features/splitting/split.types';
 import { nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
+import { getNegativeTotalWarning } from '@/features/receipt-review/buildTotalsSummary';
 import { formatCentavos } from '@/lib/money';
 import { spacing } from '@/theme/tokens';
 
@@ -125,6 +128,8 @@ function computeSplitAndReconciliation(data: LoadedData): {
 export default function AdjustmentsScreen() {
   const router = useRouter();
   const { billId } = useLocalSearchParams<{ billId: string }>();
+  // Back in edit mode if the bill was re-completed underneath this screen.
+  useEnsureBillEditable(billId);
 
   const [state, setState] = useState<LoadState>('loading');
   const [bill, setBill] = useState<Bill | null>(null);
@@ -312,6 +317,8 @@ export default function AdjustmentsScreen() {
     );
   }
 
+  const negativeTotalWarning = getNegativeTotalWarning(splitResult.computedTotalCentavos);
+
   return (
     <Screen tabBarHidden scroll padded={false}>
       <View style={styles.body}>
@@ -378,6 +385,10 @@ export default function AdjustmentsScreen() {
           onAddDifference={handleAddDifference}
           onReviewItems={handleReviewItems}
         />
+
+        {/* Same warning as receipt-review's totals card — a warning only,
+            Continue stays enabled (icon + text, not color alone). */}
+        {negativeTotalWarning ? <WarningNote message={negativeTotalWarning} /> : null}
 
         {/* Was a sticky BottomActionBar footer — moved inline, per the
             user's own explicit request (2026-08-27) to drop sticky nav

@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/sqlite-proxy';
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
 
+import { createTransactionLock } from './createTransactionLock';
 import * as schema from './schema';
 import { loadPersistedDatabase, savePersistedDatabase } from './web/idbPersistence';
 
@@ -179,3 +180,12 @@ async function queryWebSqlite(
 }
 
 export const db = drizzle(queryWebSqlite, { schema });
+
+// Every db.transaction on web runs one at a time (see createTransactionLock):
+// concurrent transactions would otherwise interleave their BEGIN/COMMIT on
+// this single connection. Code inside a transaction uses its `tx` (nested
+// ones become savepoints), never db.transaction again, so this can't deadlock.
+const transactionLock = createTransactionLock();
+const runTransaction = db.transaction.bind(db);
+db.transaction = ((transaction, config) =>
+  transactionLock.run(() => runTransaction(transaction, config))) as typeof db.transaction;

@@ -53,3 +53,10 @@ export function buildMismatchMessage(
     .replace('{difference}', () => formatMoney(Math.abs(differenceCentavos)))
     .replace('{higherOrLower}', () => (differenceCentavos > 0 ? r.higherWord : r.lowerWord));
 }
+
+// Warning for a bill whose items + adjustments (fees, tax, discounts) add up
+// to less than zero — almost always a misread discount or item price. Only a
+// warning: the user can still continue. null when the total is zero or more.
+export function getNegativeTotalWarning(computedTotalCentavos: number): string | null {
+  return computedTotalCentavos < 0 ? copy.receiptReview.negativeTotalWarning : null;
+}

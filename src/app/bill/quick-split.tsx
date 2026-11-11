@@ -5,10 +5,10 @@ import { StyleSheet, View } from 'react-native';
 
 import { AmountInput } from '@/components/ui/AmountInput';
 import { AppButton } from '@/components/ui/AppButton';
-import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
 import { InlineError } from '@/components/ui/InlineError';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { copy } from '@/constants/copy';
 import { isValidAdjustmentAmount } from '@/features/adjustments/validateAdjustmentAmount';
 import { createQuickSplitBill } from '@/features/bills/bill.service';
@@ -59,12 +59,13 @@ export default function QuickSplitScreen() {
   return (
     <Screen tabBarHidden scroll>
       <View style={styles.body}>
-        <View style={styles.headingGroup}>
-          <AppText variant="heading">{copy.quickSplit.heading}</AppText>
-          <AppText variant="body" color="textSecondary">
-            {copy.quickSplit.body}
-          </AppText>
-        </View>
+        {/* Shared bill-screen header: nothing is created until Continue, so
+            its default back (previous screen, else Home) just leaves. */}
+        <ScreenHeader
+          icon="divide-circle"
+          heading={copy.quickSplit.heading}
+          body={copy.quickSplit.body}
+        />
 
         <View style={styles.fieldGroup}>
           <AppTextInput
@@ -109,9 +110,6 @@ const styles = StyleSheet.create({
     gap: spacing.xl,
     // No tab-bar clearance: the global BottomTabBar is hidden on /bill/**
     // (Screen's own padding already spaces the last button from the edge).
-  },
-  headingGroup: {
-    gap: spacing.xs,
   },
   fieldGroup: {
     gap: spacing.md,

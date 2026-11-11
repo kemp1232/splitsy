@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Fragment, useCallback, useMemo, useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, View } from 'react-native';
 
 import { BillTotalCard } from '@/components/bill/BillTotalCard';
@@ -17,6 +17,7 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { ReceiptImage } from '@/components/ui/ReceiptImage';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { WarningNote } from '@/components/ui/WarningNote';
 import { copy } from '@/constants/copy';
 import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
 import { adjustmentAllocationsRepository } from '@/db/repositories/adjustmentAllocations.repository';
@@ -37,7 +38,13 @@ import {
 } from '@/features/adjustments/buildSplitInputs';
 import { groupAssignedParticipantIdsByLineItem } from '@/features/assignments/partitionLineItemsByAssignment';
 import { deleteBill } from '@/features/bills/bill.service';
+import {
+  beginCompletedBillEdit,
+  restoreUnchangedBillEdits,
+} from '@/features/bills/billEditSession';
+import { useRestoringBillIds } from '@/features/bills/useRestoringBillIds';
 import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
+import { getNegativeTotalWarning } from '@/features/receipt-review/buildTotalsSummary';
 import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
 import { computeSettlement } from '@/features/splitting/settlement';
@@ -57,7 +64,6 @@ import {
   type SummaryAdjustmentInfo,
   type SummaryItemInfo,
 } from '@/features/summary/buildParticipantShareDisplay';
-import { nowIso } from '@/lib/date';
 import { authClient } from '@/lib/authClient';
 import { shareText } from '@/lib/share';
 import type { ColorTokens } from '@/theme/tokens';
@@ -124,10 +130,9 @@ export default function SavedBillDetailScreen() {
   const { billId } = useLocalSearchParams<{ billId: string }>();
 
   const [state, setState] = useState<LoadState>('loading');
-  // Bumped by the error state's Retry so the load effect below runs again —
-  // setting state back to 'loading' alone never re-triggers it.
-  const [reloadKey, setReloadKey] = useState(0);
   const [bill, setBill] = useState<Bill | null>(null);
+  // Edit stays disabled while this bill's edit restore is still running.
+  const isRestoring = useRestoringBillIds().has(billId);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [items, setItems] = useState<LineItem[]>([]);
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
@@ -148,57 +153,68 @@ export default function SavedBillDetailScreen() {
   // route params the source of truth").
   const [tripLink, setTripLink] = useState<{ id: string; name: string } | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await fetchSavedBillDetailData(billId);
-        if (!data.billRow) {
-          setState('error');
-          return;
-        }
-
-        if (data.billRow.tripId) {
-          const trip = await tripsRepository.getById(data.billRow.tripId);
-          if (trip) {
-            setTripLink({ id: trip.id, name: trip.name ?? copy.trip.unknownTripTitle });
-          }
-        }
-
-        const splitParticipants = data.participantRows.map((participant) => ({
-          participantId: participant.id,
-        }));
-        const splitItems = buildSplitLineItems(data.itemRows, data.assignmentRows);
-        const splitAdjustments = buildSplitAdjustments(
-          data.adjustmentRows,
-          data.customAllocationsByAdjustmentId,
-        );
-        const nextSplitResult = calculateSplit({
-          participants: splitParticipants,
-          items: splitItems,
-          adjustments: splitAdjustments,
-        });
-        const nextReconciliation = reconcileBillTotals({
-          itemSubtotalCentavos: nextSplitResult.itemSubtotalCentavos,
-          adjustmentTotalCentavos: nextSplitResult.adjustmentTotalCentavos,
-          detectedReceiptTotalCentavos: data.billRow.detectedReceiptTotalCentavos,
-        });
-
-        setBill(data.billRow);
-        setParticipants(data.participantRows);
-        setItems(data.itemRows);
-        setAdjustments(data.adjustmentRows);
-        setAssignmentRows(data.assignmentRows);
-        setSplitResult(nextSplitResult);
-        setReconciliation(nextReconciliation);
-        setState('ready');
-      } catch {
-        // Covers both a genuine load failure and calculateSplit's
-        // SplitInvariantError (spec 10.7) — same generic error treatment used
-        // by every other screen's load effect.
+  // Runs on every focus, not just mount: coming back from the trip page (where
+  // this bill may have been edited) re-reads it, so the totals and the
+  // negative-total warning always match the current data.
+  // (Loads through loadScreen, which the error state's Retry also calls.)
+  const loadScreen = useCallback(async () => {
+    try {
+      // An Edit bill that changed nothing goes back to COMPLETED before
+      // this reads it (billEditSession.ts). Best-effort: never blocks the load.
+      await restoreUnchangedBillEdits().catch(() => undefined);
+      const data = await fetchSavedBillDetailData(billId);
+      if (!data.billRow) {
         setState('error');
+        return;
       }
-    })();
-  }, [billId, reloadKey]);
+
+      if (data.billRow.tripId) {
+        const trip = await tripsRepository.getById(data.billRow.tripId);
+        if (trip) {
+          setTripLink({ id: trip.id, name: trip.name ?? copy.trip.unknownTripTitle });
+        }
+      }
+
+      const splitParticipants = data.participantRows.map((participant) => ({
+        participantId: participant.id,
+      }));
+      const splitItems = buildSplitLineItems(data.itemRows, data.assignmentRows);
+      const splitAdjustments = buildSplitAdjustments(
+        data.adjustmentRows,
+        data.customAllocationsByAdjustmentId,
+      );
+      const nextSplitResult = calculateSplit({
+        participants: splitParticipants,
+        items: splitItems,
+        adjustments: splitAdjustments,
+      });
+      const nextReconciliation = reconcileBillTotals({
+        itemSubtotalCentavos: nextSplitResult.itemSubtotalCentavos,
+        adjustmentTotalCentavos: nextSplitResult.adjustmentTotalCentavos,
+        detectedReceiptTotalCentavos: data.billRow.detectedReceiptTotalCentavos,
+      });
+
+      setBill(data.billRow);
+      setParticipants(data.participantRows);
+      setItems(data.itemRows);
+      setAdjustments(data.adjustmentRows);
+      setAssignmentRows(data.assignmentRows);
+      setSplitResult(nextSplitResult);
+      setReconciliation(nextReconciliation);
+      setState('ready');
+    } catch {
+      // Covers both a genuine load failure and calculateSplit's
+      // SplitInvariantError (spec 10.7) — same generic error treatment used
+      // by every other screen's load effect.
+      setState('error');
+    }
+  }, [billId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadScreen();
+    }, [loadScreen]),
+  );
 
   if (state === 'loading') {
     return (
@@ -217,7 +233,7 @@ export default function SavedBillDetailScreen() {
           retryLabel={copy.global.retryAction}
           onRetry={() => {
             setState('loading');
-            setReloadKey((key) => key + 1);
+            void loadScreen();
           }}
         />
       </Screen>
@@ -226,6 +242,7 @@ export default function SavedBillDetailScreen() {
 
   const title = getBillDisplayTitle(bill);
   const hasDetectedTotal = reconciliation.detectedReceiptTotalCentavos !== null;
+  const negativeTotalWarning = getNegativeTotalWarning(splitResult.computedTotalCentavos);
   const hasReceiptImage = bill.receiptImageUri != null;
   const hasRawOcrText = bill.rawOcrText != null;
 
@@ -320,12 +337,12 @@ export default function SavedBillDetailScreen() {
   // order), giving the user a full path back through
   // review -> participants -> assignments -> adjustments -> summary to
   // change anything before re-saving.
+  //
+  // beginCompletedBillEdit snapshots the bill first, so leaving the edit
+  // without changing anything puts it back to COMPLETED (billEditSession.ts).
   async function handleEditBill() {
-    await billsRepository.update(billId, {
-      status: 'DRAFT',
-      completedAt: null,
-      updatedAt: nowIso(),
-    });
+    if (!bill) return;
+    await beginCompletedBillEdit(bill);
     router.replace(`/bill/${billId}/receipt-review`);
   }
 
@@ -373,6 +390,8 @@ export default function SavedBillDetailScreen() {
               hasDetectedTotal ? (reconciliation.matches ? 'matches' : 'mismatch') : null
             }
           />
+          {/* Derived from the current total on every load (incl. refocus). */}
+          {negativeTotalWarning ? <WarningNote message={negativeTotalWarning} /> : null}
 
           {tripLink ? (
             // Deliberately obvious (secondary, full-width) — matches
@@ -398,6 +417,7 @@ export default function SavedBillDetailScreen() {
               variant="secondary"
               label={copy.savedBillDetail.editAction}
               onPress={handleEditBill}
+              disabled={isRestoring}
               icon={(color) => <Feather name="edit" size={18} color={color} />}
             />
             <AppButton

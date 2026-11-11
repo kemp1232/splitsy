@@ -26,6 +26,22 @@ export function isValidDateOnly(value: string): boolean {
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 }
 
+// For a scanned date (OCR/AI) that's shaped YYYY-MM-DD but isn't a real day
+// ("2026-02-31"): the real date it rolls over to, the same way
+// new Date(y, m - 1, d) does (→ "2026-03-03"), so it can be saved as a valid
+// date and the user told. A real date, or anything not shaped YYYY-MM-DD,
+// comes back unchanged with rolledOver false.
+export function rollOverDateOnly(value: string): { date: string; rolledOver: boolean } {
+  const match = DATE_ONLY_PATTERN.exec(value);
+  if (!match || isValidDateOnly(value)) return { date: value, rolledOver: false };
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return {
+    date: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    rolledOver: true,
+  };
+}
+
 export function formatBillListDate(isoDate: string): string {
   const date = parseBillDate(isoDate);
   return date.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });

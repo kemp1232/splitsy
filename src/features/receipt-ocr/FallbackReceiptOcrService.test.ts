@@ -3,6 +3,7 @@ import {
   OcrDailyLimitError,
   OcrQueuedError,
   OcrRateLimitedError,
+  OcrServiceBusyError,
   OcrTruncatedError,
   OcrUnauthenticatedError,
   type OcrRecognitionResult,
@@ -220,6 +221,24 @@ describe('FallbackReceiptOcrService', () => {
 
     const result = await service.recognize('file:///receipt.jpg');
 
+    expect(result.fallbackReason).toBeUndefined();
+  });
+
+  it('falls back on-device without a fallbackReason when the reading service is busy', async () => {
+    const fallback = jest.fn(async () => resultTaggedWith('on-device'));
+    const service = new FallbackReceiptOcrService(
+      {
+        recognize: async () => {
+          throw new OcrServiceBusyError('OCR backend request failed (502): over capacity', 502);
+        },
+      },
+      { recognize: fallback },
+    );
+
+    const result = await service.recognize('file:///receipt.jpg');
+
+    expect(fallback).toHaveBeenCalled();
+    expect(result.source).toBe('on-device');
     expect(result.fallbackReason).toBeUndefined();
   });
 });

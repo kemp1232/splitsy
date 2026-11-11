@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
 import { memo, useMemo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View, type TextStyle } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { IconButton } from '@/components/ui/IconButton';
@@ -60,7 +60,7 @@ function LineItemRowComponent({ item, onEdit, onDelete }: Props) {
         accessibilityHint={copy.receiptReview.editItemHint}
         style={({ pressed }) => [styles.main, pressed && styles.pressed]}
       >
-        <AppText variant="body" numberOfLines={2} style={styles.name}>
+        <AppText variant="body" numberOfLines={2} style={[styles.name, webBreakLongWords]}>
           {item.name}
         </AppText>
         {showQuantity ? (
@@ -92,6 +92,13 @@ function LineItemRowComponent({ item, onEdit, onDelete }: Props) {
 
 export const LineItemRow = memo(LineItemRowComponent);
 
+// Web only: a long unbroken name (no spaces) would otherwise run past its
+// column into the quantity/amount instead of wrapping — native already breaks
+// such words at the column edge. `wordBreak` isn't in RN's TextStyle type, but
+// react-native-web passes it straight through to the element's CSS.
+const webBreakLongWords =
+  Platform.OS === 'web' ? ({ wordBreak: 'break-word' } as unknown as TextStyle) : null;
+
 function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     row: {
@@ -108,6 +115,10 @@ function createStyles(colors: ColorTokens) {
     },
     main: {
       flex: 1,
+      // Lets the row shrink below its content's width (web flex items
+      // default to min-width: auto), so a long name wraps instead of
+      // pushing the amount and buttons out of place.
+      minWidth: 0,
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
@@ -124,6 +135,7 @@ function createStyles(colors: ColorTokens) {
     name: {
       flexShrink: 1,
       flexGrow: 1,
+      minWidth: 0,
       fontSize: 14,
       lineHeight: 19,
     },

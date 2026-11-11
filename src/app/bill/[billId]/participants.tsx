@@ -22,6 +22,7 @@ import { copy } from '@/constants/copy';
 import type { Participant } from '@/db/repositories/participants.repository';
 import { participantsRepository } from '@/db/repositories/participants.repository';
 import { removeParticipant } from '@/features/bills/bill.service';
+import { useEnsureBillEditable } from '@/features/bills/useEnsureBillEditable';
 import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
 import {
   MAX_PARTICIPANT_NAME_LENGTH,
@@ -45,6 +46,8 @@ export default function ParticipantsScreen() {
   const meName = resolveQuickAddMeName(session?.user.name);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { billId } = useLocalSearchParams<{ billId: string }>();
+  // Back in edit mode if the bill was re-completed underneath this screen.
+  useEnsureBillEditable(billId);
 
   const [state, setState] = useState<LoadState>('loading');
   // Bumped by the error state's Retry so the load effect below runs again —

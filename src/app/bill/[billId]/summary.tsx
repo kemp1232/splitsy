@@ -1,7 +1,7 @@
 import Feather from '@expo/vector-icons/Feather';
 import * as Clipboard from 'expo-clipboard';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { BillTotalCard } from '@/components/bill/BillTotalCard';
@@ -15,6 +15,7 @@ import { InlineError } from '@/components/ui/InlineError';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { WarningNote } from '@/components/ui/WarningNote';
 import { copy } from '@/constants/copy';
 import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
 import { adjustmentAllocationsRepository } from '@/db/repositories/adjustmentAllocations.repository';
@@ -37,7 +38,9 @@ import {
   groupAssignedParticipantIdsByLineItem,
   partitionLineItemsByAssignment,
 } from '@/features/assignments/partitionLineItemsByAssignment';
+import { endBillEdit } from '@/features/bills/billEditSession';
 import { getBillCustomName, getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
+import { useEnsureBillEditable } from '@/features/bills/useEnsureBillEditable';
 import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
 import {
   buildParticipantAdjustmentShareDisplay,
@@ -45,6 +48,7 @@ import {
   type SummaryAdjustmentInfo,
   type SummaryItemInfo,
 } from '@/features/summary/buildParticipantShareDisplay';
+import { getNegativeTotalWarning } from '@/features/receipt-review/buildTotalsSummary';
 import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
 import {
   displayParticipantName,
@@ -73,7 +77,8 @@ type LoadState = 'loading' | 'ready' | 'error';
 // yet, so this screen builds the smallest thing that works rather than
 // pulling in a new dependency).
 const TOAST_VISIBLE_MS = 2000;
-// How long "Bill saved." stays on screen before navigating back to Home —
+// How long "Bill saved." stays on screen before navigating back to Home (or
+// to the bill's trip page, for a bill in a trip) —
 // short enough not to feel like a stall, long enough that
 // the confirmation is actually readable before the screen changes.
 const SAVE_NAVIGATE_DELAY_MS = 700;
@@ -156,11 +161,10 @@ export default function SummaryScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { billId } = useLocalSearchParams<{ billId: string }>();
+  // Back in edit mode if the bill was re-completed underneath this screen.
+  useEnsureBillEditable(billId);
 
   const [state, setState] = useState<LoadState>('loading');
-  // Bumped by the error state's Retry so the load effect below runs again —
-  // setting state back to 'loading' alone never re-triggers it.
-  const [reloadKey, setReloadKey] = useState(0);
   const [bill, setBill] = useState<Bill | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [items, setItems] = useState<LineItem[]>([]);
@@ -194,71 +198,79 @@ export default function SummaryScreen() {
     toastTimeoutRef.current = setTimeout(() => setToastMessage(null), TOAST_VISIBLE_MS);
   }
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await fetchSummaryData(billId);
-        if (!data.billRow) {
-          setState('error');
-          return;
-        }
-
-        if (data.billRow.tripId) {
-          const trip = await tripsRepository.getById(data.billRow.tripId);
-          if (trip) {
-            setTripLink({ id: trip.id, name: trip.name ?? copy.trip.unknownTripTitle });
-          }
-        }
-
-        // Draft-progression guard (spec section 15), the same one
-        // adjustments.tsx already applies plus one more rule: this is the
-        // "otherwise -> summary" terminal step, so every earlier condition
-        // must already be satisfied, and (rule 4) a receipt-total mismatch
-        // must be either resolved or explicitly acknowledged before this
-        // screen is reachable at all — never render it, and never call
-        // calculateSplit, against data it isn't ready for.
-        if (data.itemRows.length === 0) {
-          router.replace(`/bill/${billId}/receipt-review`);
-          return;
-        }
-        if (!hasMinimumParticipants(data.participantRows.length)) {
-          router.replace(`/bill/${billId}/participants`);
-          return;
-        }
-        const { unassignedItems } = partitionLineItemsByAssignment(
-          data.itemRows,
-          data.assignmentRows,
-        );
-        if (unassignedItems.length > 0) {
-          router.replace(`/bill/${billId}/assignments`);
-          return;
-        }
-
-        const { splitResult: nextSplitResult, reconciliation: nextReconciliation } =
-          computeSplitAndReconciliation(data);
-
-        if (!nextReconciliation.matches && !data.billRow.discrepancyAcknowledged) {
-          router.replace(`/bill/${billId}/adjustments`);
-          return;
-        }
-
-        setBill(data.billRow);
-        setParticipants(data.participantRows);
-        setItems(data.itemRows);
-        setAdjustments(data.adjustmentRows);
-        setAssignmentRows(data.assignmentRows);
-        setSplitResult(nextSplitResult);
-        setReconciliation(nextReconciliation);
-        setState('ready');
-      } catch {
-        // Covers both a genuine load failure and calculateSplit's
-        // SplitInvariantError (spec 10.7) — either way not a user-fixable
-        // validation case, so it's the same generic error state as any other
-        // unexpected failure.
+  // Runs on every focus, not just mount: this screen stays mounted under its
+  // own "Edit bill" (pushed) and trip page, so coming back re-reads the bill —
+  // totals and the negative-total warning always match the current data.
+  // (Loads through loadScreen, which the error state's Retry also calls.)
+  const loadScreen = useCallback(async () => {
+    try {
+      const data = await fetchSummaryData(billId);
+      if (!data.billRow) {
         setState('error');
+        return;
       }
-    })();
-  }, [billId, router, reloadKey]);
+
+      if (data.billRow.tripId) {
+        const trip = await tripsRepository.getById(data.billRow.tripId);
+        if (trip) {
+          setTripLink({ id: trip.id, name: trip.name ?? copy.trip.unknownTripTitle });
+        }
+      }
+
+      // Draft-progression guard (spec section 15), the same one
+      // adjustments.tsx already applies plus one more rule: this is the
+      // "otherwise -> summary" terminal step, so every earlier condition
+      // must already be satisfied, and (rule 4) a receipt-total mismatch
+      // must be either resolved or explicitly acknowledged before this
+      // screen is reachable at all — never render it, and never call
+      // calculateSplit, against data it isn't ready for.
+      if (data.itemRows.length === 0) {
+        router.replace(`/bill/${billId}/receipt-review`);
+        return;
+      }
+      if (!hasMinimumParticipants(data.participantRows.length)) {
+        router.replace(`/bill/${billId}/participants`);
+        return;
+      }
+      const { unassignedItems } = partitionLineItemsByAssignment(
+        data.itemRows,
+        data.assignmentRows,
+      );
+      if (unassignedItems.length > 0) {
+        router.replace(`/bill/${billId}/assignments`);
+        return;
+      }
+
+      const { splitResult: nextSplitResult, reconciliation: nextReconciliation } =
+        computeSplitAndReconciliation(data);
+
+      if (!nextReconciliation.matches && !data.billRow.discrepancyAcknowledged) {
+        router.replace(`/bill/${billId}/adjustments`);
+        return;
+      }
+
+      setBill(data.billRow);
+      setParticipants(data.participantRows);
+      setItems(data.itemRows);
+      setAdjustments(data.adjustmentRows);
+      setAssignmentRows(data.assignmentRows);
+      setSplitResult(nextSplitResult);
+      setReconciliation(nextReconciliation);
+      setState('ready');
+    } catch {
+      // Covers both a genuine load failure and calculateSplit's
+      // SplitInvariantError (spec 10.7) — either way not a user-fixable
+      // validation case, so it's the same generic error state as any other
+      // unexpected failure.
+      setState('error');
+    }
+  }, [billId, router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadScreen();
+    }, [loadScreen]),
+  );
 
   if (state === 'loading') {
     return (
@@ -277,7 +289,7 @@ export default function SummaryScreen() {
           retryLabel={copy.global.retryAction}
           onRetry={() => {
             setState('loading');
-            setReloadKey((key) => key + 1);
+            void loadScreen();
           }}
         />
       </Screen>
@@ -289,6 +301,7 @@ export default function SummaryScreen() {
   // so the caption only appends the receipt date to a real bill name.
   const hasCustomName = getBillCustomName(bill) !== null;
   const hasDetectedTotal = reconciliation.detectedReceiptTotalCentavos !== null;
+  const negativeTotalWarning = getNegativeTotalWarning(splitResult.computedTotalCentavos);
 
   const assignedIdsByItem = groupAssignedParticipantIdsByLineItem(assignmentRows);
   const itemInfoById = new Map<string, SummaryItemInfo>(
@@ -364,12 +377,21 @@ export default function SummaryScreen() {
         completedAt: timestamp,
         updatedAt: timestamp,
       });
+      // Saved for real: an earlier Edit bill snapshot has nothing to restore.
+      endBillEdit(billId);
       showToast(copy.summary.savedToast);
       // Back to Home, where the saved bill is listed and still openable.
       // dismissTo (not replace) pops the whole bill flow off the stack — same
-      // as receipt-review.tsx's/index.tsx's own back-to-Home handling.
+      // as receipt-review.tsx's/index.tsx's own back-to-Home handling. A bill
+      // in a trip then goes on to its trip page: pushed on top of Home rather
+      // than dismissTo('/trip/…'), which, when the flow wasn't started from
+      // the trip page, would leave the stale wizard screens underneath it.
+      const tripId = tripLink?.id;
       setTimeout(() => {
         router.dismissTo('/');
+        if (tripId) {
+          router.push({ pathname: '/trip/[tripId]', params: { tripId } });
+        }
       }, SAVE_NAVIGATE_DELAY_MS);
     } catch {
       // No spec-mandated copy for a bill-save failure on this screen (spec
@@ -432,6 +454,9 @@ export default function SummaryScreen() {
               : title
           }
         />
+        {/* Derived from the current total on every load (incl. refocus), so
+            it goes away as soon as the items/discounts are fixed. */}
+        {negativeTotalWarning ? <WarningNote message={negativeTotalWarning} /> : null}
 
         <View style={styles.statusBlock}>
           {/* Deliberately obvious (secondary, full-width), not the quieter
