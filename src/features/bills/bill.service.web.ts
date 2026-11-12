@@ -14,6 +14,7 @@ import {
   adjustments,
   appSettings,
   bills,
+  debtPayments,
   lineItems,
   participants,
   tripParticipants,
@@ -247,6 +248,9 @@ export async function deleteBill(bill: Bill): Promise<void> {
 
 export async function resetAllLocalData(): Promise<void> {
   await db.transaction(async (tx) => {
+    // Trips are kept, so their debt paid marks are cleared explicitly (see
+    // bill.service.ts's resetAllLocalData).
+    await tx.delete(debtPayments);
     await tx.delete(bills);
     await tx.delete(appSettings);
   });

@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import {
+  check,
+  index,
+  integer,
+  primaryKey,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 
 // Seven tables from spec section 9.7, plus `trips` and `tripParticipants`
 // (Trip feature addition, not from the spec). Money columns are always
@@ -225,6 +234,37 @@ export const adjustmentAllocations = sqliteTable(
   (table) => [
     primaryKey({ columns: [table.adjustmentId, table.participantId] }),
     index('adjustment_allocations_participant_id_idx').on(table.participantId),
+  ],
+);
+
+// Not from the spec — per-debt "paid" marks for the settle-up screens.
+// Debts themselves are never stored (they're re-derived from bills on every
+// render), so a mark records the debt it was made against — debtor key,
+// creditor key and exact amount — and only counts while the recomputed debt
+// still matches all three (see features/settlement/debtPaidStatus.ts).
+// Exactly one scope is set: `billId` for a standalone bill (keys are
+// bill-scoped participant ids) or `tripId` for a trip's combined settlement
+// (keys are computeTripSettlement's resolved identities). Both FKs cascade,
+// so deleting the bill or trip removes its marks. Two unique indexes rather
+// than one: SQLite treats NULLs as distinct, so each index only constrains
+// its own scope's rows.
+export const debtPayments = sqliteTable(
+  'debt_payments',
+  {
+    id: text('id').primaryKey(),
+    billId: text('bill_id').references(() => bills.id, { onDelete: 'cascade' }),
+    tripId: text('trip_id').references(() => trips.id, { onDelete: 'cascade' }),
+    fromKey: text('from_key').notNull(),
+    toKey: text('to_key').notNull(),
+    amountCentavos: integer('amount_centavos').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(current_timestamp)`),
+  },
+  (table) => [
+    uniqueIndex('debt_payments_bill_pair_idx').on(table.billId, table.fromKey, table.toKey),
+    uniqueIndex('debt_payments_trip_pair_idx').on(table.tripId, table.fromKey, table.toKey),
+    check('debt_payments_scope_check', sql`(${table.billId} IS NULL) <> (${table.tripId} IS NULL)`),
   ],
 );
 

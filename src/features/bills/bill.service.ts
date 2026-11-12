@@ -12,6 +12,7 @@ import {
   adjustments,
   appSettings,
   bills,
+  debtPayments,
   lineItems,
   participants,
   tripParticipants,
@@ -335,6 +336,9 @@ export function resetAllLocalData(): void {
   db.transaction((tx) => {
     // Cascades line_items, participants, item_assignments, adjustments, and
     // adjustment_allocations for every bill via the foreign_keys pragma.
+    // Debt paid marks go explicitly: trips are kept, so their trip-scoped
+    // marks would otherwise survive and could match future debts.
+    tx.delete(debtPayments).run();
     tx.delete(bills).run();
     tx.delete(appSettings).run();
   });

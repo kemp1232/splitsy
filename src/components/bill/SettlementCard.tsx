@@ -1,11 +1,12 @@
 import Feather from '@expo/vector-icons/Feather';
-import { Fragment, useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Fragment, memo, useCallback, useMemo } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { GroupedCard, GroupedSeparator } from '@/components/ui/GroupedSection';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { copy } from '@/constants/copy';
+import { transactionKey } from '@/features/settlement/debtPaidStatus';
 import type { SettlementTransaction } from '@/features/splitting/settlement.types';
 import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
 import { tint } from '@/theme/tint';
@@ -29,7 +30,17 @@ type Props = {
   // collected than the bill required (no debtor left to pay them). Listed as
   // "X is still owed ₱Y" with the over-collected note; omit to skip.
   unsettledCredits?: { participantId: string; amountCentavos: number }[];
+  // Per-debt paid checkboxes: rendered only when onTogglePaid is supplied
+  // (standalone bills and the trip settle-up screen — never a bill inside a
+  // trip). paidKeys holds debtPaidStatus.ts's transactionKey of each debt
+  // currently counted as paid; togglingDisabled locks every checkbox while
+  // a write is in flight.
+  paidKeys?: Set<string>;
+  onTogglePaid?: (transaction: SettlementTransaction, nextPaid: boolean) => void;
+  togglingDisabled?: boolean;
 };
+
+type Styles = ReturnType<typeof createStyles>;
 
 // Post-MVP scope expansion (see settlement.ts's header comment) — the
 // summary and saved-bill-detail screens' "who owes whom" display, built from
@@ -44,6 +55,9 @@ export function SettlementCard({
   nameByParticipantId,
   totalCentavos,
   unsettledCredits,
+  paidKeys,
+  onTogglePaid,
+  togglingDisabled = false,
 }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -78,33 +92,21 @@ export function SettlementCard({
         </View>
       ) : null}
 
-      {transactions.map((transaction, index) => {
-        const debtorName = nameByParticipantId.get(transaction.fromParticipantId) ?? '';
-        const creditorName = nameByParticipantId.get(transaction.toParticipantId) ?? '';
-        const label = copy.settlement.owesLabel
-          .replace('{debtor}', debtorName)
-          .replace('{creditor}', creditorName);
-
+      {transactions.map((transaction) => {
+        const key = transactionKey(transaction);
         return (
-          <Fragment
-            key={`${transaction.fromParticipantId}-${transaction.toParticipantId}-${index}`}
-          >
+          <Fragment key={key}>
             <GroupedSeparator />
-            <View style={styles.row}>
-              <AppText variant="body" numberOfLines={1} style={styles.rowLabel}>
-                {label}
-              </AppText>
-              {/* accessibilityLabel is the spoken form (spec section 17's
-                  "520 pesos and 25 centavos" example), distinct from the
-                  visible formatCentavos text. */}
-              <AppText
-                variant="subheading"
-                style={styles.uniformText}
-                accessibilityLabel={formatCentavosForSpeech(transaction.amountCentavos)}
-              >
-                {formatCentavos(transaction.amountCentavos)}
-              </AppText>
-            </View>
+            <SettlementRow
+              transaction={transaction}
+              debtorName={nameByParticipantId.get(transaction.fromParticipantId) ?? ''}
+              creditorName={nameByParticipantId.get(transaction.toParticipantId) ?? ''}
+              paid={paidKeys?.has(key) ?? false}
+              onTogglePaid={onTogglePaid}
+              disabled={togglingDisabled}
+              styles={styles}
+              colors={colors}
+            />
           </Fragment>
         );
       })}
@@ -167,6 +169,100 @@ export function SettlementCard({
   );
 }
 
+type RowProps = {
+  transaction: SettlementTransaction;
+  debtorName: string;
+  creditorName: string;
+  paid: boolean;
+  onTogglePaid?: (transaction: SettlementTransaction, nextPaid: boolean) => void;
+  disabled: boolean;
+  styles: Styles;
+  colors: ColorTokens;
+};
+
+// One "A owes B ₱X" row. Memoized with primitive/stable props so toggling
+// one debt doesn't re-render the others.
+const SettlementRow = memo(function SettlementRow({
+  transaction,
+  debtorName,
+  creditorName,
+  paid,
+  onTogglePaid,
+  disabled,
+  styles,
+  colors,
+}: RowProps) {
+  const label = copy.settlement.owesLabel
+    .replace('{debtor}', () => debtorName)
+    .replace('{creditor}', () => creditorName);
+  const spokenAmount = formatCentavosForSpeech(transaction.amountCentavos);
+  const handlePress = useCallback(() => {
+    onTogglePaid?.(transaction, !paid);
+  }, [onTogglePaid, transaction, paid]);
+
+  if (!onTogglePaid) {
+    return (
+      <View style={styles.row}>
+        <AppText variant="body" numberOfLines={1} style={styles.rowLabel}>
+          {label}
+        </AppText>
+        {/* accessibilityLabel is the spoken form (spec section 17's
+            "520 pesos and 25 centavos" example), distinct from the
+            visible formatCentavos text. */}
+        <AppText variant="subheading" style={styles.uniformText} accessibilityLabel={spokenAmount}>
+          {formatCentavos(transaction.amountCentavos)}
+        </AppText>
+      </View>
+    );
+  }
+
+  // Paid state is conveyed by the checkbox icon AND the "Paid" caption, not
+  // by color alone (spec section 17).
+  return (
+    <Pressable
+      onPress={handlePress}
+      disabled={disabled}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: paid, disabled }}
+      accessibilityLabel={copy.settlement.debtA11yLabel
+        .replace('{label}', () => label)
+        .replace('{amount}', () => spokenAmount)}
+      accessibilityHint={paid ? copy.settlement.unmarkPaidHint : copy.settlement.markPaidHint}
+      style={styles.row}
+    >
+      <Feather
+        name={paid ? 'check-square' : 'square'}
+        size={20}
+        color={paid ? colors.success : colors.textSecondary}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      />
+      <View style={styles.rowLabel}>
+        <AppText
+          variant="body"
+          numberOfLines={1}
+          color={paid ? 'textSecondary' : 'textPrimary'}
+          style={paid ? styles.paidText : styles.uniformText}
+        >
+          {label}
+        </AppText>
+        {paid ? (
+          <AppText variant="caption" color="success">
+            {copy.settlement.paidLabel}
+          </AppText>
+        ) : null}
+      </View>
+      <AppText
+        variant="subheading"
+        color={paid ? 'textSecondary' : 'textPrimary'}
+        style={paid ? styles.paidText : styles.uniformText}
+      >
+        {formatCentavos(transaction.amountCentavos)}
+      </AppText>
+    </Pressable>
+  );
+});
+
 function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
     headerRow: {
@@ -213,6 +309,11 @@ function createStyles(colors: ColorTokens) {
     uniformText: {
       fontSize: 14,
       lineHeight: 19,
+    },
+    paidText: {
+      fontSize: 14,
+      lineHeight: 19,
+      textDecorationLine: 'line-through',
     },
     statusRow: {
       flexDirection: 'row',
