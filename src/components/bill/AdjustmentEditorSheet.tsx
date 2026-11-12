@@ -20,6 +20,7 @@ import { useSlideUpAnimation } from '@/components/ui/useSlideUpAnimation';
 import { copy } from '@/constants/copy';
 import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
 import type { Participant } from '@/db/repositories/participants.repository';
+import { adjustmentAmountSign } from '@/features/adjustments/adjustmentSign';
 import {
   defaultAllocationMethodForType,
   type AdjustmentType,
@@ -119,7 +120,8 @@ export function AdjustmentEditorSheet({
   const [type, setType] = useState<AdjustmentType>(initial?.type ?? 'TAX');
   const [label, setLabel] = useState(initial?.label ?? '');
   // The field always holds a non-negative magnitude — DISCOUNT's negative
-  // sign (spec 10.2) is applied on save, not while typing. This keeps
+  // sign (spec 10.2), and an existing negative adjustment's (adjustmentSign.ts),
+  // is applied on save, not while typing. This keeps
   // AmountInput itself untouched (digits/decimal only) rather than teaching
   // it a minus-sign syntax that every other caller would also have to guard
   // against.
@@ -139,6 +141,9 @@ export function AdjustmentEditorSheet({
   >({});
   const [amountError, setAmountError] = useState<string | null>(null);
   const [customError, setCustomError] = useState<string | null>(null);
+  // -1 for DISCOUNT and for an existing negative adjustment whose type is
+  // unchanged (adjustmentSign.ts).
+  const amountSign = adjustmentAmountSign(type, initial);
   // Custom amounts need people to split between — on receipt-review.tsx (which
   // comes before the participants step) there may be none yet, so the option
   // is hidden there. An adjustment already saved as CUSTOM keeps it, so it
@@ -208,8 +213,7 @@ export function AdjustmentEditorSheet({
     }
     setAmountError(null);
 
-    const signedAmountCentavos =
-      type === 'DISCOUNT' ? -amountMagnitudeCentavos : amountMagnitudeCentavos;
+    const signedAmountCentavos = amountSign * amountMagnitudeCentavos;
     const trimmedLabel = label.trim().slice(0, MAX_LABEL_LENGTH) || TYPE_LABELS[type];
 
     if (allocationMethod !== 'CUSTOM') {
@@ -327,6 +331,11 @@ export function AdjustmentEditorSheet({
                 {type === 'DISCOUNT' ? (
                   <AppText variant="caption" color="textSecondary">
                     {copy.adjustmentEditor.discountHelper}
+                  </AppText>
+                ) : null}
+                {type !== 'DISCOUNT' && amountSign < 0 ? (
+                  <AppText variant="caption" color="textSecondary">
+                    {copy.adjustmentEditor.negativeAdjustmentHelper}
                   </AppText>
                 ) : null}
 

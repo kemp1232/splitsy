@@ -37,18 +37,24 @@ export async function loadPersistedDatabase(): Promise<Uint8Array | null> {
   }
 }
 
+// Rejects on failure — for the few callers that must know the save landed
+// (client.web.ts's persistDatabaseNow, used by the full local-data wipe).
+export async function savePersistedDatabaseOrThrow(bytes: Uint8Array): Promise<void> {
+  const idb = await openIdb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = idb.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).put(bytes, RECORD_KEY);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error('Failed to save database'));
+  });
+}
+
 // Best-effort — a failed save just means the next reload starts fresh again,
 // same as this app's pre-persistence behavior, rather than something worth
 // surfacing to the user.
 export async function savePersistedDatabase(bytes: Uint8Array): Promise<void> {
   try {
-    const idb = await openIdb();
-    await new Promise<void>((resolve, reject) => {
-      const tx = idb.transaction(STORE_NAME, 'readwrite');
-      tx.objectStore(STORE_NAME).put(bytes, RECORD_KEY);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error ?? new Error('Failed to save database'));
-    });
+    await savePersistedDatabaseOrThrow(bytes);
   } catch {
     // Swallowed — see header comment.
   }

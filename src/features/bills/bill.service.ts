@@ -13,6 +13,8 @@ import {
   bills,
   lineItems,
   participants,
+  tripParticipants,
+  trips,
 } from '@/db/schema';
 import { deleteReceiptsDirectory } from '@/features/receipt-capture/receiptImage.service';
 import { PARSER_VERSION } from '@/features/receipt-parser/parseReceipt';
@@ -306,6 +308,24 @@ export function resetAllLocalData(): void {
     // Cascades line_items, participants, item_assignments, adjustments, and
     // adjustment_allocations for every bill via the foreign_keys pragma.
     tx.delete(bills).run();
+    tx.delete(appSettings).run();
+  });
+
+  deleteReceiptsDirectory();
+}
+
+// The full wipe — used by account deletion (deleteAccount.ts), its startup
+// retry (completePendingLocalWipe.ts), and an account switch on this device
+// (ensureLocalDataOwner.ts). Same as resetAllLocalData plus every trip and
+// trip roster row; deliberately a separate function so Settings' "Delete all
+// local data" keeps trips as its copy promises. Bills go first, so no bill
+// participant still points at a trip participant when those rows are removed.
+// Same non-atomic DB-then-directory order and reasoning as resetAllLocalData.
+export function wipeAllLocalData(): void {
+  db.transaction((tx) => {
+    tx.delete(bills).run();
+    tx.delete(tripParticipants).run();
+    tx.delete(trips).run();
     tx.delete(appSettings).run();
   });
 
