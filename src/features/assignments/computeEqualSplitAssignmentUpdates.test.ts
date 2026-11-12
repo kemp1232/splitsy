@@ -37,8 +37,8 @@ function makeParticipant(id: string): Participant {
   };
 }
 
-function makeAssignment(lineItemId: string, participantId: string): ItemAssignment {
-  return { lineItemId, participantId, weight: 1 };
+function makeAssignment(lineItemId: string, participantId: string, weight = 1): ItemAssignment {
+  return { lineItemId, participantId, weight };
 }
 
 describe('computeEqualSplitAssignmentUpdates', () => {
@@ -107,6 +107,16 @@ describe('computeEqualSplitAssignmentUpdates', () => {
     );
 
     expect(updates).toEqual([{ lineItemId: 'item-drifted', participantIds: ['p-1', 'p-2'] }]);
+  });
+
+  it('flags an item assigned to everyone but still carrying custom share counts', () => {
+    const item1 = makeLineItem('item-1');
+    const participants = [makeParticipant('p-1'), makeParticipant('p-2')];
+    const assignmentRows = [makeAssignment('item-1', 'p-1', 3), makeAssignment('item-1', 'p-2')];
+
+    const updates = computeEqualSplitAssignmentUpdates([item1], participants, assignmentRows);
+
+    expect(updates).toEqual([{ lineItemId: 'item-1', participantIds: ['p-1', 'p-2'] }]);
   });
 });
 

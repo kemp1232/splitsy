@@ -167,6 +167,192 @@ describe('calculateSplit', () => {
   });
 });
 
+// The 2026-11-12 "unequal shares" amendment: an item's assigneeWeights split
+// it by share count instead of equally.
+describe('calculateSplit with item share weights', () => {
+  function itemSharesOf(result: SplitCalculationResult, participantId: string): number {
+    return (
+      result.participantShares.find((share) => share.participantId === participantId)
+        ?.itemSubtotalCentavos ?? Number.NaN
+    );
+  }
+
+  function sumOfFinalTotals(result: SplitCalculationResult): number {
+    return result.participantShares.reduce((sum, share) => sum + share.finalTotalCentavos, 0);
+  }
+
+  it('splits a weighted item proportionally (3 shares vs 2 of 500 -> 300/200)', () => {
+    const result = calculateSplit({
+      participants: [{ participantId: 'A' }, { participantId: 'B' }],
+      items: [
+        {
+          lineItemId: 'beers',
+          lineTotalCentavos: 500,
+          assigneeParticipantIds: ['A', 'B'],
+          assigneeWeights: [3, 2],
+        },
+      ],
+      adjustments: [],
+    });
+    expect(itemSharesOf(result, 'A')).toBe(300);
+    expect(itemSharesOf(result, 'B')).toBe(200);
+    expect(sumOfFinalTotals(result)).toBe(result.computedTotalCentavos);
+    expect(() => assertSplitInvariant(result)).not.toThrow();
+  });
+
+  it('gives an uneven remainder to the largest remainder (1000 at 2:1 -> 667/333)', () => {
+    const result = calculateSplit({
+      participants: [{ participantId: 'A' }, { participantId: 'B' }],
+      items: [
+        {
+          lineItemId: 'item1',
+          lineTotalCentavos: 1000,
+          assigneeParticipantIds: ['A', 'B'],
+          assigneeWeights: [2, 1],
+        },
+      ],
+      adjustments: [],
+    });
+    expect(itemSharesOf(result, 'A')).toBe(667);
+    expect(itemSharesOf(result, 'B')).toBe(333);
+    expect(sumOfFinalTotals(result)).toBe(1000);
+  });
+
+  it('breaks a remainder tie deterministically by assignee order (101 at 1:2:2 -> 20/41/40)', () => {
+    const input: SplitCalculationInput = {
+      participants: [{ participantId: 'A' }, { participantId: 'B' }, { participantId: 'C' }],
+      items: [
+        {
+          lineItemId: 'item1',
+          lineTotalCentavos: 101,
+          assigneeParticipantIds: ['A', 'B', 'C'],
+          assigneeWeights: [1, 2, 2],
+        },
+      ],
+      adjustments: [],
+    };
+    const result = calculateSplit(input);
+    expect(['A', 'B', 'C'].map((id) => itemSharesOf(result, id))).toEqual([20, 41, 40]);
+    expect(calculateSplit(input)).toEqual(result);
+  });
+
+  it('floors toward -Infinity for a negative weighted item (-501 at 3:2 -> -301/-200)', () => {
+    const result = calculateSplit({
+      participants: [{ participantId: 'A' }, { participantId: 'B' }],
+      items: [
+        {
+          lineItemId: 'discount',
+          lineTotalCentavos: -501,
+          assigneeParticipantIds: ['A', 'B'],
+          assigneeWeights: [3, 2],
+        },
+      ],
+      adjustments: [],
+    });
+    expect(itemSharesOf(result, 'A')).toBe(-301);
+    expect(itemSharesOf(result, 'B')).toBe(-200);
+    expect(sumOfFinalTotals(result)).toBe(-501);
+  });
+
+  it('weights PROPORTIONAL adjustments by the weighted item subtotals', () => {
+    const result = calculateSplit({
+      participants: [{ participantId: 'A' }, { participantId: 'B' }],
+      items: [
+        {
+          lineItemId: 'beers',
+          lineTotalCentavos: 500,
+          assigneeParticipantIds: ['A', 'B'],
+          assigneeWeights: [3, 2],
+        },
+      ],
+      adjustments: [{ adjustmentId: 'tip', amountCentavos: 50, allocationMethod: 'PROPORTIONAL' }],
+    });
+    const byId = new Map(result.participantShares.map((share) => [share.participantId, share]));
+    expect(byId.get('A')?.adjustmentTotalCentavos).toBe(30);
+    expect(byId.get('B')?.adjustmentTotalCentavos).toBe(20);
+    expect(byId.get('A')?.finalTotalCentavos).toBe(330);
+    expect(byId.get('B')?.finalTotalCentavos).toBe(220);
+  });
+
+  it('gives identical results for all-1, all-equal and missing weights (same as an equal split)', () => {
+    const participants = [{ participantId: 'A' }, { participantId: 'B' }, { participantId: 'C' }];
+    const adjustments: SplitCalculationInput['adjustments'] = [
+      { adjustmentId: 'tip', amountCentavos: 101, allocationMethod: 'PROPORTIONAL' },
+    ];
+    const baseItems = [
+      { lineItemId: 'item1', lineTotalCentavos: 999, assigneeParticipantIds: ['A', 'B', 'C'] },
+      { lineItemId: 'item2', lineTotalCentavos: 1001, assigneeParticipantIds: ['C', 'A'] },
+    ];
+
+    const withoutWeights = calculateSplit({ participants, items: baseItems, adjustments });
+    const withOnes = calculateSplit({
+      participants,
+      items: baseItems.map((item) => ({
+        ...item,
+        assigneeWeights: item.assigneeParticipantIds.map(() => 1),
+      })),
+      adjustments,
+    });
+    const withTwos = calculateSplit({
+      participants,
+      items: baseItems.map((item) => ({
+        ...item,
+        assigneeWeights: item.assigneeParticipantIds.map(() => 2),
+      })),
+      adjustments,
+    });
+
+    expect(withOnes).toEqual(withoutWeights);
+    expect(withTwos).toEqual(withoutWeights);
+    // Equal split of 999 by 3 and 1001 by 2 (spec 10.3; C is first in assignee order).
+    expect(withoutWeights.participantShares.map((share) => share.itemShares)).toEqual([
+      [
+        { lineItemId: 'item1', amountCentavos: 333 },
+        { lineItemId: 'item2', amountCentavos: 500 },
+      ],
+      [{ lineItemId: 'item1', amountCentavos: 333 }],
+      [
+        { lineItemId: 'item1', amountCentavos: 333 },
+        { lineItemId: 'item2', amountCentavos: 501 },
+      ],
+    ]);
+  });
+
+  it('throws when assigneeWeights does not line up with the assignees', () => {
+    expect(() =>
+      calculateSplit({
+        participants: [{ participantId: 'A' }, { participantId: 'B' }],
+        items: [
+          {
+            lineItemId: 'item1',
+            lineTotalCentavos: 100,
+            assigneeParticipantIds: ['A', 'B'],
+            assigneeWeights: [1],
+          },
+        ],
+        adjustments: [],
+      }),
+    ).toThrow();
+  });
+
+  it('throws on a share weight below 1', () => {
+    expect(() =>
+      calculateSplit({
+        participants: [{ participantId: 'A' }, { participantId: 'B' }],
+        items: [
+          {
+            lineItemId: 'item1',
+            lineTotalCentavos: 100,
+            assigneeParticipantIds: ['A', 'B'],
+            assigneeWeights: [0, 2],
+          },
+        ],
+        adjustments: [],
+      }),
+    ).toThrow();
+  });
+});
+
 describe('assertSplitInvariant', () => {
   it('throws a SplitInvariantError when participant final totals do not sum to the computed total', () => {
     const brokenResult: SplitCalculationResult = {

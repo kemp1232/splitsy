@@ -32,13 +32,25 @@ export const itemAssignmentsRepository = {
   // be atomic (spec section 19) so a crash mid-write never leaves the item
   // with zero assignments — db.transaction() runs both statements in one
   // SQLite transaction, matching the precedent in bill.service.ts.
-  async setForLineItem(lineItemId: string, participantIds: string[]): Promise<void> {
+  async setForLineItem(
+    lineItemId: string,
+    participantIds: string[],
+    // Each assignee's share count (the 2026-11-12 "unequal shares"
+    // amendment); anyone missing from the map gets the column default, 1.
+    weightsByParticipantId?: ReadonlyMap<string, number>,
+  ): Promise<void> {
     db.transaction((tx) => {
       tx.delete(itemAssignments).where(eq(itemAssignments.lineItemId, lineItemId)).run();
 
       if (participantIds.length > 0) {
         tx.insert(itemAssignments)
-          .values(participantIds.map((participantId) => ({ lineItemId, participantId })))
+          .values(
+            participantIds.map((participantId) => ({
+              lineItemId,
+              participantId,
+              weight: weightsByParticipantId?.get(participantId) ?? 1,
+            })),
+          )
           .run();
       }
     });

@@ -22,8 +22,8 @@ function makeLineItem(id: string, lineTotalCentavos: number): LineItem {
   };
 }
 
-function makeAssignment(lineItemId: string, participantId: string): ItemAssignment {
-  return { lineItemId, participantId, weight: 1 };
+function makeAssignment(lineItemId: string, participantId: string, weight = 1): ItemAssignment {
+  return { lineItemId, participantId, weight };
 }
 
 function makeAdjustment(
@@ -65,7 +65,12 @@ describe('buildSplitLineItems', () => {
       [makeAssignment('item-1', 'p-1'), makeAssignment('item-1', 'p-2')],
     );
     expect(result).toEqual([
-      { lineItemId: 'item-1', lineTotalCentavos: 1000, assigneeParticipantIds: ['p-1', 'p-2'] },
+      {
+        lineItemId: 'item-1',
+        lineTotalCentavos: 1000,
+        assigneeParticipantIds: ['p-1', 'p-2'],
+        assigneeWeights: [1, 1],
+      },
     ]);
   });
 
@@ -73,7 +78,12 @@ describe('buildSplitLineItems', () => {
     const item = makeLineItem('item-1', 1000);
     const result = buildSplitLineItems([item], []);
     expect(result).toEqual([
-      { lineItemId: 'item-1', lineTotalCentavos: 1000, assigneeParticipantIds: [] },
+      {
+        lineItemId: 'item-1',
+        lineTotalCentavos: 1000,
+        assigneeParticipantIds: [],
+        assigneeWeights: [],
+      },
     ]);
   });
 
@@ -85,9 +95,53 @@ describe('buildSplitLineItems', () => {
       [makeAssignment('item-2', 'p-1'), makeAssignment('item-1', 'p-2')],
     );
     expect(result).toEqual([
-      { lineItemId: 'item-1', lineTotalCentavos: 500, assigneeParticipantIds: ['p-2'] },
-      { lineItemId: 'item-2', lineTotalCentavos: 700, assigneeParticipantIds: ['p-1'] },
+      {
+        lineItemId: 'item-1',
+        lineTotalCentavos: 500,
+        assigneeParticipantIds: ['p-2'],
+        assigneeWeights: [1],
+      },
+      {
+        lineItemId: 'item-2',
+        lineTotalCentavos: 700,
+        assigneeParticipantIds: ['p-1'],
+        assigneeWeights: [1],
+      },
     ]);
+  });
+
+  it('carries each assignee share count, aligned with the assignee ids', () => {
+    const item1 = makeLineItem('item-1', 500);
+    const item2 = makeLineItem('item-2', 700);
+    const result = buildSplitLineItems(
+      [item1, item2],
+      [
+        makeAssignment('item-1', 'p-2', 2),
+        makeAssignment('item-2', 'p-2', 5),
+        makeAssignment('item-1', 'p-1', 3),
+      ],
+    );
+    expect(result.map((item) => [item.assigneeParticipantIds, item.assigneeWeights])).toEqual([
+      [
+        ['p-2', 'p-1'],
+        [2, 3],
+      ],
+      [['p-2'], [5]],
+    ]);
+  });
+
+  it('reads a stored weight that is not an integer >= 1 as 1', () => {
+    const item = makeLineItem('item-1', 1000);
+    const result = buildSplitLineItems(
+      [item],
+      [
+        makeAssignment('item-1', 'p-1', 0),
+        makeAssignment('item-1', 'p-2', 2.5),
+        makeAssignment('item-1', 'p-3', -3),
+        makeAssignment('item-1', 'p-4', 3),
+      ],
+    );
+    expect(result[0]?.assigneeWeights).toEqual([1, 1, 1, 3]);
   });
 });
 

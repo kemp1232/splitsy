@@ -185,8 +185,9 @@ export const itemAssignments = sqliteTable(
     participantId: text('participant_id')
       .notNull()
       .references(() => participants.id, { onDelete: 'cascade' }),
-    // Fixed to 1 in the MVP (spec section 9.4) — kept as a column so weighted
-    // splits can be added later without a schema migration to add the concept.
+    // Each assignee's whole-number share count of the item (integer >= 1,
+    // default 1 = equal split). Fixed to 1 in the original MVP (spec section
+    // 9.4); used for unequal shares since the 2026-11-12 amendment.
     weight: integer('weight').notNull().default(1),
   },
   (table) => [

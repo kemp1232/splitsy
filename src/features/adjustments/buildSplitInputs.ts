@@ -24,11 +24,29 @@ export function buildSplitLineItems(
   assignmentRows: ItemAssignment[],
 ): SplitLineItem[] {
   const assignedIdsByItem = groupAssignedParticipantIdsByLineItem(assignmentRows);
-  return items.map((item) => ({
-    lineItemId: item.id,
-    lineTotalCentavos: item.lineTotalCentavos,
-    assigneeParticipantIds: assignedIdsByItem.get(item.id) ?? [],
-  }));
+  // Each assignee's share count (the 2026-11-12 "unequal shares" amendment),
+  // looked up per id so assigneeWeights stays index-aligned with
+  // assigneeParticipantIds whatever order the rows came back in. The column
+  // has no CHECK constraint, so a stored weight that isn't an integer >= 1
+  // (never written by the app) is read as 1 — an equal share — rather than
+  // letting calculateSplit's strict validation crash every summary screen.
+  const weightByAssignment = new Map(
+    assignmentRows.map((row) => [
+      `${row.lineItemId}:${row.participantId}`,
+      Number.isInteger(row.weight) && row.weight >= 1 ? row.weight : 1,
+    ]),
+  );
+  return items.map((item) => {
+    const assigneeParticipantIds = assignedIdsByItem.get(item.id) ?? [];
+    return {
+      lineItemId: item.id,
+      lineTotalCentavos: item.lineTotalCentavos,
+      assigneeParticipantIds,
+      assigneeWeights: assigneeParticipantIds.map(
+        (participantId) => weightByAssignment.get(`${item.id}:${participantId}`) ?? 1,
+      ),
+    };
+  });
 }
 
 // customAllocationsByAdjustmentId only needs entries for CUSTOM adjustments

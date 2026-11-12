@@ -33,14 +33,26 @@ export const itemAssignmentsRepository = {
     return db.select().from(itemAssignments).where(eq(itemAssignments.lineItemId, lineItemId));
   },
 
-  async setForLineItem(lineItemId: string, participantIds: string[]): Promise<void> {
+  async setForLineItem(
+    lineItemId: string,
+    participantIds: string[],
+    // Each assignee's share count (the 2026-11-12 "unequal shares"
+    // amendment); anyone missing from the map gets the column default, 1.
+    weightsByParticipantId?: ReadonlyMap<string, number>,
+  ): Promise<void> {
     await db.transaction(async (tx) => {
       await tx.delete(itemAssignments).where(eq(itemAssignments.lineItemId, lineItemId)).run();
 
       if (participantIds.length > 0) {
         await tx
           .insert(itemAssignments)
-          .values(participantIds.map((participantId) => ({ lineItemId, participantId })))
+          .values(
+            participantIds.map((participantId) => ({
+              lineItemId,
+              participantId,
+              weight: weightsByParticipantId?.get(participantId) ?? 1,
+            })),
+          )
           .run();
       }
     });

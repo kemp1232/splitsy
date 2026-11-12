@@ -97,6 +97,19 @@
 
 ---
 
+> ## ⚠ Amendment — 2026-11-12 (unequal shares of one item)
+>
+> **A shared line item can now be split unequally by whole-number share counts** (e.g. 3 shares vs 2 shares of 5 beers). This relaxes §2.2's exclusion of "Custom unequal weights for a shared item" and §9.4's "`weight` is fixed to `1`":
+>
+> - `item_assignments.weight` stores each assignee's share count, an integer from 1 to 99 (default 1). No schema change — the column already existed.
+> - On the assignments screen, an item with two or more people gets an "Adjust shares" action that sets each person's share count; the row lists the counts when they differ.
+> - §10.3 is extended: when an item's share counts differ, its total is split proportionally to them by the same integer largest-remainder method as §10.5 (ties to the earlier assignee). When every count is equal (including all 1s) the original §10.3 equal allocation is used unchanged, so existing bills total exactly as before. Every total (summary, payments, trip settlement, shared text) uses these shares.
+> - Turning on "Split everything equally" resets every share count to 1.
+>
+> **What did NOT change:** a share count of 0 is not allowed (remove the person instead), share counts are not tied to the item's quantity, and items are still split equally unless the user adjusts them.
+
+---
+
 ## 1. Product Summary
 
 Splitsy lets a user photograph or upload a receipt, review the detected items, add the people sharing the bill, assign items to one or more people, divide taxes and other adjustments, and generate an exact per-person breakdown.
@@ -177,7 +190,7 @@ Do not implement these unless this specification is changed:
 - Admin dashboard.
 - Advanced analytics or third-party tracking.
 - PDF export or image-based summary export (sharing the user's own payment QR image is not a summary export — see Amendment 2026-11-12).
-- Custom unequal weights for a shared item. Shared line items are split equally in the MVP.
+- Custom unequal weights for a shared item. Shared line items are split equally in the MVP (see Amendment 2026-11-12 — unequal shares).
 
 ---
 
@@ -203,7 +216,7 @@ A person in a group who has the receipt and needs to calculate what each person 
 - One bill has at least one line item before it can be completed.
 - One bill has at least two participants before it can be completed.
 - Every line item must be assigned to at least one participant before completion.
-- A line item assigned to multiple participants is split equally.
+- A line item assigned to multiple participants is split equally (see Amendment 2026-11-12 — unequal shares).
 - A quantity is descriptive for the MVP. It helps display the receipt line but does not create quantity-based assignment controls. A user who needs different ownership can split one detected line into multiple manual lines.
 - Positive adjustments add to the bill. Negative adjustments reduce the bill.
 - The final participant totals must add up exactly to the app's computed bill total.
@@ -565,7 +578,7 @@ type ItemAssignment = {
 };
 ```
 
-The `weight` field is fixed to `1` in the MVP so shared items divide equally. Keeping the field allows weighted splits to be added later without redesigning the relationship.
+The `weight` field is fixed to `1` in the MVP so shared items divide equally. Keeping the field allows weighted splits to be added later without redesigning the relationship (see Amendment 2026-11-12 — unequal shares).
 
 ### 9.5 Adjustment
 
@@ -1030,7 +1043,7 @@ Validation:
 - Display every line item with price and assignment status.
 - Selecting an item opens participant choices.
 - Allow one or multiple participants.
-- Shared items divide equally.
+- Shared items divide equally (see Amendment 2026-11-12 — unequal shares).
 - Provide **Assign all unassigned to me** when a participant named `Me` exists or let the user choose a participant.
 - Provide filters or sections for `Unassigned` and `Assigned` if useful.
 - Prevent continuing while any item is unassigned.
@@ -1327,7 +1340,7 @@ All copy should live in `src/constants/copy.ts` or another centralized copy modu
 |---|---|
 | Heading | `Who had what?` |
 | Body | `Choose one or more people for every item.` |
-| Shared note | `Items assigned to more than one person are split equally.` |
+| Shared note | `Shared items are split equally unless you adjust their shares.` (see Amendment 2026-11-12 — unequal shares) |
 | Unassigned section | `Unassigned` |
 | Assigned section | `Assigned` |
 | Assignment action | `Choose people` |

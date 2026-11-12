@@ -22,10 +22,15 @@ export type SplitParticipant = {
 // collapsed into the shape splitCalculator actually needs — a bill's item
 // assignment rows already grouped by line item). `assigneeParticipantIds`
 // must contain at least one id and must be in stable participant order.
+// `assigneeWeights` (Not from the spec — the 2026-11-12 "unequal shares"
+// amendment) holds each assignee's whole-number share count, index-aligned
+// with `assigneeParticipantIds`; every weight must be an integer >= 1.
+// Omitted (or all equal) means the item splits equally, exactly as before.
 export type SplitLineItem = {
   lineItemId: string;
   lineTotalCentavos: number;
   assigneeParticipantIds: string[];
+  assigneeWeights?: number[];
 };
 
 // A single participant's stored custom amount for one CUSTOM adjustment
