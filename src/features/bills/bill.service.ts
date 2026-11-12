@@ -6,6 +6,7 @@ import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocatio
 import type { Adjustment } from '@/db/repositories/adjustments.repository';
 import type { Bill, NewBill } from '@/db/repositories/bills.repository';
 import { billsRepository } from '@/db/repositories/bills.repository';
+import { tripParticipantsRepository } from '@/db/repositories/tripParticipants.repository';
 import {
   adjustmentAllocations,
   adjustments,
@@ -74,7 +75,17 @@ export async function createDraftBill(input: CreateDraftBillInput): Promise<Bill
 // Mirrors saveParsedReceiptDraft's transactional style: bill row and its one
 // line item are written together so a partial write never leaves the draft
 // half-populated.
-export function createQuickSplitBill(input: { title: string; totalCentavos: number }): Bill {
+//
+// With a tripId the bill belongs to that trip and copies its roster into
+// participants (same as trip.service.ts's createBillInTrip, which this file
+// can't import without a cycle); the roster is read before the transaction.
+export async function createQuickSplitBill(input: {
+  title: string;
+  totalCentavos: number;
+  tripId?: string | null;
+}): Promise<Bill> {
+  const tripId = input.tripId ?? null;
+  const roster = tripId ? await tripParticipantsRepository.listByTripId(tripId) : [];
   const id = createId();
   const timestamp = nowIso();
   const title = input.title.trim();
@@ -89,6 +100,7 @@ export function createQuickSplitBill(input: { title: string; totalCentavos: numb
         entryMethod: 'MANUAL',
         status: 'DRAFT',
         splitMode: 'EQUAL',
+        tripId,
         discrepancyAcknowledged: false,
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -97,6 +109,22 @@ export function createQuickSplitBill(input: { title: string; totalCentavos: numb
       .all();
 
     if (!bill) throw new Error('Failed to create bill');
+
+    if (roster.length > 0) {
+      tx.insert(participants)
+        .values(
+          roster.map((member, index) => ({
+            id: createId(),
+            billId: id,
+            sortOrder: index,
+            name: member.name,
+            tripParticipantId: member.id,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          })),
+        )
+        .run();
+    }
 
     tx.insert(lineItems)
       .values({

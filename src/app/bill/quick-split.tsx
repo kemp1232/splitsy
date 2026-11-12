@@ -1,5 +1,5 @@
 import Feather from '@expo/vector-icons/Feather';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -25,6 +25,8 @@ import { spacing } from '@/theme/tokens';
 // to.
 export default function QuickSplitScreen() {
   const router = useRouter();
+  // Set when launched from a trip hub: the bill joins that trip's roster.
+  const { tripId } = useLocalSearchParams<{ tripId?: string }>();
   const [title, setTitle] = useState('');
   const [totalCentavos, setTotalCentavos] = useState(0);
   const [amountError, setAmountError] = useState<string | null>(null);
@@ -48,7 +50,7 @@ export default function QuickSplitScreen() {
       // usual untitled-bill copy when the trimmed title is empty, so an
       // empty/whitespace-only title here is a perfectly valid submission,
       // not a validation error.
-      const bill = await createQuickSplitBill({ title, totalCentavos });
+      const bill = await createQuickSplitBill({ title, totalCentavos, tripId });
       router.replace(`/bill/${bill.id}/participants`);
     } catch {
       setActionError(copy.global.storageFailure);

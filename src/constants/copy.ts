@@ -122,6 +122,8 @@ export const copy = {
     tripTotalLabel: 'Completed so far',
     scanNextBillAction: 'Scan next bill',
     chooseFromGalleryAction: 'Choose from photos',
+    enterManuallyAction: 'Enter manually',
+    quickSplitAction: 'Split evenly',
     settleUpAction: 'Settle up',
     emptyBillsHeading: 'No bills yet',
     emptyBillsBody: 'Scan your first receipt to start this trip.',
