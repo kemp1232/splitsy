@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Fragment, useCallback, useMemo, useState } from 'react';
+import { Fragment, useCallback, useMemo, useRef, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, View } from 'react-native';
 
 import { BillTotalCard } from '@/components/bill/BillTotalCard';
@@ -32,6 +32,7 @@ import type { LineItem } from '@/db/repositories/lineItems.repository';
 import { lineItemsRepository } from '@/db/repositories/lineItems.repository';
 import type { Participant } from '@/db/repositories/participants.repository';
 import { participantsRepository } from '@/db/repositories/participants.repository';
+import { debtPaymentsRepository } from '@/db/repositories/debtPayments.repository';
 import { tripsRepository } from '@/db/repositories/trips.repository';
 import {
   buildSplitAdjustments,
@@ -47,8 +48,15 @@ import { useRestoringBillIds } from '@/features/bills/useRestoringBillIds';
 import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { getNegativeTotalWarning } from '@/features/receipt-review/buildTotalsSummary';
 import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
+import {
+  applyMarkChanges,
+  type DebtMark,
+  planDebtToggle,
+  resolvePaidDebts,
+} from '@/features/settlement/debtPaidStatus';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
 import { computeSettlement, computeUnsettledCredits } from '@/features/splitting/settlement';
+import type { SettlementTransaction } from '@/features/splitting/settlement.types';
 import {
   displayParticipantName,
   resolveQuickAddMeName,
@@ -156,6 +164,15 @@ export default function SavedBillDetailScreen() {
   // bill's own tripId route param — spec section 7's "never make navigation
   // route params the source of truth").
   const [tripLink, setTripLink] = useState<{ id: string; name: string } | null>(null);
+  // Per-debt paid marks — standalone bills only (a bill inside a trip is
+  // settled on the trip's combined settle-up screen instead, so it never
+  // loads or shows these).
+  const [debtMarks, setDebtMarks] = useState<DebtMark[]>([]);
+  const [togglingDebt, setTogglingDebt] = useState(false);
+  const [toggleError, setToggleError] = useState<string | null>(null);
+  // Synchronous guard: a second tap before the disabled state renders is
+  // ignored rather than racing the first write.
+  const toggleInFlight = useRef(false);
 
   // Runs on every focus, not just mount: coming back from the trip page (where
   // this bill may have been edited) re-reads it, so the totals and the
@@ -178,6 +195,9 @@ export default function SavedBillDetailScreen() {
           setTripLink({ id: trip.id, name: trip.name ?? copy.trip.unknownTripTitle });
         }
       }
+      const nextDebtMarks = data.billRow.tripId
+        ? []
+        : await debtPaymentsRepository.listByBillId(billId);
 
       const splitParticipants = data.participantRows.map((participant) => ({
         participantId: participant.id,
@@ -205,6 +225,7 @@ export default function SavedBillDetailScreen() {
       setAssignmentRows(data.assignmentRows);
       setSplitResult(nextSplitResult);
       setReconciliation(nextReconciliation);
+      setDebtMarks(nextDebtMarks);
       setState('ready');
     } catch {
       // Covers both a genuine load failure and calculateSplit's
@@ -218,6 +239,44 @@ export default function SavedBillDetailScreen() {
     useCallback(() => {
       void loadScreen();
     }, [loadScreen]),
+  );
+
+  // Stores or clears one debt's paid mark (upsert replaces a stale amount),
+  // then patches local state the same way.
+  const handleTogglePaid = useCallback(
+    async (transaction: SettlementTransaction, nextPaid: boolean) => {
+      if (toggleInFlight.current) return;
+      toggleInFlight.current = true;
+      // paidKeys only feeds nextAllPaid (unused for a bill); the writes
+      // depend on the target and nextPaid alone.
+      const plan = planDebtToggle({
+        transactions: [transaction],
+        paidKeys: new Set(),
+        target: transaction,
+        paid: nextPaid,
+        legacy: false,
+      });
+      setToggleError(null);
+      setTogglingDebt(true);
+      try {
+        if (plan.unmark) {
+          await debtPaymentsRepository.unmarkPaid(
+            { billId },
+            plan.unmark.fromKey,
+            plan.unmark.toKey,
+          );
+        } else {
+          await debtPaymentsRepository.markManyPaid({ billId }, plan.marksToWrite);
+        }
+        setDebtMarks((current) => applyMarkChanges(current, plan));
+      } catch {
+        setToggleError(copy.global.storageFailure);
+      } finally {
+        toggleInFlight.current = false;
+        setTogglingDebt(false);
+      }
+    },
+    [billId],
   );
 
   if (state === 'loading') {
@@ -294,6 +353,10 @@ export default function SavedBillDetailScreen() {
     contributionByParticipantId,
   );
   const settlement = computeSettlement(settlementParticipants);
+  // Paid toggles only for a standalone bill (D1); derived from the stored
+  // marks each render (exact from/to/amount match).
+  const isStandaloneBill = bill !== null && bill.tripId === null;
+  const paidDebts = resolvePaidDebts(settlement.transactions, debtMarks);
   const unsettledCredits = computeUnsettledCredits(settlementParticipants, settlement);
   // Same reasoning as summary.tsx's own hasAnyContribution: nobody having
   // used the (skippable) Payments screen isn't "money unaccounted for," so
@@ -517,8 +580,12 @@ export default function SavedBillDetailScreen() {
             unsettledCredits={unsettledCredits}
             nameByParticipantId={nameByParticipantId}
             totalCentavos={splitResult.computedTotalCentavos}
+            paidKeys={isStandaloneBill ? paidDebts.paidKeys : undefined}
+            onTogglePaid={isStandaloneBill ? handleTogglePaid : undefined}
+            togglingDisabled={togglingDebt}
           />
         ) : null}
+        {toggleError ? <InlineError message={toggleError} /> : null}
 
         {/* Was a sticky BottomActionBar footer — moved inline, per the
             user's own explicit request (2026-08-27) to drop sticky nav

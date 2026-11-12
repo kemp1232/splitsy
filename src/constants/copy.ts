@@ -558,6 +558,13 @@ export const copy = {
     // Over-collected bills: a creditor the greedy settlement couldn't pair
     // with any debtor (see computeUnsettledCredits).
     stillOwedLabel: '{name} is still owed {amount}',
+    // Per-debt paid checkbox (standalone bills and the trip settle-up
+    // screen). The row's spoken label is "{label}, {amount}"; the hint says
+    // what tapping does next.
+    paidLabel: 'Paid',
+    debtA11yLabel: '{label}, {amount}',
+    markPaidHint: 'Marks this debt as paid',
+    unmarkPaidHint: 'Marks this debt as not paid',
   },
 
   // Not from the spec — the Trip feature's combined multi-bill settlement

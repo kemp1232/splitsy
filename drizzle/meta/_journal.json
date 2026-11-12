@@ -29,6 +29,13 @@
       "when": 1794457911200,
       "tag": "0003_acknowledged_discrepancy_amount",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794464735362,
+      "tag": "0004_debt_payments",
+      "breakpoints": true
     }
   ]
 }

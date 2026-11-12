@@ -1,7 +1,7 @@
 import Feather from '@expo/vector-icons/Feather';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { SettlementCard } from '@/components/bill/SettlementCard';
@@ -21,6 +21,7 @@ import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocatio
 import { adjustmentAllocationsRepository } from '@/db/repositories/adjustmentAllocations.repository';
 import { adjustmentsRepository } from '@/db/repositories/adjustments.repository';
 import { billsRepository } from '@/db/repositories/bills.repository';
+import { debtPaymentsRepository } from '@/db/repositories/debtPayments.repository';
 import { itemAssignmentsRepository } from '@/db/repositories/itemAssignments.repository';
 import { lineItemsRepository } from '@/db/repositories/lineItems.repository';
 import { participantsRepository } from '@/db/repositories/participants.repository';
@@ -33,6 +34,16 @@ import {
 } from '@/features/adjustments/buildSplitInputs';
 import { groupAssignedParticipantIdsByLineItem } from '@/features/assignments/partitionLineItemsByAssignment';
 import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
+import {
+  applyMarkChanges,
+  type DebtMark,
+  isLegacySettledTrip,
+  planDebtToggle,
+  resolvePaidDebts,
+  toDebtMark,
+  tripStatusFor,
+} from '@/features/settlement/debtPaidStatus';
+import type { SettlementTransaction } from '@/features/splitting/settlement.types';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import {
   buildTripParticipantAdjustmentShareDisplay,
@@ -82,6 +93,10 @@ type LoadedTripSettlementData = {
   // with no nonzero item shares in any COMPLETED bill (shouldn't normally
   // happen, but the card renders correctly either way).
   billItemsByIdentityId: Map<string, TripPersonBillItems[]>;
+  // Stored per-debt paid marks for this trip, keyed on the same resolved
+  // identities computeTripSettlement uses. Which debts count as paid is
+  // derived from these each render (debtPaidStatus.ts), never stored twice.
+  debtMarks: DebtMark[];
 };
 
 // Assembles TripBillData[] from every COMPLETED bill in the trip, exactly the
@@ -95,10 +110,11 @@ type LoadedTripSettlementData = {
 // falling back to that bill's own participant row's name for a person who
 // was only ever added to this one bill.
 async function fetchTripSettlementData(tripId: string): Promise<LoadedTripSettlementData | null> {
-  const [trip, tripRoster, billEntries] = await Promise.all([
+  const [trip, tripRoster, billEntries, debtMarks] = await Promise.all([
     tripsRepository.getById(tripId),
     tripParticipantsRepository.listByTripId(tripId, { activeOnly: false }),
     billsRepository.listByTripId(tripId),
+    debtPaymentsRepository.listByTripId(tripId),
   ]);
 
   if (!trip) return null;
@@ -109,7 +125,14 @@ async function fetchTripSettlementData(tripId: string): Promise<LoadedTripSettle
   const billItemsByIdentityId = new Map<string, TripPersonBillItems[]>();
 
   if (completedBills.length === 0) {
-    return { trip, result: null, nameByIdentityId, tripTotalCentavos: 0, billItemsByIdentityId };
+    return {
+      trip,
+      result: null,
+      nameByIdentityId,
+      tripTotalCentavos: 0,
+      billItemsByIdentityId,
+      debtMarks,
+    };
   }
 
   // Each bill's callback returns its own TripBillData (for the aggregate
@@ -223,7 +246,7 @@ async function fetchTripSettlementData(tripId: string): Promise<LoadedTripSettle
     0,
   );
 
-  return { trip, result, nameByIdentityId, tripTotalCentavos, billItemsByIdentityId };
+  return { trip, result, nameByIdentityId, tripTotalCentavos, billItemsByIdentityId, debtMarks };
 }
 
 export default function TripSettlementScreen() {
@@ -236,6 +259,78 @@ export default function TripSettlementScreen() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
+  const [togglingDebt, setTogglingDebt] = useState(false);
+  const [toggleError, setToggleError] = useState<string | null>(null);
+  // Synchronous in-flight guard shared by the per-debt toggle and "Mark trip
+  // settled": a second tap before the disabled state renders would otherwise
+  // plan from the same stale `data` and could leave the trip ACTIVE with
+  // every debt paid.
+  const writeInFlight = useRef(false);
+
+  // Which debts count as paid, derived once per data change (exact
+  // from/to/amount match) and shared by the render and the toggle handler,
+  // so what's shown and what's saved can't disagree.
+  const paidState = useMemo(() => {
+    if (!data?.result) return null;
+    const legacy = isLegacySettledTrip(data.trip.status, data.debtMarks);
+    return {
+      legacy,
+      ...resolvePaidDebts(data.result.settlement.transactions, data.debtMarks, {
+        treatAllAsPaid: legacy,
+      }),
+    };
+  }, [data]);
+
+  // Per-debt paid toggle. Declared above the early returns (hook order).
+  // Persists the mark change first, then derives the trip's status from
+  // whether every current debt is now paid: the last debt marked paid
+  // settles the trip, unmarking any reopens it. A legacy settled trip (zero
+  // stored marks, every debt shown paid) stores marks for the other debts
+  // on its first unmark — see planDebtToggle.
+  const handleTogglePaid = useCallback(
+    async (transaction: SettlementTransaction, nextPaid: boolean) => {
+      if (!data?.result || !paidState || writeInFlight.current) return;
+      writeInFlight.current = true;
+      const plan = planDebtToggle({
+        transactions: data.result.settlement.transactions,
+        paidKeys: paidState.paidKeys,
+        target: transaction,
+        paid: nextPaid,
+        legacy: paidState.legacy,
+      });
+      const nextStatus = tripStatusFor(plan.nextAllPaid);
+
+      setToggleError(null);
+      setTogglingDebt(true);
+      try {
+        const scope = { tripId };
+        if (plan.marksToWrite.length > 0) {
+          await debtPaymentsRepository.markManyPaid(scope, plan.marksToWrite);
+        }
+        if (plan.unmark) {
+          await debtPaymentsRepository.unmarkPaid(scope, plan.unmark.fromKey, plan.unmark.toKey);
+        }
+        setData((current) =>
+          current ? { ...current, debtMarks: applyMarkChanges(current.debtMarks, plan) } : current,
+        );
+        if (nextStatus !== data.trip.status) {
+          const timestamp = nowIso();
+          await tripsRepository.update(tripId, { status: nextStatus, updatedAt: timestamp });
+          setData((current) =>
+            current
+              ? { ...current, trip: { ...current.trip, status: nextStatus, updatedAt: timestamp } }
+              : current,
+          );
+        }
+      } catch {
+        setToggleError(copy.global.storageFailure);
+      } finally {
+        writeInFlight.current = false;
+        setTogglingDebt(false);
+      }
+    },
+    [data, paidState, tripId],
+  );
 
   const load = useCallback(async () => {
     try {
@@ -301,7 +396,6 @@ export default function TripSettlementScreen() {
   // COMPLETED (see this screen's own header note / the trip hub's own
   // instructions) — it's a deliberate, explicit action the user takes here.
   const canMarkSettled = data.result !== null && !isSettled;
-
   // Reuses buildTripShareText (pure, tested separately) with exactly the
   // data this screen already has loaded — same "assemble from already-loaded
   // state, never re-fetch for a share action" discipline as
@@ -351,9 +445,23 @@ export default function TripSettlementScreen() {
   }
 
   async function handleMarkSettled() {
+    if (writeInFlight.current) return;
+    writeInFlight.current = true;
     setMarkError(null);
     setMarking(true);
     try {
+      // Marks every current debt paid first, so the per-debt checkboxes
+      // agree with the SETTLED status set right after.
+      const marksToWrite = (data?.result?.settlement.transactions ?? []).map(toDebtMark);
+      await debtPaymentsRepository.markManyPaid({ tripId }, marksToWrite);
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              debtMarks: applyMarkChanges(current.debtMarks, { marksToWrite, unmark: null }),
+            }
+          : current,
+      );
       const timestamp = nowIso();
       await tripsRepository.update(tripId, { status: 'SETTLED', updatedAt: timestamp });
       setToastMessage(copy.tripSettlement.settledToast);
@@ -365,6 +473,7 @@ export default function TripSettlementScreen() {
     } catch {
       setMarkError(copy.global.storageFailure);
     } finally {
+      writeInFlight.current = false;
       setMarking(false);
     }
   }
@@ -441,7 +550,11 @@ export default function TripSettlementScreen() {
               unaccountedCentavos={data.result.settlement.unaccountedCentavos}
               nameByParticipantId={data.nameByIdentityId}
               totalCentavos={data.tripTotalCentavos}
+              paidKeys={paidState?.paidKeys}
+              onTogglePaid={handleTogglePaid}
+              togglingDisabled={togglingDebt || marking}
             />
+            {toggleError ? <InlineError message={toggleError} /> : null}
           </>
         )}
 
