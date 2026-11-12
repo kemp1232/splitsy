@@ -400,7 +400,9 @@ export const copy = {
   assignments: {
     heading: 'Who had what?',
     body: 'Tap the names of everyone who had each item.',
-    sharedNote: 'Items assigned to more than one person are split equally.',
+    // Amended 2026-11-12 ("unequal shares"): shared items can now be split
+    // by share count, so this no longer claims a strictly equal split.
+    sharedNote: 'Shared items are split equally unless you adjust their shares.',
     // Not from the spec — the post-MVP "split evenly" toggle (see PLAN.md):
     // lets an itemized bill switch to an equal split, and reflects a
     // quick-split bill's already-equal split back to the user.
@@ -430,6 +432,22 @@ export const copy = {
     // Spoken label for each person chip on an item row, so screen readers
     // hear which item a name belongs to.
     chipAccessibilityLabel: '{name}, {item}',
+    // Not from the spec — the 2026-11-12 "unequal shares" amendment: opens
+    // the shares sheet for an item with two or more people, and the row's
+    // summary of custom share counts (e.g. "Ana ×3 · Ben ×2").
+    adjustSharesAction: 'Adjust shares',
+    shareCountLabel: '{name} ×{count}',
+    shareCountSeparator: ' · ',
+  },
+
+  // Not from the spec — the 2026-11-12 "unequal shares" amendment: the sheet
+  // that sets how many shares of one item each assignee had.
+  itemShares: {
+    heading: 'Adjust shares',
+    body: 'Set how many shares of {item} each person had.',
+    stepperLabel: "{name}'s shares",
+    resetAction: 'Reset to equal',
+    saveAction: 'Save shares',
   },
 
   // Section 13.14 — Participant picker sheet

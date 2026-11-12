@@ -4,6 +4,7 @@ import { Fragment, memo, useCallback, useMemo, useRef, useState } from 'react';
 import { Modal, StyleSheet, Switch, View } from 'react-native';
 
 import { AssignmentStatus } from '@/components/bill/AssignmentStatus';
+import { ItemSharesSheet } from '@/components/bill/ItemSharesSheet';
 import { ParticipantChip } from '@/components/bill/ParticipantChip';
 import { ParticipantPickerSheet } from '@/components/bill/ParticipantPickerSheet';
 import { ActionRow } from '@/components/ui/ActionRow';
@@ -33,15 +34,14 @@ import {
 } from '@/features/assignments/computeEqualSplitAssignmentUpdates';
 import { createSerialQueue } from '@/features/assignments/createSerialQueue';
 import { getBulkAssignLabel } from '@/features/assignments/getBulkAssignLabel';
-import {
-  groupAssignedParticipantIdsByLineItem,
-  partitionLineItemsByAssignment,
-} from '@/features/assignments/partitionLineItemsByAssignment';
+import { partitionLineItemsByAssignment } from '@/features/assignments/partitionLineItemsByAssignment';
 import {
   buildEqualSplitAssignmentRows,
-  hasSameIds,
+  groupAssignmentRowsByLineItem,
+  hasSameAssignments,
   mergeRefreshedAssignments,
   replaceLineItemAssignments,
+  setLineItemAssigneeWeights,
   toggleParticipantId,
 } from '@/features/assignments/toggleParticipantAssignment';
 import { resolvePostAssignmentsRoute } from '@/features/bills/resolvePostAssignmentsRoute';
@@ -65,10 +65,22 @@ type LoadState = 'loading' | 'ready' | 'error';
 // tapping chips directly on their row.
 type PickerState = { lineItemIds: string[] } | null;
 
+// Not from the spec — the 2026-11-12 "unequal shares" amendment: which line
+// item's "Adjust shares" sheet is open.
+type SharesSheetState = { lineItemId: string } | null;
+
 const EMPTY_IDS: string[] = [];
 
+function rowsForLineItem(rows: ItemAssignment[], lineItemId: string): ItemAssignment[] {
+  return rows.filter((row) => row.lineItemId === lineItemId);
+}
+
 function idsForLineItem(rows: ItemAssignment[], lineItemId: string): string[] {
-  return rows.filter((row) => row.lineItemId === lineItemId).map((row) => row.participantId);
+  return rowsForLineItem(rows, lineItemId).map((row) => row.participantId);
+}
+
+function weightsByParticipant(rows: ItemAssignment[]): Map<string, number> {
+  return new Map(rows.map((row) => [row.participantId, row.weight]));
 }
 
 async function fetchAssignmentsData(billId: string) {
@@ -131,12 +143,13 @@ type ItemRowProps = {
   lineItemId: string;
   name: string;
   lineTotalCentavos: number;
-  // Assigned participant ids joined with ',' — a primitive so memo() only
-  // re-renders the row whose assignment actually changed (ids are UUIDs, so
-  // they never contain a comma).
-  assignedIdsKey: string;
+  // Assigned participants as 'id:weight' pairs joined with ',' (weight = share
+  // count) — a primitive so memo() only re-renders the row whose assignment
+  // actually changed (ids are UUIDs, so they never contain ',' or ':').
+  assignedKey: string;
   participants: Participant[];
   onToggle: (lineItemId: string, participantId: string) => void;
+  onAdjustShares: (lineItemId: string) => void;
 };
 
 type AssignmentChipProps = {
@@ -186,19 +199,43 @@ const AssignmentItemRow = memo(function AssignmentItemRow({
   lineItemId,
   name,
   lineTotalCentavos,
-  assignedIdsKey,
+  assignedKey,
   participants,
   onToggle,
+  onAdjustShares,
 }: ItemRowProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const assignedIdSet = useMemo(
-    () => new Set(assignedIdsKey === '' ? [] : assignedIdsKey.split(',')),
-    [assignedIdsKey],
+  const weightById = useMemo(
+    () =>
+      new Map(
+        (assignedKey === '' ? [] : assignedKey.split(',')).map((pair) => {
+          const [id = '', weight = '1'] = pair.split(':');
+          return [id, Number(weight)];
+        }),
+      ),
+    [assignedKey],
   );
-  const assignedNames = participants
-    .filter((participant) => assignedIdSet.has(participant.id))
-    .map((participant) => participant.name);
+  const assignedParticipants = participants.filter((participant) => weightById.has(participant.id));
+  const assignedNames = assignedParticipants.map((participant) => participant.name);
+  const assignedWeights = assignedParticipants.map(
+    (participant) => weightById.get(participant.id) ?? 1,
+  );
+  // Only spelled out when the shares actually differ (e.g. "Ana ×3 · Ben ×2").
+  const hasCustomShares = assignedWeights.some((weight) => weight !== assignedWeights[0]);
+  const shareCountsLabel = hasCustomShares
+    ? assignedParticipants
+        .map((participant, index) =>
+          copy.assignments.shareCountLabel
+            .replace('{name}', () => participant.name)
+            .replace('{count}', () => String(assignedWeights[index] ?? 1)),
+        )
+        .join(copy.assignments.shareCountSeparator)
+    : null;
+  const handleAdjustShares = useCallback(
+    () => onAdjustShares(lineItemId),
+    [lineItemId, onAdjustShares],
+  );
 
   return (
     <View style={styles.itemRow}>
@@ -212,6 +249,11 @@ const AssignmentItemRow = memo(function AssignmentItemRow({
           </AppText>
           <AssignmentStatus names={assignedNames} />
         </View>
+        {shareCountsLabel !== null ? (
+          <AppText variant="caption" color="textSecondary" style={styles.uniformText}>
+            {shareCountsLabel}
+          </AppText>
+        ) : null}
       </View>
       {participants.length > 0 ? (
         <View style={styles.chipWrap}>
@@ -222,10 +264,20 @@ const AssignmentItemRow = memo(function AssignmentItemRow({
               participantId={participant.id}
               name={participant.name}
               itemName={name}
-              selected={assignedIdSet.has(participant.id)}
+              selected={weightById.has(participant.id)}
               onToggle={onToggle}
             />
           ))}
+        </View>
+      ) : null}
+      {assignedParticipants.length >= 2 ? (
+        <View style={styles.adjustSharesRow}>
+          <AppButton
+            variant="text"
+            label={copy.assignments.adjustSharesAction}
+            icon={(color) => <Feather name="sliders" size={16} color={color} />}
+            onPress={handleAdjustShares}
+          />
         </View>
       ) : null}
     </View>
@@ -249,6 +301,7 @@ export default function AssignmentsScreen() {
   const [assignmentRows, setAssignmentRows] = useState<ItemAssignment[]>([]);
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [picker, setPicker] = useState<PickerState>(null);
+  const [sharesSheet, setSharesSheet] = useState<SharesSheetState>(null);
   const [showBlockingError, setShowBlockingError] = useState(false);
   const [showReceiptImage, setShowReceiptImage] = useState(false);
   // One shared error slot for this screen's own write paths (chip taps, bulk
@@ -267,9 +320,9 @@ export default function AssignmentsScreen() {
   const itemsRef = useRef<LineItem[]>([]);
   const participantsRef = useRef<Participant[]>([]);
   const rowsRef = useRef<ItemAssignment[]>([]);
-  // Last participant ids confirmed written to the DB per line item — what a
-  // failed write reverts that item back to.
-  const persistedIdsRef = useRef<Map<string, string[]>>(new Map());
+  // Last rows (participant ids and share counts) confirmed written to the DB
+  // per line item — what a failed write reverts that item back to.
+  const persistedRowsRef = useRef<Map<string, ItemAssignment[]>>(new Map());
   // Queued-but-unfinished writes per line item; its keys are the "dirty"
   // items a refresh must not overwrite.
   const pendingWritesRef = useRef<Map<string, number>>(new Map());
@@ -306,7 +359,7 @@ export default function AssignmentsScreen() {
       participantsRef.current = participantRows;
       setParticipants(participantRows);
       setAdjustments(adjustmentRows);
-      persistedIdsRef.current = groupAssignedParticipantIdsByLineItem(rows);
+      persistedRowsRef.current = groupAssignmentRowsByLineItem(rows);
       commitRows(
         mergeRefreshedAssignments(rows, rowsRef.current, new Set(pendingWritesRef.current.keys())),
       );
@@ -385,17 +438,29 @@ export default function AssignmentsScreen() {
       const pending = pendingWritesRef.current;
       pending.set(lineItemId, (pending.get(lineItemId) ?? 0) + 1);
       void writeQueue.enqueue(async () => {
-        const desiredIds = idsForLineItem(rowsRef.current, lineItemId);
-        const persistedIds = persistedIdsRef.current.get(lineItemId) ?? [];
+        const desiredRows = rowsForLineItem(rowsRef.current, lineItemId);
+        const persistedRows = persistedRowsRef.current.get(lineItemId) ?? [];
         try {
-          if (!hasSameIds(desiredIds, persistedIds)) {
-            await itemAssignmentsRepository.setForLineItem(lineItemId, desiredIds);
-            persistedIdsRef.current.set(lineItemId, desiredIds);
+          // Compares share counts too, so a weights-only change still writes.
+          if (!hasSameAssignments(desiredRows, persistedRows)) {
+            await itemAssignmentsRepository.setForLineItem(
+              lineItemId,
+              desiredRows.map((row) => row.participantId),
+              weightsByParticipant(desiredRows),
+            );
+            persistedRowsRef.current.set(lineItemId, desiredRows);
           }
         } catch {
           // Reverted inside the task (not in a caller-side .catch) so the
           // next queued task already sees the reverted rows.
-          commitRows(replaceLineItemAssignments(rowsRef.current, lineItemId, persistedIds));
+          commitRows(
+            replaceLineItemAssignments(
+              rowsRef.current,
+              lineItemId,
+              persistedRows.map((row) => row.participantId),
+              weightsByParticipant(persistedRows),
+            ),
+          );
           setActionError(copy.global.storageFailure);
         } finally {
           const remaining = (pending.get(lineItemId) ?? 1) - 1;
@@ -416,17 +481,38 @@ export default function AssignmentsScreen() {
   // to ITEMIZED first (queued ahead of the assignment write) and apply the
   // change on top of the current all-participants assignment. Existing
   // assignments are kept, same as turning the toggle off.
-  const applyAssignment = useCallback(
-    (lineItemId: string, participantIds: string[]) => {
+  // Share-count changes go through the same path (an EQUAL bill's sync
+  // would otherwise reset them to 1).
+  const applyItemRows = useCallback(
+    (lineItemId: string, nextRows: ItemAssignment[]) => {
       const currentBill = billRef.current;
       if (currentBill?.splitMode === 'EQUAL') {
         commitBill({ ...currentBill, splitMode: 'ITEMIZED' });
         persistSplitMode('ITEMIZED');
       }
-      commitRows(replaceLineItemAssignments(rowsRef.current, lineItemId, participantIds));
+      commitRows(nextRows);
       persistLineItem(lineItemId);
     },
     [commitBill, commitRows, persistLineItem, persistSplitMode],
+  );
+
+  const applyAssignment = useCallback(
+    (lineItemId: string, participantIds: string[]) => {
+      applyItemRows(
+        lineItemId,
+        replaceLineItemAssignments(rowsRef.current, lineItemId, participantIds),
+      );
+    },
+    [applyItemRows],
+  );
+
+  // One stable callback for every row's "Adjust shares" button.
+  const handleOpenShares = useCallback(
+    (lineItemId: string) => {
+      setActionError(null);
+      setSharesSheet({ lineItemId });
+    },
+    [setSharesSheet],
   );
 
   // One stable callback for every chip on every row (RN perf rule).
@@ -501,6 +587,19 @@ export default function AssignmentsScreen() {
     setPicker(null);
   }
 
+  function handleSaveShares(weightsByParticipantId: Map<string, number>) {
+    if (!sharesSheet) return;
+    const nextRows = setLineItemAssigneeWeights(
+      rowsRef.current,
+      sharesSheet.lineItemId,
+      weightsByParticipantId,
+    );
+    if (nextRows !== rowsRef.current) {
+      applyItemRows(sharesSheet.lineItemId, nextRows);
+    }
+    setSharesSheet(null);
+  }
+
   if (state === 'loading') {
     return (
       <Screen tabBarHidden>
@@ -525,7 +624,23 @@ export default function AssignmentsScreen() {
     );
   }
 
-  const assignedIdsByItem = groupAssignedParticipantIdsByLineItem(assignmentRows);
+  const assignmentRowsByItem = groupAssignmentRowsByLineItem(assignmentRows);
+  const sharesItem = sharesSheet
+    ? items.find((item) => item.id === sharesSheet.lineItemId)
+    : undefined;
+  const sharesWeightById = new Map(
+    (sharesItem ? (assignmentRowsByItem.get(sharesItem.id) ?? []) : []).map((row) => [
+      row.participantId,
+      row.weight,
+    ]),
+  );
+  const sharesAssignees = participants
+    .filter((participant) => sharesWeightById.has(participant.id))
+    .map((participant) => ({
+      participantId: participant.id,
+      name: participant.name,
+      weight: sharesWeightById.get(participant.id) ?? 1,
+    }));
   const { unassignedItems } = partitionLineItemsByAssignment(items, assignmentRows);
   const unassignedCount = unassignedItems.length;
   const isBlocked = unassignedCount > 0;
@@ -652,9 +767,12 @@ export default function AssignmentsScreen() {
                     lineItemId={item.id}
                     name={item.name}
                     lineTotalCentavos={item.lineTotalCentavos}
-                    assignedIdsKey={(assignedIdsByItem.get(item.id) ?? EMPTY_IDS).join(',')}
+                    assignedKey={(assignmentRowsByItem.get(item.id) ?? [])
+                      .map((row) => `${row.participantId}:${row.weight}`)
+                      .join(',')}
                     participants={participants}
                     onToggle={handleToggleParticipant}
+                    onAdjustShares={handleOpenShares}
                   />
                 </Fragment>
               ))}
@@ -728,6 +846,16 @@ export default function AssignmentsScreen() {
         initialSelectedIds={EMPTY_IDS}
         onSave={handleSavePicker}
         onCancel={() => setPicker(null)}
+      />
+
+      <ItemSharesSheet
+        visible={sharesSheet !== null}
+        lineItemId={sharesSheet?.lineItemId ?? null}
+        itemName={sharesItem?.name ?? ''}
+        lineTotalCentavos={sharesItem?.lineTotalCentavos ?? 0}
+        assignees={sharesAssignees}
+        onSave={handleSaveShares}
+        onCancel={() => setSharesSheet(null)}
       />
 
       {/* Mirrors receipt-review.tsx's own receipt-image modal. */}
@@ -825,6 +953,10 @@ function createStyles(colors: ColorTokens) {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: spacing.sm,
+    },
+    // Left-aligns the text button under the chips instead of stretching it.
+    adjustSharesRow: {
+      flexDirection: 'row',
     },
     itemMeta: {
       flexDirection: 'row',

@@ -6,7 +6,34 @@ import type {
   SplitAdjustment,
   SplitCalculationInput,
   SplitCalculationResult,
+  SplitLineItem,
 } from './split.types';
+
+// Equal weights (or none) keep the exact spec 10.3 allocateEqual path, so a
+// bill with no custom shares is byte-identical to before weights existed;
+// only genuinely unequal share counts go through largest-remainder
+// allocateProportional (ties broken by assignee order).
+function allocateItemShares(item: SplitLineItem): number[] {
+  const assigneeCount = item.assigneeParticipantIds.length;
+  const weights = item.assigneeWeights;
+  if (weights === undefined) {
+    return allocateEqual(item.lineTotalCentavos, assigneeCount);
+  }
+  if (weights.length !== assigneeCount) {
+    throw new Error(
+      `calculateSplit: line item ${item.lineItemId} has ${weights.length} weights for ${assigneeCount} assignees`,
+    );
+  }
+  if (weights.some((weight) => !Number.isInteger(weight) || weight < 1)) {
+    throw new Error(
+      `calculateSplit: line item ${item.lineItemId} has a share weight that is not an integer >= 1`,
+    );
+  }
+  const allEqual = weights.every((weight) => weight === weights[0]);
+  return allEqual
+    ? allocateEqual(item.lineTotalCentavos, assigneeCount)
+    : allocateProportional(item.lineTotalCentavos, weights);
+}
 
 /**
  * Computes every participant's final total for one bill (spec section 10),
@@ -15,7 +42,9 @@ import type {
  * split.types.ts's shapes.
  *
  * 1. Each line item's total is split across its assignees via
- *    `allocateEqual` (spec 10.3), collected into each assignee's
+ *    `allocateEqual` (spec 10.3) — or, when the item carries unequal
+ *    `assigneeWeights` (the 2026-11-12 "unequal shares" amendment),
+ *    `allocateProportional` over those share counts — collected into each assignee's
  *    `itemShares` (spec F-016/F-017's itemized breakdown) and accumulated
  *    into each assignee's item subtotal.
  * 2. Each adjustment's amount is split across every participant: via
@@ -64,7 +93,7 @@ export function calculateSplit(input: SplitCalculationInput): SplitCalculationRe
   );
 
   for (const item of items) {
-    const shares = allocateEqual(item.lineTotalCentavos, item.assigneeParticipantIds.length);
+    const shares = allocateItemShares(item);
     item.assigneeParticipantIds.forEach((participantId, assigneeIndex) => {
       if (!participantIdSet.has(participantId)) {
         throw new Error(

@@ -33,6 +33,12 @@ export function computeEqualSplitAssignmentUpdates(
   const allParticipantIds = participants.map((participant) => participant.id);
   const allParticipantIdSet = new Set(allParticipantIds);
   const assignedIdsByItem = groupAssignedParticipantIdsByLineItem(assignmentRows);
+  // An equal split also means equal shares: an item still carrying a custom
+  // share count (the 2026-11-12 "unequal shares" amendment) has drifted too,
+  // and rewriting it resets every weight to 1.
+  const itemIdsWithCustomShares = new Set(
+    assignmentRows.filter((row) => row.weight !== 1).map((row) => row.lineItemId),
+  );
 
   const updates: LineItemAssignmentUpdate[] = [];
   for (const item of items) {
@@ -40,7 +46,8 @@ export function computeEqualSplitAssignmentUpdates(
     const currentIdSet = new Set(currentIds);
     const alreadyMatches =
       currentIdSet.size === allParticipantIdSet.size &&
-      allParticipantIds.every((participantId) => currentIdSet.has(participantId));
+      allParticipantIds.every((participantId) => currentIdSet.has(participantId)) &&
+      !itemIdsWithCustomShares.has(item.id);
 
     if (!alreadyMatches) {
       updates.push({ lineItemId: item.id, participantIds: allParticipantIds });
