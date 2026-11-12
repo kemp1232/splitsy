@@ -2,7 +2,7 @@ import Feather from '@expo/vector-icons/Feather';
 import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
-import { StyleSheet, View, type TextInput } from 'react-native';
+import { Pressable, StyleSheet, View, type TextInput } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
@@ -42,6 +42,8 @@ export default function RegisterScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // Same show/hide toggle as sign-in.tsx's password field.
+  const [showPassword, setShowPassword] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -124,8 +126,12 @@ export default function RegisterScreen() {
         <View style={styles.body}>
           <View style={styles.headerGroup}>
             <AppText variant="title">{copy.auth.registerCheckEmailHeading}</AppText>
+            {/* The address is lowercased for display only — what was
+                submitted to sign-up is unchanged. */}
             <AppText variant="body" color="textSecondary" accessibilityLiveRegion="polite">
-              {copy.auth.registerCheckEmailBody.replace('{email}', registeredEmail)}
+              {copy.auth.registerCheckEmailBody.replace('{email}', () =>
+                registeredEmail.toLowerCase(),
+              )}
             </AppText>
           </View>
           <AppButton
@@ -195,11 +201,23 @@ export default function RegisterScreen() {
               if (passwordError) setPasswordError(null);
             }}
             error={passwordError ?? undefined}
-            secureTextEntry
+            secureTextEntry={!showPassword}
             textContentType="newPassword"
             autoComplete="new-password"
             returnKeyType="go"
             onSubmitEditing={handleRegister}
+            trailingIcon={(color) => (
+              <Pressable
+                onPress={() => setShowPassword((value) => !value)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  showPassword ? copy.auth.hidePasswordLabel : copy.auth.showPasswordLabel
+                }
+              >
+                <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color={color} />
+              </Pressable>
+            )}
           />
         </View>
 

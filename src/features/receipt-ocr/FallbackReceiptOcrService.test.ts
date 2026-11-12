@@ -1,6 +1,7 @@
 import { FallbackReceiptOcrService } from './FallbackReceiptOcrService';
 import {
   OcrDailyLimitError,
+  OcrNetworkError,
   OcrQueuedError,
   OcrRateLimitedError,
   OcrServiceBusyError,
@@ -240,5 +241,43 @@ describe('FallbackReceiptOcrService', () => {
     expect(fallback).toHaveBeenCalled();
     expect(result.source).toBe('on-device');
     expect(result.fallbackReason).toBeUndefined();
+  });
+
+  it('surfaces OcrNetworkError when the backend is unreachable and on-device reading also fails', async () => {
+    const networkError = new OcrNetworkError('offline');
+    const service = new FallbackReceiptOcrService(
+      {
+        recognize: async () => {
+          throw networkError;
+        },
+      },
+      serviceThatRejects('ML Kit failed'),
+    );
+
+    await expect(service.recognize('file:///receipt.jpg')).rejects.toBe(networkError);
+  });
+
+  it('still reads on-device when the backend is unreachable', async () => {
+    const service = new FallbackReceiptOcrService(
+      {
+        recognize: async () => {
+          throw new OcrNetworkError('offline');
+        },
+      },
+      serviceThatResolves('on-device'),
+    );
+
+    const result = await service.recognize('file:///receipt.jpg');
+
+    expect(result.source).toBe('on-device');
+  });
+
+  it('keeps the on-device error when the backend failed for a non-network reason', async () => {
+    const service = new FallbackReceiptOcrService(
+      serviceThatRejects('bad response'),
+      serviceThatRejects('ML Kit failed'),
+    );
+
+    await expect(service.recognize('file:///receipt.jpg')).rejects.toThrow('ML Kit failed');
   });
 });

@@ -1,4 +1,11 @@
-import { formatBillListDate, formatShortBillDate, isValidDateOnly, rollOverDateOnly } from './date';
+import {
+  formatBillListDate,
+  formatShortBillDate,
+  getReceiptDateError,
+  isFutureDateOnly,
+  isValidDateOnly,
+  rollOverDateOnly,
+} from './date';
 
 describe('formatShortBillDate', () => {
   it('formats a date-only receipt date as a short month and day', () => {
@@ -71,5 +78,48 @@ describe('rollOverDateOnly', () => {
 
   it('leaves anything not shaped YYYY-MM-DD unchanged', () => {
     expect(rollOverDateOnly('Feb 31')).toEqual({ date: 'Feb 31', rolledOver: false });
+  });
+});
+
+describe('isFutureDateOnly', () => {
+  // Local 2026-11-12, late in the day so a UTC-based compare would differ
+  // in timezones east of UTC.
+  const now = new Date(2026, 10, 12, 23, 30);
+
+  it('treats today as not in the future', () => {
+    expect(isFutureDateOnly('2026-11-12', now)).toBe(false);
+  });
+
+  it('rejects tomorrow', () => {
+    expect(isFutureDateOnly('2026-11-13', now)).toBe(true);
+  });
+
+  it('accepts yesterday', () => {
+    expect(isFutureDateOnly('2026-11-11', now)).toBe(false);
+  });
+
+  it('is false for an invalid date', () => {
+    expect(isFutureDateOnly('2026-13-40', now)).toBe(false);
+  });
+});
+
+describe('getReceiptDateError', () => {
+  const now = new Date(2026, 10, 12);
+
+  it('allows an empty date', () => {
+    expect(getReceiptDateError('', now)).toBeNull();
+  });
+
+  it('allows today', () => {
+    expect(getReceiptDateError('2026-11-12', now)).toBeNull();
+  });
+
+  it('reports a future date', () => {
+    expect(getReceiptDateError('2026-11-13', now)).toBe('future');
+  });
+
+  it('reports invalid text', () => {
+    expect(getReceiptDateError('Nov 12', now)).toBe('invalid');
+    expect(getReceiptDateError('2026-02-31', now)).toBe('invalid');
   });
 });

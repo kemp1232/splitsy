@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal, Platform, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
@@ -12,6 +12,7 @@ import { OCR_BACKEND_URL } from '@/constants/config';
 import { copy } from '@/constants/copy';
 import { billsRepository } from '@/db/repositories/bills.repository';
 import { saveParsedReceiptDraft } from '@/features/bills/bill.service';
+import { discardUntouchedScanDraft } from '@/features/bills/discardUntouchedScanDraft';
 import { createOcrDerivative } from '@/features/receipt-capture/receiptImage.service';
 import { BackendReceiptOcrService } from '@/features/receipt-ocr/BackendReceiptOcrService';
 import { FallbackReceiptOcrService } from '@/features/receipt-ocr/FallbackReceiptOcrService';
@@ -19,6 +20,7 @@ import { getProcessingPrivacyNote } from '@/features/receipt-ocr/getProcessingPr
 import { MlKitReceiptOcrService } from '@/features/receipt-ocr/MlKitReceiptOcrService';
 import {
   OcrDailyLimitError,
+  OcrNetworkError,
   OcrQueuedError,
   OcrServiceBusyError,
   OcrTruncatedError,
@@ -75,6 +77,18 @@ export default function ProcessingScreen() {
   // The backend reading service was busy/unavailable (OcrServiceBusyError):
   // the failure screen says "try again in a moment" instead of blaming the photo.
   const [isBusy, setIsBusy] = useState(false);
+  // The scan never reached the backend (OcrNetworkError — on native, only
+  // once the on-device fallback also failed): the failure screen asks the
+  // user to check their connection instead of blaming the photo.
+  const [isNetworkError, setIsNetworkError] = useState(false);
+  // Set the moment the user leaves (Cancel / "Use another photo"), before
+  // this screen has actually unmounted, so a scan finishing in that gap
+  // never starts saving into a draft that's about to be discarded.
+  const leftScanRef = useRef(false);
+  // The parsed-receipt save currently running, if any — leaving waits for it
+  // to settle before deciding whether the draft is still untouched, so the
+  // discard never deletes a bill mid-save.
+  const saveInFlightRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     // Guards against a stale attempt (e.g. a slow scan still in flight when
@@ -86,6 +100,7 @@ export default function ProcessingScreen() {
       setRawText(null);
       setFailureNote(null);
       setIsBusy(false);
+      setIsNetworkError(false);
       try {
         const bill = await billsRepository.getById(billId);
         if (cancelled) return;
@@ -98,7 +113,7 @@ export default function ProcessingScreen() {
         setStage('reading');
         const { receipt, source, fallbackReason, truncated } =
           await ocrService.recognize(ocrReadyUri);
-        if (cancelled) return;
+        if (cancelled || leftScanRef.current) return;
         setRawText(receipt.rawText);
 
         setStage('organizing');
@@ -106,10 +121,19 @@ export default function ProcessingScreen() {
         // real date it rolls over to; review is told what was read so it can
         // say so (dateReadAs below).
         const dateCheck = receipt.receiptDate ? rollOverDateOnly(receipt.receiptDate) : null;
-        await saveParsedReceiptDraft(
-          billId,
-          dateCheck?.rolledOver ? { ...receipt, receiptDate: dateCheck.date } : receipt,
+        // Promise.resolve: native's save is synchronous, web's is async.
+        const save = Promise.resolve(
+          saveParsedReceiptDraft(
+            billId,
+            dateCheck?.rolledOver ? { ...receipt, receiptDate: dateCheck.date } : receipt,
+          ),
         );
+        saveInFlightRef.current = save;
+        try {
+          await save;
+        } finally {
+          if (saveInFlightRef.current === save) saveInFlightRef.current = null;
+        }
         if (cancelled) return;
 
         // ocrSource/fallbackReason/truncated are one-time UI hints for the review
@@ -146,6 +170,7 @@ export default function ProcessingScreen() {
         // removed DEBUG-text banner this screen used to render here.
         if (__DEV__) console.error('[ProcessingScreen] OCR failed:', error);
         setIsBusy(error instanceof OcrServiceBusyError);
+        setIsNetworkError(error instanceof OcrNetworkError);
         setFailureNote(
           error instanceof OcrTruncatedError
             ? copy.ocrFailure.truncatedNote
@@ -187,6 +212,31 @@ export default function ProcessingScreen() {
     return () => clearTimeout(timer);
   }, [stage, queuedSecondsLeft]);
 
+  // Leaving a scan that never produced anything (cancelled mid-scan, or
+  // giving up on a failed one for another photo — which makes a new bill)
+  // discards this draft when it's still untouched: no items, no people,
+  // still a DRAFT (discardUntouchedScanDraft re-checks all of that against
+  // storage). Navigation never waits on it; a failed discard just leaves
+  // the draft in the bill list. "Enter items manually" keeps the draft.
+  // A save already in flight is awaited first (its own failure is the scan
+  // effect's to report), so the check sees what it actually wrote — a draft
+  // that got items is kept.
+  async function discardAfterLeaving() {
+    leftScanRef.current = true;
+    await saveInFlightRef.current?.catch(() => undefined);
+    await discardUntouchedScanDraft(billId);
+  }
+
+  function handleCancel() {
+    router.replace('/');
+    void discardAfterLeaving();
+  }
+
+  function handleUseAnotherPhoto() {
+    router.back();
+    void discardAfterLeaving();
+  }
+
   const isQueued = stage === 'queued';
   // Both panels are always mounted (only `visible`/opacity toggles which one
   // is showing) and absolutely positioned on top of each other, so switching
@@ -224,10 +274,18 @@ export default function ProcessingScreen() {
               button. */}
           <View style={styles.headingGroup} accessibilityLiveRegion="assertive">
             <AppText variant="title">
-              {isBusy ? copy.ocrFailure.busyHeading : copy.ocrFailure.heading}
+              {isBusy
+                ? copy.ocrFailure.busyHeading
+                : isNetworkError
+                  ? copy.ocrFailure.networkHeading
+                  : copy.ocrFailure.heading}
             </AppText>
             <AppText variant="body" color="textSecondary">
-              {isBusy ? copy.ocrFailure.busyBody : copy.ocrFailure.body}
+              {isBusy
+                ? copy.ocrFailure.busyBody
+                : isNetworkError
+                  ? copy.ocrFailure.networkBody
+                  : copy.ocrFailure.body}
             </AppText>
             {/* copy.global.ocrUnavailable, not copy.ocrFailure.body's own
                 retry-oriented framing: this catch only ever fires once
@@ -240,8 +298,9 @@ export default function ProcessingScreen() {
                 contract of its own. On web there is no fallback wrapper, so
                 a truncated, daily-limited or signed-out scan lands here
                 directly and gets its own, more specific line instead. */}
-            {/* A busy service already says everything in its own body. */}
-            {isBusy ? null : (
+            {/* A busy service or a connection problem already says
+                everything in its own body. */}
+            {isBusy || isNetworkError ? null : (
               <AppText variant="body" color="textSecondary">
                 {failureNote ?? copy.global.ocrUnavailable}
               </AppText>
@@ -257,7 +316,7 @@ export default function ProcessingScreen() {
             <AppButton
               variant="secondary"
               label={copy.ocrFailure.anotherPhotoButton}
-              onPress={() => router.back()}
+              onPress={handleUseAnotherPhoto}
               icon={(color) => <Feather name="camera" size={18} color={color} />}
             />
             <AppButton
@@ -357,7 +416,7 @@ export default function ProcessingScreen() {
           <AppButton
             variant="text"
             label={copy.processing.cancelAction}
-            onPress={() => router.replace('/')}
+            onPress={handleCancel}
           />
         </View>
       </View>

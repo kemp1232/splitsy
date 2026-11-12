@@ -89,6 +89,21 @@ export class OcrServiceBusyError extends Error {
   }
 }
 
+// The OCR request never reached the backend at all — fetch itself rejected
+// (offline, DNS failure, refused connection), as opposed to the backend
+// answering with an error. A connection problem, not a bad photo:
+// processing.tsx says "check your connection" instead of "Try a clearer
+// photo". FallbackReceiptOcrService still reads on-device in this case, and
+// only rethrows this (instead of the on-device error) when that also fails.
+// Not raised for an aborted request (the fallback's own timeout).
+export class OcrNetworkError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message);
+    this.name = 'OcrNetworkError';
+    if (options && 'cause' in options) (this as { cause?: unknown }).cause = options.cause;
+  }
+}
+
 // Which implementation actually produced this result — lets the UI show
 // whether a scan used the Groq backend or fell back to on-device OCR (see
 // FallbackReceiptOcrService). A UI hint only, never treated as bill data

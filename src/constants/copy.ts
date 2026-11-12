@@ -234,6 +234,10 @@ export const copy = {
     dailyLimitNote:
       "You've used today's online scans. They reset at midnight UTC — until then, enter the items manually.",
     signedOutNote: 'Your sign-in has expired. Log out and sign in again to scan receipts.',
+    // Shown instead of heading/body (and the ocrUnavailable line) when the
+    // scan couldn't reach the server (OcrNetworkError) — not a photo problem.
+    networkHeading: "Couldn't reach the scanner",
+    networkBody: 'Check your connection and try again, or enter the items manually.',
   },
 
   // Section 13.9 — Receipt review
@@ -247,6 +251,7 @@ export const copy = {
     dateLabel: 'Receipt date',
     datePlaceholder: 'YYYY-MM-DD',
     invalidDateError: 'Enter the date as YYYY-MM-DD.',
+    futureDateError: "The receipt date can't be in the future.",
     itemsSection: 'Items',
     itemQuantityLabel: '×{quantity}',
     itemQuantityAccessibilityLabel: 'Quantity {quantity}',
@@ -309,6 +314,9 @@ export const copy = {
     continueButton: 'Add people',
     noItemsHeading: 'No items found',
     noItemsBody: 'Add the receipt items manually to continue.',
+    // Manual bills (entryMethod 'MANUAL') never had a receipt to read.
+    noItemsHeadingManual: 'No items yet',
+    noItemsBodyManual: 'Add the items on this bill to continue.',
     // "Choose another" on a fresh gallery bill (the action label itself
     // reuses copy.preview.chooseAnotherAction).
     chooseAnotherCaption: 'Scan a different photo instead',
@@ -393,6 +401,9 @@ export const copy = {
     multiPersonState: 'Shared by {count}',
     noAssignmentState: 'Not assigned',
     bulkAssignAction: 'Assign all unassigned',
+    // When the signed-in user's participant is found, one tap assigns every
+    // unassigned item to them — the label says who.
+    bulkAssignToAction: 'Assign rest to {name}',
     continueButton: 'Review fees and discounts',
     // Not from the spec — Continue skips the "Fees, tax, and discounts"
     // screen when the bill already matches the receipt (or the difference
@@ -435,7 +446,7 @@ export const copy = {
     allocationProportionalDetail: 'People with larger item totals pay a larger share.',
     allocationEqual: 'Split equally',
     allocationEqualDetail: 'Everyone gets the same share.',
-    allocationCustom: 'Enter custom amounts',
+    allocationCustom: 'Custom amounts',
     allocationCustomDetail: 'Set the exact amount for each person.',
     itemSubtotalLabel: 'Items subtotal',
     adjustmentsTotalLabel: 'Adjustments',
@@ -520,7 +531,7 @@ export const copy = {
     progressPartial: '{paid} of {total} paid',
     sectionWithCount: 'People ({count})',
     sectionAccessibilityLabel: '{count} people',
-    sectionCaption: 'Enter what each person paid, or tap Paid in full.',
+    sectionCaption: 'Enter what each person paid, or tap Paid the whole bill.',
   },
 
   // Not from the spec — settlement ("who owes whom") display on the Summary
@@ -619,6 +630,11 @@ export const copy = {
     body: "Everyone's share for this saved bill.",
     receiptCaption: 'Open the original receipt photo',
     rawOcrCaption: 'Read the text found on the receipt',
+    // The bill row is gone (deleted here or in another tab) — not a load
+    // failure, so no retry.
+    notFoundHeading: 'Bill not found',
+    notFoundBody: 'This bill may have been deleted.',
+    notFoundAction: 'Go to home',
   },
 
   // Section 13.20 — Settings
@@ -732,9 +748,8 @@ export const copy = {
     signInEmailNotVerified: "You'll need to verify your email before signing in.",
     resendVerificationAction: 'Resend verification email',
     resendVerificationSentToast: "We've sent another verification email.",
-    // The password field's own show/hide toggle (sign-in only, for now —
-    // see this file's own header comment on why this pass didn't extend to
-    // register.tsx/reset-password.tsx too).
+    // The password field's own show/hide toggle (sign-in.tsx and
+    // register.tsx).
     showPasswordLabel: 'Show password',
     hidePasswordLabel: 'Hide password',
 
@@ -894,6 +909,9 @@ export const copy = {
       "Receipt scanning isn't available on this device right now. You can still enter the bill manually.",
     storageFailure: "We couldn't save your changes. Check your available storage and try again.",
     deleteFailure: "We couldn't delete this bill. Try again.",
+    // AmountInput: text that still isn't an amount after stripping ₱,
+    // commas and spaces.
+    invalidAmountError: 'Enter an amount like 1234.50.',
     // Web-only fallback (src/lib/share.web.ts): shown wherever a screen's own
     // Share action fell back to copying to the clipboard instead, on a
     // browser with no native share sheet of its own (most desktop browsers).

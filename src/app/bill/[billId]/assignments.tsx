@@ -32,6 +32,7 @@ import {
   computeEqualSplitAssignmentUpdates,
 } from '@/features/assignments/computeEqualSplitAssignmentUpdates';
 import { createSerialQueue } from '@/features/assignments/createSerialQueue';
+import { getBulkAssignLabel } from '@/features/assignments/getBulkAssignLabel';
 import {
   groupAssignedParticipantIdsByLineItem,
   partitionLineItemsByAssignment,
@@ -528,6 +529,9 @@ export default function AssignmentsScreen() {
   const { unassignedItems } = partitionLineItemsByAssignment(items, assignmentRows);
   const unassignedCount = unassignedItems.length;
   const isBlocked = unassignedCount > 0;
+  // Same participant handleBulkAssign assigns to, so the label names exactly
+  // who one tap will assign the rest to.
+  const bulkAssignLabel = getBulkAssignLabel(findMeParticipant(participants, meName), meName);
 
   const itemWord =
     unassignedCount === 1 ? copy.assignments.itemWordSingular : copy.assignments.itemWordPlural;
@@ -632,7 +636,7 @@ export default function AssignmentsScreen() {
                 unassignedCount > 0 ? (
                   <AppButton
                     variant="text"
-                    label={copy.assignments.bulkAssignAction}
+                    label={bulkAssignLabel}
                     icon={(color) => <Feather name="users" size={18} color={color} />}
                     onPress={() => handleBulkAssign(unassignedItems.map((item) => item.id))}
                   />
