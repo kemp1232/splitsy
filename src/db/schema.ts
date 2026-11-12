@@ -89,6 +89,13 @@ export const bills = sqliteTable(
     discrepancyAcknowledged: integer('discrepancy_acknowledged', { mode: 'boolean' })
       .notNull()
       .default(false),
+    // The signed receipt difference (detected - computed, centavos) the user
+    // accepted via "Continue with difference" — written together with
+    // discrepancyAcknowledged. The acknowledgment only holds while the
+    // current difference still equals this (hasUnresolvedDiscrepancy.ts);
+    // null for bills never acknowledged or acknowledged before this column
+    // existed (those re-prompt once).
+    acknowledgedDiscrepancyCentavos: integer('acknowledged_discrepancy_centavos'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`(current_timestamp)`),

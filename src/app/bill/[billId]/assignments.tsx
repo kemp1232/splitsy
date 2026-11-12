@@ -552,6 +552,7 @@ export default function AssignmentsScreen() {
     adjustments,
     detectedReceiptTotalCentavos: bill.detectedReceiptTotalCentavos,
     discrepancyAcknowledged: bill.discrepancyAcknowledged,
+    acknowledgedDiscrepancyCentavos: bill.acknowledgedDiscrepancyCentavos,
   });
   const skipsAdjustments = nextRoute === 'payments';
 

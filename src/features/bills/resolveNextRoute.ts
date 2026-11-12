@@ -26,11 +26,10 @@ export type ResolveNextRouteInput = {
   participantCount: number;
   hasUnassignedItems: boolean;
   // True when there's a detected-total mismatch AND the bill hasn't
-  // acknowledged it (discrepancyAcknowledged === false) — an unresolved
-  // discrepancy, not merely a difference that exists but was already
-  // explicitly continued past (spec 10.8/13.17's "Continue with
-  // difference"). The caller computes this (e.g. via
-  // reconcileBillTotals(...).matches && bill.discrepancyAcknowledged),
+  // acknowledged that exact difference — an unresolved discrepancy, not
+  // merely a difference that exists but was already explicitly continued
+  // past (spec 10.8/13.17's "Continue with difference"). The caller computes
+  // this via hasUnresolvedDiscrepancy(reconcileBillTotals(...), bill),
   // rather than this function reaching into reconciliation math itself.
   hasUnresolvedDiscrepancy: boolean;
 };

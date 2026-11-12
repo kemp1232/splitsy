@@ -10,6 +10,7 @@ import {
   OcrServiceBusyError,
   OcrTruncatedError,
   OcrUnauthenticatedError,
+  OcrUnreadableError,
 } from './ReceiptOcrService';
 
 jest.mock('expo-file-system', () => ({
@@ -343,6 +344,38 @@ describe('BackendReceiptOcrService', () => {
       const rejection = service.recognize('file:///receipt.jpg');
       await expect(rejection).rejects.toBeInstanceOf(OcrTruncatedError);
       await expect(rejection).rejects.not.toBeInstanceOf(OcrServiceBusyError);
+    });
+
+    it("throws OcrUnreadableError (not OcrServiceBusyError) for a 502 with reason 'unreadable'", async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        text: async () =>
+          JSON.stringify({
+            error: 'Groq response did not match the expected schema',
+            truncated: false,
+            reason: 'unreadable',
+          }),
+      });
+      const service = new BackendReceiptOcrService();
+
+      const rejection = service.recognize('file:///receipt.jpg');
+      await expect(rejection).rejects.toBeInstanceOf(OcrUnreadableError);
+      await expect(rejection).rejects.not.toBeInstanceOf(OcrServiceBusyError);
+    });
+
+    it('keeps OcrTruncatedError ahead of the unreadable mapping for a truncated unreadable 502', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        text: async () =>
+          JSON.stringify({ error: 'cut off', truncated: true, reason: 'unreadable' }),
+      });
+      const service = new BackendReceiptOcrService();
+
+      const rejection = service.recognize('file:///receipt.jpg');
+      await expect(rejection).rejects.toBeInstanceOf(OcrTruncatedError);
+      await expect(rejection).rejects.not.toBeInstanceOf(OcrUnreadableError);
     });
 
     it('throws OcrNetworkError when the request itself fails (offline)', async () => {

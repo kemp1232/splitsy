@@ -163,6 +163,8 @@ ocrRoute.post('/api/ocr', async (c) => {
   // GroqRequestError).
   let truncated = false;
   let groqResponded = false;
+  // Set when Groq's JSON failed schema validation (see below).
+  let schemaInvalid = false;
   // Either the client disconnecting (its request signal) or the server's own
   // Groq deadline aborts the Groq call. Both mean the user gets no usable
   // result, so both refund the scan even if Groq already answered.
@@ -197,10 +199,15 @@ ocrRoute.post('/api/ocr', async (c) => {
     // already treats that as "try on-device OCR instead," which is the right
     // outcome for an occasional malformed response rather than corrupting
     // money data by trusting it anyway.
+    // Individually malformed items are salvaged or dropped by the schema
+    // itself; reaching this catch means nothing usable came back, which the
+    // 502 below marks as `reason: 'unreadable'` so the client can say "we
+    // couldn't read this receipt" rather than "the service is busy".
     let extraction;
     try {
       extraction = validateReceiptExtraction(parsed);
     } catch (error) {
+      schemaInvalid = true;
       const detail = error instanceof ZodError ? error.message : String(error);
       throw new Error(`Groq response did not match the expected schema: ${detail}`);
     }
@@ -231,6 +238,9 @@ ocrRoute.post('/api/ocr', async (c) => {
     // Passed through as our own 429 so the client can show a specific
     // message instead of lumping it in with every other 502 case.
     const status = error instanceof GroqRequestError && error.status === 429 ? 429 : 502;
+    if (schemaInvalid && status === 502) {
+      return c.json({ error: message, truncated, reason: 'unreadable' }, 502);
+    }
     return c.json({ error: message, truncated }, status);
   }
 });

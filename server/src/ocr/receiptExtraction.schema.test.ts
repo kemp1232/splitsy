@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { validateReceiptExtraction } from './receiptExtraction.schema.js';
+import { UnreadableReceiptError, validateReceiptExtraction } from './receiptExtraction.schema.js';
 
 const VALID = {
   merchantName: 'SAMPLE DINER',
@@ -38,13 +38,60 @@ describe('validateReceiptExtraction', () => {
     expect(() => validateReceiptExtraction({ ...VALID, receiptDate: '01/15/2026' })).toThrow();
   });
 
-  it('rejects an item with quantity 0', () => {
-    expect(() =>
+  it('defaults an item with quantity 0 to quantity 1 instead of rejecting the response', () => {
+    expect(
       validateReceiptExtraction({
         ...VALID,
         items: [{ name: 'X', quantity: 0, lineTotalCentavos: 100 }],
+      }).items,
+    ).toEqual([{ name: 'X', quantity: 1, lineTotalCentavos: 100 }]);
+  });
+
+  it('defaults a missing item quantity to 1', () => {
+    expect(
+      validateReceiptExtraction({
+        ...VALID,
+        items: [{ name: 'RICE', lineTotalCentavos: 5000 }],
+      }).items,
+    ).toEqual([{ name: 'RICE', quantity: 1, lineTotalCentavos: 5000 }]);
+  });
+
+  it('drops an item with a missing or invalid lineTotalCentavos and keeps the valid ones', () => {
+    expect(
+      validateReceiptExtraction({
+        ...VALID,
+        items: [
+          { name: 'BURGER MEAL', quantity: 2, lineTotalCentavos: 24000 },
+          { name: 'MYSTERY', quantity: 1 },
+          { name: 'DECIMAL', quantity: 1, lineTotalCentavos: 99.5 },
+          { name: 'FRIES', quantity: 1, lineTotalCentavos: 8000 },
+        ],
+      }).items,
+    ).toEqual([
+      { name: 'BURGER MEAL', quantity: 2, lineTotalCentavos: 24000 },
+      { name: 'FRIES', quantity: 1, lineTotalCentavos: 8000 },
+    ]);
+  });
+
+  it('drops an item with an empty name', () => {
+    expect(
+      validateReceiptExtraction({
+        ...VALID,
+        items: [
+          { name: '', quantity: 1, lineTotalCentavos: 100 },
+          { name: 'TEA', quantity: 1, lineTotalCentavos: 300 },
+        ],
+      }).items,
+    ).toEqual([{ name: 'TEA', quantity: 1, lineTotalCentavos: 300 }]);
+  });
+
+  it('throws UnreadableReceiptError when items were returned but none is usable', () => {
+    expect(() =>
+      validateReceiptExtraction({
+        ...VALID,
+        items: [{ name: 'BURGER' }, { quantity: 1, lineTotalCentavos: 100 }],
       }),
-    ).toThrow();
+    ).toThrow(UnreadableReceiptError);
   });
 
   it('rejects an adjustment with an unrecognized type', () => {

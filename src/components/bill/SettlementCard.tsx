@@ -25,6 +25,10 @@ type Props = {
   // collected-vs-total progress bar; omit it and the bar is skipped entirely
   // rather than rendered against a guessed total.
   totalCentavos?: number;
+  // computeUnsettledCredits' output: creditors still owed money once more was
+  // collected than the bill required (no debtor left to pay them). Listed as
+  // "X is still owed ₱Y" with the over-collected note; omit to skip.
+  unsettledCredits?: { participantId: string; amountCentavos: number }[];
 };
 
 // Post-MVP scope expansion (see settlement.ts's header comment) — the
@@ -39,6 +43,7 @@ export function SettlementCard({
   unaccountedCentavos,
   nameByParticipantId,
   totalCentavos,
+  unsettledCredits,
 }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -145,6 +150,17 @@ export function SettlementCard({
                   )}
             </AppText>
           </View>
+          {unsettledCredits !== undefined && unsettledCredits.length > 0 ? (
+            <View style={styles.stillOwedList}>
+              {unsettledCredits.map((credit) => (
+                <AppText key={credit.participantId} variant="caption" color="textSecondary">
+                  {copy.settlement.stillOwedLabel
+                    .replace('{name}', () => nameByParticipantId.get(credit.participantId) ?? '')
+                    .replace('{amount}', () => formatCentavos(credit.amountCentavos))}
+                </AppText>
+              ))}
+            </View>
+          ) : null}
         </View>
       ) : null}
     </GroupedCard>
@@ -210,6 +226,11 @@ function createStyles(colors: ColorTokens) {
     },
     statusText: {
       flex: 1,
+    },
+    stillOwedList: {
+      gap: spacing.xs,
+      paddingTop: spacing.sm,
+      paddingHorizontal: spacing.md,
     },
     success: { backgroundColor: tint(colors.success), borderColor: colors.success },
     warning: { backgroundColor: tint(colors.warning), borderColor: colors.warning },

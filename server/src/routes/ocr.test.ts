@@ -192,7 +192,45 @@ describe('POST /api/ocr', () => {
     const res = await ocrRoute.fetch(buildRequest(file));
 
     expect(res.status).toBe(502);
-    expect((await res.json()).error).toMatch(/did not match the expected schema/);
+    const body = await res.json();
+    expect(body.error).toMatch(/did not match the expected schema/);
+    expect(body.reason).toBe('unreadable');
+  });
+
+  it("returns 502 with reason 'unreadable' when every extracted item is unusable", async () => {
+    vi.mocked(requestReceiptExtraction).mockResolvedValue({
+      content: JSON.stringify({ ...VALID_EXTRACTION, items: [{ name: 'BURGER' }] }),
+      truncated: false,
+    });
+    const file = new File([new Uint8Array(tinyPng)], 'receipt.jpg', { type: 'image/jpeg' });
+
+    const res = await ocrRoute.fetch(buildRequest(file));
+
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.reason).toBe('unreadable');
+    expect(body.truncated).toBe(false);
+  });
+
+  it('returns 200 with the salvaged items when only some items are malformed', async () => {
+    vi.mocked(requestReceiptExtraction).mockResolvedValue({
+      content: JSON.stringify({
+        ...VALID_EXTRACTION,
+        items: [
+          { name: 'BURGER MEAL', lineTotalCentavos: 24000 },
+          { name: 'MYSTERY', quantity: 1 },
+        ],
+      }),
+      truncated: false,
+    });
+    const file = new File([new Uint8Array(tinyPng)], 'receipt.jpg', { type: 'image/jpeg' });
+
+    const res = await ocrRoute.fetch(buildRequest(file));
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).items).toEqual([
+      { name: 'BURGER MEAL', quantity: 1, lineTotalCentavos: 24000 },
+    ]);
   });
 
   it('reports truncated: true on the 502 when a cut-off Groq response fails schema validation', async () => {

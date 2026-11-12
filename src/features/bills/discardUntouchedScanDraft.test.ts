@@ -48,6 +48,7 @@ function makeBill(overrides: Partial<Bill> = {}): Bill {
     detectedSubtotalCentavos: null,
     parserVersion: null,
     discrepancyAcknowledged: false,
+    acknowledgedDiscrepancyCentavos: null,
     createdAt: '2026-11-12T00:00:00.000Z',
     updatedAt: '2026-11-12T00:00:00.000Z',
     completedAt: null,

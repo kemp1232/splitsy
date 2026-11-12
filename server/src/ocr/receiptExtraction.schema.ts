@@ -44,7 +44,9 @@ const rawReceiptExtractionSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .nullable(),
-  items: z.array(receiptExtractionItemSchema),
+  // Items are validated one by one in validateReceiptExtraction (salvaged,
+  // not all-or-nothing) — only the array itself is required here.
+  items: z.array(z.unknown()),
   adjustments: z.array(receiptExtractionAdjustmentSchema),
   detectedSubtotalCentavos: z.number().int().nullable().optional(),
   detectedTotalCentavos: z.number().int().nullable().optional(),
@@ -65,10 +67,57 @@ export type ReceiptExtraction = {
   rawText: string;
 };
 
+// Thrown when Groq returned items but not one of them is usable — the
+// response is well-formed JSON with nothing worth keeping, so the route
+// answers 502 `reason: 'unreadable'` (a photo problem, not a busy service).
+export class UnreadableReceiptError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnreadableReceiptError';
+  }
+}
+
+// What an item needs to be kept at all: a name and an integer, non-negative
+// line total (the money that gets split). Quantity is display-only, so an
+// invalid or missing one is defaulted rather than costing the whole item.
+const salvageableItemSchema = z.object({
+  name: z.string().min(1),
+  lineTotalCentavos: z.number().int().min(0),
+});
+const itemQuantitySchema = receiptExtractionItemSchema.shape.quantity;
+
+// One malformed item used to reject the whole response (and so the whole
+// scan). Now each item is checked on its own:
+// - missing/invalid quantity (not an integer 1-99) -> 1;
+// - missing/empty name or missing/invalid lineTotalCentavos -> item dropped.
+// Fails only when items were returned but every one of them was dropped
+// (UnreadableReceiptError). A legitimately empty items array is still
+// accepted, exactly as before.
+function salvageItems(rawItems: unknown[]): ReceiptExtraction['items'] {
+  const items: ReceiptExtraction['items'] = [];
+  for (const rawItem of rawItems) {
+    const base = salvageableItemSchema.safeParse(rawItem);
+    if (!base.success) continue;
+    const quantity = itemQuantitySchema.safeParse((rawItem as { quantity?: unknown }).quantity);
+    items.push({
+      name: base.data.name,
+      quantity: quantity.success ? quantity.data : 1,
+      lineTotalCentavos: base.data.lineTotalCentavos,
+    });
+  }
+  if (rawItems.length > 0 && items.length === 0) {
+    throw new UnreadableReceiptError(
+      `None of the ${rawItems.length} extracted items had a usable name and line total.`,
+    );
+  }
+  return items;
+}
+
 export function validateReceiptExtraction(data: unknown): ReceiptExtraction {
   const parsed = rawReceiptExtractionSchema.parse(data);
   return {
     ...parsed,
+    items: salvageItems(parsed.items),
     detectedSubtotalCentavos: parsed.detectedSubtotalCentavos ?? null,
     detectedTotalCentavos: parsed.detectedTotalCentavos ?? null,
     rawText: parsed.rawText ?? '',

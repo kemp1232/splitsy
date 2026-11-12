@@ -1,0 +1,1 @@
+ALTER TABLE `bills` ADD `acknowledged_discrepancy_centavos` integer;

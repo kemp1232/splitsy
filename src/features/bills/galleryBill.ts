@@ -1,10 +1,10 @@
 import * as ImagePicker from 'expo-image-picker';
-import { Alert } from 'react-native';
 
 import { copy } from '@/constants/copy';
 import type { Bill } from '@/db/repositories/bills.repository';
 import { copyImageToAppStorage } from '@/features/receipt-capture/receiptImage.service';
 import { createBillInTrip } from '@/features/trips/trip.service';
+import { showAlert } from '@/lib/alert';
 
 import { createDraftBill } from './bill.service';
 
@@ -25,15 +25,29 @@ import { createDraftBill } from './bill.service';
 export async function pickGalleryImageUri(): Promise<string | null> {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) {
-    Alert.alert(copy.cameraPermission.heading, copy.cameraPermission.permanentDenialBody);
+    showAlert(copy.cameraPermission.heading, copy.cameraPermission.permanentDenialBody);
     return null;
   }
 
-  const result = await ImagePicker.launchImageLibraryAsync({ quality: 1 });
+  let result: ImagePicker.ImagePickerResult;
+  try {
+    result = await ImagePicker.launchImageLibraryAsync({ quality: 1 });
+  } catch (error) {
+    // expo-image-picker's web implementation throws "Unsupported file type"
+    // when the browser's file dialog returns a non-image file — same message
+    // as an unusable asset below. Any other picker failure gets the generic
+    // error copy. Either way it's a message, not an uncaught rejection.
+    const unsupported = error instanceof Error && error.message.includes('Unsupported file type');
+    showAlert(
+      copy.global.genericErrorHeading,
+      unsupported ? copy.global.unsupportedImage : copy.global.genericErrorBody,
+    );
+    return null;
+  }
   const asset = result.assets?.[0];
   if (result.canceled || !asset) return null;
   if (!asset.uri) {
-    Alert.alert(copy.global.genericErrorHeading, copy.global.unsupportedImage);
+    showAlert(copy.global.genericErrorHeading, copy.global.unsupportedImage);
     return null;
   }
   return asset.uri;

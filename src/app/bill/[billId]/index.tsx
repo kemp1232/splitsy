@@ -1,7 +1,7 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Fragment, useCallback, useMemo, useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, View } from 'react-native';
 
 import { BillTotalCard } from '@/components/bill/BillTotalCard';
 import { PersonTotalCard } from '@/components/bill/PersonTotalCard';
@@ -48,7 +48,7 @@ import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { getNegativeTotalWarning } from '@/features/receipt-review/buildTotalsSummary';
 import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
-import { computeSettlement } from '@/features/splitting/settlement';
+import { computeSettlement, computeUnsettledCredits } from '@/features/splitting/settlement';
 import {
   displayParticipantName,
   resolveQuickAddMeName,
@@ -65,6 +65,7 @@ import {
   type SummaryAdjustmentInfo,
   type SummaryItemInfo,
 } from '@/features/summary/buildParticipantShareDisplay';
+import { showAlert } from '@/lib/alert';
 import { authClient } from '@/lib/authClient';
 import { shareText } from '@/lib/share';
 import type { ColorTokens } from '@/theme/tokens';
@@ -293,6 +294,7 @@ export default function SavedBillDetailScreen() {
     contributionByParticipantId,
   );
   const settlement = computeSettlement(settlementParticipants);
+  const unsettledCredits = computeUnsettledCredits(settlementParticipants, settlement);
   // Same reasoning as summary.tsx's own hasAnyContribution: nobody having
   // used the (skippable) Payments screen isn't "money unaccounted for," so
   // SettlementCard stays hidden until at least one participant has a nonzero
@@ -333,7 +335,7 @@ export default function SavedBillDetailScreen() {
       // Web-only: no native share sheet on this browser, silently fell back
       // to the clipboard instead (src/lib/share.web.ts) — this screen has no
       // toast mechanism of its own to reuse, unlike summary.tsx's.
-      if (result === 'copied') Alert.alert(copy.global.sharedTextCopiedToast);
+      if (result === 'copied') showAlert(copy.global.sharedTextCopiedToast);
     } catch {
       // No spec-mandated share-failure copy for this screen (13.19 doesn't
       // define one of its own) — reused verbatim from the summary screen's
@@ -512,6 +514,7 @@ export default function SavedBillDetailScreen() {
           <SettlementCard
             transactions={settlement.transactions}
             unaccountedCentavos={settlement.unaccountedCentavos}
+            unsettledCredits={unsettledCredits}
             nameByParticipantId={nameByParticipantId}
             totalCentavos={splitResult.computedTotalCentavos}
           />

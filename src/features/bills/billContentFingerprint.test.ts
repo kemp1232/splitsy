@@ -27,6 +27,7 @@ function makeContent(): BillContent {
     detectedSubtotalCentavos: 55000,
     parserVersion: 1,
     discrepancyAcknowledged: false,
+    acknowledgedDiscrepancyCentavos: null,
     createdAt: T1,
     updatedAt: T1,
     completedAt: T1,
@@ -107,6 +108,29 @@ describe('buildBillContentFingerprint', () => {
       adjustments: content.adjustments.map((a) => ({ ...a, updatedAt: T2 })),
     };
     expect(buildBillContentFingerprint(touched)).toBe(buildBillContentFingerprint(content));
+  });
+
+  it('ignores a re-acknowledged discrepancy amount (legacy null -> amount)', () => {
+    // A legacy acknowledged bill re-prompted during Edit and confirmed again
+    // with no content change must still be restorable to COMPLETED.
+    const content = makeContent();
+    const reacknowledged: BillContent = {
+      ...content,
+      bill: {
+        ...content.bill,
+        discrepancyAcknowledged: true,
+        acknowledgedDiscrepancyCentavos: 1200,
+      },
+    };
+    const legacy: BillContent = {
+      ...content,
+      bill: {
+        ...content.bill,
+        discrepancyAcknowledged: true,
+        acknowledgedDiscrepancyCentavos: null,
+      },
+    };
+    expect(buildBillContentFingerprint(reacknowledged)).toBe(buildBillContentFingerprint(legacy));
   });
 
   const changes: [string, (content: BillContent) => BillContent][] = [

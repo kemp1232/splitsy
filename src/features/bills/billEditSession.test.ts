@@ -66,6 +66,7 @@ function makeBill(status: Bill['status']): Bill {
     detectedSubtotalCentavos: null,
     parserVersion: 1,
     discrepancyAcknowledged: false,
+    acknowledgedDiscrepancyCentavos: null,
     createdAt: UPDATED_AT,
     updatedAt: UPDATED_AT,
     completedAt: status === 'COMPLETED' ? COMPLETED_AT : null,

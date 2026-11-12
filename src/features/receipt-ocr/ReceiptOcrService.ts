@@ -89,6 +89,20 @@ export class OcrServiceBusyError extends Error {
   }
 }
 
+// Thrown when the backend answered 502 with `reason: 'unreadable'`: the
+// reading service worked, but nothing usable could be extracted from this
+// photo (server/src/ocr/receiptExtraction.schema.ts). Deliberately NOT an
+// OcrServiceBusyError, so processing.tsx shows the "couldn't read this
+// receipt / try a clearer photo" copy instead of "scanning is busy".
+// FallbackReceiptOcrService treats it like any other failure (reads
+// on-device instead).
+export class OcrUnreadableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OcrUnreadableError';
+  }
+}
+
 // The OCR request never reached the backend at all — fetch itself rejected
 // (offline, DNS failure, refused connection), as opposed to the backend
 // answering with an error. A connection problem, not a bad photo:
