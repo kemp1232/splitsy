@@ -2,7 +2,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
@@ -13,6 +13,10 @@ import { Screen } from '@/components/ui/Screen';
 import { copy } from '@/constants/copy';
 import type { NewBill } from '@/db/repositories/bills.repository';
 import { createDraftBill } from '@/features/bills/bill.service';
+import {
+  clearCapturedPhoto,
+  getCapturedPhoto,
+} from '@/features/receipt-capture/capturedPhotoStore';
 import { copyImageToAppStorage } from '@/features/receipt-capture/receiptImage.service';
 import { createBillInTrip } from '@/features/trips/trip.service';
 import type { ColorTokens } from '@/theme/tokens';
@@ -20,7 +24,10 @@ import { radius, spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 type PreviewParams = {
-  imageUri: string;
+  // Id of the just-taken photo in capturedPhotoStore — never the image
+  // itself (on web that's a multi-megabyte base64 data URI, which doesn't
+  // belong in a URL). Missing from the store after a web reload.
+  photoId?: string;
   entryMethod: NewBill['entryMethod'];
   // Trip feature addition (not from the numbered MVP spec): forwarded here by
   // useBillSourceActions.ts's pickFromGallery (and, for the camera path, by
@@ -42,11 +49,18 @@ export default function PreviewScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const params = useLocalSearchParams<PreviewParams>();
-  const [uri, setUri] = useState(params.imageUri);
+  const [uri, setUri] = useState(() => getCapturedPhoto(params.photoId));
   const [busy, setBusy] = useState(false);
 
+  // Reached without a photo (e.g. the page was reloaded on web, which
+  // empties the in-memory store): nothing to preview, so back to the camera.
+  if (!uri) {
+    return <Redirect href="/bill/capture" />;
+  }
+  const photoUri = uri;
+
   async function handleRotate() {
-    setUri(await rotate90(uri));
+    setUri(await rotate90(photoUri));
   }
 
   async function handleChooseAnother() {
@@ -62,7 +76,7 @@ export default function PreviewScreen() {
   async function handleUseThisPhoto() {
     setBusy(true);
     try {
-      const appUri = await copyImageToAppStorage(uri);
+      const appUri = await copyImageToAppStorage(photoUri);
       const draftInput = {
         entryMethod: params.entryMethod,
         receiptImageUri: appUri,
@@ -71,6 +85,7 @@ export default function PreviewScreen() {
       const bill = params.tripId
         ? await createBillInTrip(params.tripId, draftInput)
         : await createDraftBill(draftInput);
+      clearCapturedPhoto();
       router.replace({ pathname: '/bill/processing', params: { billId: bill.id } });
     } catch {
       Alert.alert(copy.global.genericErrorHeading, copy.global.imageCopyFailure);
@@ -93,7 +108,7 @@ export default function PreviewScreen() {
               sparingly, on receipt-related surfaces) — this is the photo of
               the actual receipt, the most literal place for it in the app. */}
           <View style={styles.imageCard}>
-            <Image source={{ uri }} style={styles.image} contentFit="contain" />
+            <Image source={{ uri: photoUri }} style={styles.image} contentFit="contain" />
           </View>
           <ReceiptTornEdge color={colors.surfaceMuted} borderColor={colors.border} />
         </View>

@@ -10,6 +10,7 @@ import { ActionRow } from '@/components/ui/ActionRow';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { GroupedCard, GroupedSeparator, SectionHeader } from '@/components/ui/GroupedSection';
 import { InlineError } from '@/components/ui/InlineError';
@@ -70,7 +71,9 @@ import type { ColorTokens } from '@/theme/tokens';
 import { spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
-type LoadState = 'loading' | 'ready' | 'error';
+// 'notFound': the bill row is gone (deleted here, or in another tab while this
+// URL stayed open) — a dead link, not a load failure, so no retry.
+type LoadState = 'loading' | 'ready' | 'error' | 'notFound';
 
 type LoadedData = {
   billRow: Bill | undefined;
@@ -164,7 +167,7 @@ export default function SavedBillDetailScreen() {
       await restoreUnchangedBillEdits().catch(() => undefined);
       const data = await fetchSavedBillDetailData(billId);
       if (!data.billRow) {
-        setState('error');
+        setState('notFound');
         return;
       }
 
@@ -220,6 +223,19 @@ export default function SavedBillDetailScreen() {
     return (
       <Screen tabBarHidden>
         <LoadingState />
+      </Screen>
+    );
+  }
+
+  if (state === 'notFound') {
+    return (
+      <Screen tabBarHidden>
+        <EmptyState
+          heading={copy.savedBillDetail.notFoundHeading}
+          body={copy.savedBillDetail.notFoundBody}
+          actionLabel={copy.savedBillDetail.notFoundAction}
+          onAction={() => router.dismissTo('/')}
+        />
       </Screen>
     );
   }

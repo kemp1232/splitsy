@@ -33,7 +33,10 @@ import { partitionLineItemsByAssignment } from '@/features/assignments/partition
 import { useEnsureBillEditable } from '@/features/bills/useEnsureBillEditable';
 import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
 import { resolveQuickAddMeName } from '@/features/participants/validateParticipantName';
-import { buildInitialContributions } from '@/features/payments/buildInitialContributions';
+import {
+  buildInitialContributions,
+  followWholeBillPayer,
+} from '@/features/payments/buildInitialContributions';
 import { computeContributionUpdates } from '@/features/payments/computeContributionUpdates';
 import { getNegativeTotalWarning } from '@/features/receipt-review/buildTotalsSummary';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
@@ -173,6 +176,10 @@ export default function PaymentsScreen() {
   // and never over the user's own edits.
   const [prefillChecked, setPrefillChecked] = useState(false);
   const [hasEdited, setHasEdited] = useState(false);
+  // The bill total the current contributions were last lined up with — lets a
+  // whole-bill payer follow a total that changed while this screen stayed
+  // mounted (see followWholeBillPayer below). null until the pre-fill ran.
+  const [totalBasisCentavos, setTotalBasisCentavos] = useState<number | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -237,8 +244,9 @@ export default function PaymentsScreen() {
   // This screen stays mounted under Summary (and Summary's own Edit bill), so
   // coming back re-reads just the bill total — the negative-total warning and
   // "Paid the whole bill" then match the current items/discounts — without
-  // touching the contributions being typed. Skips the first focus (the load
-  // effect above already read it).
+  // touching the contributions being typed (other than a single whole-bill
+  // payer, which follows the new total — see followWholeBillPayer below).
+  // Skips the first focus (the load effect above already read it).
   const hasFocusedRef = useRef(false);
   useFocusEffect(
     useCallback(() => {
@@ -265,8 +273,9 @@ export default function PaymentsScreen() {
   );
 
   // Once the data is loaded and the session has resolved (so meName is the
-  // real user, not the pending-state 'Me' fallback): if nothing is saved yet,
-  // pre-fill the signed-in user as having paid the whole bill. Local only —
+  // real user, not the pending-state 'Me' fallback): if nothing is saved yet
+  // (or the signed-in user's saved whole-bill amount is stale against the
+  // current total), pre-fill them as having paid the whole bill. Local only —
   // computeContributionUpdates persists it on Continue. Done during render
   // (React's "adjust state on change" pattern) rather than in an effect, and
   // kept out of the load effect so a session refresh never reloads the
@@ -281,6 +290,26 @@ export default function PaymentsScreen() {
         )
       ) {
         setContributions(prefilled);
+        setResetToken((token) => token + 1);
+      }
+    }
+  }
+
+  // The total changed after the pre-fill (items edited while this screen
+  // stayed mounted under Summary): a single "paid the whole bill" amount at
+  // the old total moves to the new one, so it can't go stale. Splits and
+  // partial amounts are left alone. Same render-time adjustment pattern as
+  // the pre-fill above; resetToken re-seeds the AmountInputs.
+  if (prefillChecked && state === 'ready' && totalBasisCentavos !== computedTotalCentavos) {
+    setTotalBasisCentavos(computedTotalCentavos);
+    if (totalBasisCentavos !== null) {
+      const followed = followWholeBillPayer(
+        contributions,
+        totalBasisCentavos,
+        computedTotalCentavos,
+      );
+      if (followed !== contributions) {
+        setContributions(followed);
         setResetToken((token) => token + 1);
       }
     }
