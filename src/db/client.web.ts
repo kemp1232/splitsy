@@ -3,7 +3,11 @@ import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
 
 import { createTransactionLock } from './createTransactionLock';
 import * as schema from './schema';
-import { loadPersistedDatabase, savePersistedDatabase } from './web/idbPersistence';
+import {
+  loadPersistedDatabase,
+  savePersistedDatabase,
+  savePersistedDatabaseOrThrow,
+} from './web/idbPersistence';
 
 // Web counterpart to client.ts.
 //
@@ -125,6 +129,21 @@ function schedulePersist(sqlite3: Sqlite3, sqliteDb: Sqlite3Db) {
     persistTimeout = null;
     void savePersistedDatabase(sqlite3.capi.sqlite3_js_db_export(sqliteDb.pointer!));
   }, PERSIST_DEBOUNCE_MS);
+}
+
+// Skips the debounce and saves right away, rejecting if the save fails. For
+// the full local-data wipe (bill.service.web.ts's wipeAllLocalData): its
+// callers clear the pending-wipe marker once it resolves, so the wiped
+// database must already be in IndexedDB by then — a reload inside the
+// debounce window would otherwise restore the previous account's data with
+// no marker left to retry the wipe. Normal writes keep the debounce.
+export async function persistDatabaseNow(): Promise<void> {
+  if (persistTimeout) {
+    clearTimeout(persistTimeout);
+    persistTimeout = null;
+  }
+  const { sqlite3, sqliteDb } = await getDb();
+  await savePersistedDatabaseOrThrow(sqlite3.capi.sqlite3_js_db_export(sqliteDb.pointer!));
 }
 
 if (typeof window !== 'undefined') {

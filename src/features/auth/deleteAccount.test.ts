@@ -1,4 +1,4 @@
-import { resetAllLocalData } from '@/features/bills/bill.service';
+import { resetAllLocalData, wipeAllLocalData } from '@/features/bills/bill.service';
 import { authClient } from '@/lib/authClient';
 
 import { deleteAccount } from './deleteAccount';
@@ -9,6 +9,7 @@ jest.mock('@/lib/authClient', () => ({
 }));
 jest.mock('@/features/bills/bill.service', () => ({
   resetAllLocalData: jest.fn(),
+  wipeAllLocalData: jest.fn(),
 }));
 jest.mock('./pendingLocalWipe', () => ({
   setPendingLocalWipe: jest.fn(),
@@ -16,7 +17,8 @@ jest.mock('./pendingLocalWipe', () => ({
 }));
 
 const deleteUser = authClient.deleteUser as unknown as jest.Mock;
-const resetLocal = resetAllLocalData as unknown as jest.Mock;
+const wipeLocal = wipeAllLocalData as unknown as jest.Mock;
+const billsOnlyReset = resetAllLocalData as unknown as jest.Mock;
 const notify = authClient.$store.notify as unknown as jest.Mock;
 const setMarker = setPendingLocalWipe as unknown as jest.Mock;
 const clearMarker = clearPendingLocalWipe as unknown as jest.Mock;
@@ -27,7 +29,8 @@ describe('deleteAccount', () => {
   beforeEach(() => {
     calls.length = 0;
     deleteUser.mockReset();
-    resetLocal.mockReset();
+    wipeLocal.mockReset();
+    billsOnlyReset.mockReset();
     notify.mockReset().mockImplementation(() => {
       calls.push('sessionSignal');
     });
@@ -44,8 +47,8 @@ describe('deleteAccount', () => {
       calls.push('deleteUser');
       return { data: { success: true }, error: null };
     });
-    resetLocal.mockImplementation(() => {
-      calls.push('resetAllLocalData');
+    wipeLocal.mockImplementation(() => {
+      calls.push('wipeAllLocalData');
     });
 
     await expect(deleteAccount('password1234')).resolves.toEqual({ ok: true });
@@ -57,11 +60,13 @@ describe('deleteAccount', () => {
     expect(calls).toEqual([
       'setMarker',
       'deleteUser',
-      'resetAllLocalData',
+      'wipeAllLocalData',
       'clearMarker',
       'sessionSignal',
     ]);
     expect(notify).toHaveBeenCalledWith('$sessionSignal');
+    // The full wipe (trips included), never Settings' bills-only reset.
+    expect(billsOnlyReset).not.toHaveBeenCalled();
   });
 
   it('reports wrong_password, keeps local data and clears the marker when the password is rejected', async () => {
@@ -71,7 +76,7 @@ describe('deleteAccount', () => {
     });
 
     await expect(deleteAccount('nope')).resolves.toEqual({ ok: false, reason: 'wrong_password' });
-    expect(resetLocal).not.toHaveBeenCalled();
+    expect(wipeLocal).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
     expect(calls).toEqual(['setMarker', 'clearMarker']);
   });
@@ -83,7 +88,7 @@ describe('deleteAccount', () => {
       ok: false,
       reason: 'network',
     });
-    expect(resetLocal).not.toHaveBeenCalled();
+    expect(wipeLocal).not.toHaveBeenCalled();
     expect(calls).toEqual(['setMarker', 'clearMarker']);
   });
 
@@ -91,7 +96,7 @@ describe('deleteAccount', () => {
     deleteUser.mockResolvedValue({ data: null, error: { status: 500, message: 'boom' } });
 
     await expect(deleteAccount('password1234')).resolves.toEqual({ ok: false, reason: 'failed' });
-    expect(resetLocal).not.toHaveBeenCalled();
+    expect(wipeLocal).not.toHaveBeenCalled();
     expect(clearMarker).toHaveBeenCalled();
   });
 
@@ -100,12 +105,12 @@ describe('deleteAccount', () => {
 
     await expect(deleteAccount('password1234')).resolves.toEqual({ ok: false, reason: 'failed' });
     expect(deleteUser).not.toHaveBeenCalled();
-    expect(resetLocal).not.toHaveBeenCalled();
+    expect(wipeLocal).not.toHaveBeenCalled();
   });
 
   it('reports local_reset_failed, keeps the marker for the startup retry, and does not signal the session refresh', async () => {
     deleteUser.mockResolvedValue({ data: { success: true }, error: null });
-    resetLocal.mockImplementation(() => {
+    wipeLocal.mockImplementation(() => {
       throw new Error('db locked');
     });
 

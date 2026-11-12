@@ -481,6 +481,9 @@ export const copy = {
     labelPlaceholder: 'Example: Corkage fee',
     amountField: 'Amount',
     discountHelper: 'Discounts reduce the bill.',
+    // Shown for an existing negative non-discount adjustment (e.g. a "Receipt
+    // total difference" row): the amount field only holds the magnitude.
+    negativeAdjustmentHelper: 'This amount reduces the bill.',
     allocationField: 'How should this be divided?',
     saveAction: 'Save adjustment',
     deleteAction: 'Delete adjustment',
@@ -841,6 +844,12 @@ export const copy = {
     sessionCheckFailedHeading: "Can't check your sign-in status",
     sessionCheckFailedBody:
       "We couldn't reach Splitsy's sign-in server. Check your connection and try again.",
+    // Also src/app/_layout.tsx — a different account signed in on this device
+    // and wiping the previous account's local data (ensureLocalDataOwner.ts)
+    // failed, so nothing local is shown until it succeeds.
+    localDataSwitchFailedHeading: "Can't finish signing in",
+    localDataSwitchFailedBody:
+      "We couldn't clear the previous account's data from this device. Try again.",
 
     // Missing EXPO_PUBLIC_AUTH_BACKEND_URL — src/app/_layout.tsx. Unlike OCR's
     // backend URL, there is no fallback for auth (2026-08-25 spec Amendment),
@@ -856,7 +865,7 @@ export const copy = {
 
     // Delete account — src/app/settings.tsx + DeleteAccountDialog. Deletes
     // the server account (Better Auth /delete-user), then this device's
-    // local data (resetAllLocalData), then ends signed out.
+    // local data (wipeAllLocalData), then ends signed out.
     deleteAccountAction: 'Delete account',
     deleteAccountCaption: 'Permanently deletes your account and the data on this device.',
     deleteAccountHeading: 'Delete your account?',
