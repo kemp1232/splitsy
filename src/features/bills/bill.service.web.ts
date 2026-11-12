@@ -8,6 +8,7 @@ import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocatio
 import type { Adjustment } from '@/db/repositories/adjustments.repository';
 import type { Bill, NewBill } from '@/db/repositories/bills.repository';
 import { billsRepository } from '@/db/repositories/bills.repository';
+import { tripParticipantsRepository } from '@/db/repositories/tripParticipants.repository';
 import {
   adjustmentAllocations,
   adjustments,
@@ -69,7 +70,10 @@ export async function createDraftBill(input: CreateDraftBillInput): Promise<Bill
 export async function createQuickSplitBill(input: {
   title: string;
   totalCentavos: number;
+  tripId?: string | null;
 }): Promise<Bill> {
+  const tripId = input.tripId ?? null;
+  const roster = tripId ? await tripParticipantsRepository.listByTripId(tripId) : [];
   const id = createId();
   const timestamp = nowIso();
   const title = input.title.trim();
@@ -84,6 +88,7 @@ export async function createQuickSplitBill(input: {
         entryMethod: 'MANUAL',
         status: 'DRAFT',
         splitMode: 'EQUAL',
+        tripId,
         discrepancyAcknowledged: false,
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -91,6 +96,20 @@ export async function createQuickSplitBill(input: {
       .returning();
 
     if (!bill) throw new Error('Failed to create bill');
+
+    if (roster.length > 0) {
+      await tx.insert(participants).values(
+        roster.map((member, index) => ({
+          id: createId(),
+          billId: id,
+          sortOrder: index,
+          name: member.name,
+          tripParticipantId: member.id,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        })),
+      );
+    }
 
     await tx.insert(lineItems).values({
       id: createId(),

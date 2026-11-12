@@ -254,7 +254,7 @@ export default function TripHubScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
-  const { pickFromGallery } = useBillSourceActions();
+  const { pickFromGallery, startManual } = useBillSourceActions();
 
   const [state, setState] = useState<LoadState>('loading');
   const [data, setData] = useState<LoadedTripHubData | null>(null);
@@ -387,6 +387,20 @@ export default function TripHubScreen() {
     const activeTrip = await ensureTripActive(data.trip);
     setData((current) => (current ? { ...current, trip: activeTrip } : current));
     router.push({ pathname: '/bill/capture', params: { tripId } });
+  }
+
+  async function handleEnterManually() {
+    if (!data) return;
+    const activeTrip = await ensureTripActive(data.trip);
+    setData((current) => (current ? { ...current, trip: activeTrip } : current));
+    await startManual();
+  }
+
+  async function handleQuickSplit() {
+    if (!data) return;
+    const activeTrip = await ensureTripActive(data.trip);
+    setData((current) => (current ? { ...current, trip: activeTrip } : current));
+    router.push({ pathname: '/bill/quick-split', params: { tripId } });
   }
 
   async function handleChooseFromGallery() {
@@ -612,6 +626,24 @@ export default function TripHubScreen() {
             footers in favor of plain in-flow buttons. */}
         <View style={styles.footerBlock}>
           {deleteTripError ? <InlineError message={deleteTripError} /> : null}
+          <View style={styles.footerRow}>
+            <View style={styles.footerPrimary}>
+              <AppButton
+                variant="secondary"
+                label={copy.trip.enterManuallyAction}
+                onPress={handleEnterManually}
+                icon={(color) => <Feather name="edit" size={18} color={color} />}
+              />
+            </View>
+            <View style={styles.footerPrimary}>
+              <AppButton
+                variant="secondary"
+                label={copy.trip.quickSplitAction}
+                onPress={handleQuickSplit}
+                icon={(color) => <Feather name="divide-circle" size={18} color={color} />}
+              />
+            </View>
+          </View>
           <View style={styles.footerRow}>
             <AppButton
               variant="secondary"
