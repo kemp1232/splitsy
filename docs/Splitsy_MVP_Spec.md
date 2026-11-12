@@ -86,6 +86,17 @@
 
 ---
 
+> ## ⚠ Amendment — 2026-11-12 (payment details in the shared summary)
+>
+> **The user can save their own GCash and/or Maya number and their own payment QR image, and include them when sharing a bill.** This narrowly relaxes §2.2's exclusions of "Payment collection, GCash, Maya…" and "image-based summary export":
+>
+> - Settings → Payment details stores the user's own GCash/Maya number (validated PH mobile number) and a copy of a QR image they pick, **on this device only** (local `app_settings` table and app-owned image storage) — never on the server, never per participant. "Delete all local data" and the account wipe remove them.
+> - When a bill's shared text has a "Settle up" block and the user ("me") is owed money, the text adds a "Pay {name} via:" block with the saved numbers. A separate "Share my QR" action shares the user's own QR image as-is.
+>
+> **What did NOT change:** Splitsy still does not collect, process, or track payments, does not generate QR codes, does not open or integrate with GCash/Maya/Stripe/banks, and sends no payment reminders. All of those remain excluded.
+
+---
+
 ## 1. Product Summary
 
 Splitsy lets a user photograph or upload a receipt, review the detected items, add the people sharing the bill, assign items to one or more people, divide taxes and other adjustments, and generate an exact per-person breakdown.
@@ -151,7 +162,7 @@ Do not implement these unless this specification is changed:
 - Cloud sync, backup, or cross-device history.
 - Public bill links or real-time collaborative splitting.
 - Participant accounts or participant-side interaction.
-- Payment collection, GCash, Maya, Stripe, bank transfer, or payment reminders.
+- Payment collection, GCash, Maya, Stripe, bank transfer, or payment reminders (showing the user's own GCash/Maya number and sharing their own QR image is allowed — see Amendment 2026-11-12).
 - Contact-list access.
 - SMS, email, or push notifications.
 - Automatic restaurant-menu understanding.
@@ -165,7 +176,7 @@ Do not implement these unless this specification is changed:
 - Web application.
 - Admin dashboard.
 - Advanced analytics or third-party tracking.
-- PDF export or image-based summary export.
+- PDF export or image-based summary export (sharing the user's own payment QR image is not a summary export — see Amendment 2026-11-12).
 - Custom unequal weights for a shared item. Shared line items are split equally in the MVP.
 
 ---

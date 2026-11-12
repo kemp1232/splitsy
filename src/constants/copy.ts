@@ -560,6 +560,32 @@ export const copy = {
     stillOwedLabel: '{name} is still owed {amount}',
   },
 
+  // Not from the original spec — the user's own GCash/Maya number and QR
+  // image (spec Amendment 2026-11-12), saved in Settings on this device only
+  // and added to a shared bill summary when the user is owed money.
+  paymentDetails: {
+    section: 'Payment details',
+    caption: 'Added to shared summaries when someone owes you. Saved on this device only.',
+    gcashLabel: 'GCash',
+    mayaLabel: 'Maya',
+    numberPlaceholder: '0917 123 4567',
+    invalidNumber: 'Enter a PH mobile number, like 0917 123 4567 or +63 917 123 4567.',
+    saveAction: 'Save numbers',
+    savedToast: 'Payment details saved.',
+    qrLabel: 'Payment QR code',
+    qrEmpty: 'No QR image saved.',
+    qrPickAction: 'Choose QR image',
+    qrReplaceAction: 'Replace',
+    qrRemoveAction: 'Remove',
+    qrImageAccessibilityLabel: 'Your saved payment QR code',
+    // Share-text block after "Settle up": "Pay {name} via:" then one line
+    // per saved number ("GCash: 0917 123 4567").
+    shareHeading: 'Pay {name} via:',
+    shareQrAction: 'Share my QR',
+    shareQrFailure: "We couldn't share your QR image. Try again.",
+    qrDownloadedToast: 'QR image downloaded.',
+  },
+
   // Not from the spec — the Trip feature's combined multi-bill settlement
   // screen (/trip/[tripId]/settlement), aggregating every COMPLETED bill in a
   // trip into one "who owes who" via computeTripSettlement.ts (see the
@@ -696,16 +722,17 @@ export const copy = {
       "Splitsy's server stores your account sign-in details, a daily count of your receipt scans, and a small record used to pace receipt scans. It doesn't save your receipt photos, receipt text, or bills.",
     dataSection: 'Local data',
     deleteAllAction: 'Delete all local data',
-    deleteAllCaption: 'Permanently removes saved bills and receipt photos.',
+    deleteAllCaption: 'Permanently removes saved bills, receipt photos, and payment details.',
     // Matches resetAllLocalData (bill.service.ts / bill.service.web.ts):
     // deletes every bill (cascading items, participants, assignments,
     // adjustments; drafts are bills too, including bills inside trips), the
-    // app_settings table, and the receipts image directory. Trips and trip
+    // app_settings table (incl. payment details), and the receipts image
+    // directory (incl. the payment QR image). Trips and trip
     // members, the theme preference (AsyncStorage), and the sign-in session
     // are NOT touched — keep this copy in sync if that function changes.
     deleteAllHeading: 'Delete all bills and receipts?',
     deleteAllBody:
-      "This permanently removes every saved bill and draft, including bills inside trips, plus all receipt photos, from this device. Your trips and their member lists, your theme choice, and your sign-in are kept. This can't be undone.",
+      "This permanently removes every saved bill and draft, including bills inside trips, plus all receipt photos and your payment details, from this device. Your trips and their member lists, your theme choice, and your sign-in are kept. This can't be undone.",
     deleteAllConfirm: 'Delete permanently',
     deleteAllCancel: 'Cancel',
     versionLabel: 'Version',

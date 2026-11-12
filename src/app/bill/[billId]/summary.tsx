@@ -53,8 +53,12 @@ import { getNegativeTotalWarning } from '@/features/receipt-review/buildTotalsSu
 import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
 import {
   displayParticipantName,
+  findMeParticipant,
   resolveQuickAddMeName,
 } from '@/features/participants/validateParticipantName';
+import { isCreditor } from '@/features/payment-details/phMobileNumber';
+import { shareQrImage } from '@/features/payment-details/shareQrImage';
+import { useSavedPaymentDetails } from '@/features/payment-details/useSavedPaymentDetails';
 import { buildShareText } from '@/features/splitting/shareText';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import { computeSettlement, computeUnsettledCredits } from '@/features/splitting/settlement';
@@ -178,6 +182,8 @@ export default function SummaryScreen() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
+  const [shareQrError, setShareQrError] = useState<string | null>(null);
+  const paymentDetails = useSavedPaymentDetails();
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   // Where the toast renders: next to the Share/Copy buttons for their
   // "Breakdown copied." confirmation (otherwise it appeared far below, out of
@@ -352,6 +358,15 @@ export default function SummaryScreen() {
     (participant) => participant.contributedCentavos !== 0,
   );
 
+  // The user's own payment details (spec Amendment 2026-11-12) go with this
+  // bill's settle-up only when "me" is one of the people owed money.
+  const meParticipant = findMeParticipant(participants, meName);
+  const meIsCreditor =
+    hasAnyContribution &&
+    meParticipant !== undefined &&
+    isCreditor(settlement.transactions, meParticipant.id);
+  const qrImageUri = meIsCreditor ? (paymentDetails?.qrImageUri ?? null) : null;
+
   function buildShareTextForBill(): string {
     if (!splitResult) throw new Error('buildShareTextForBill: split result not loaded');
     return buildShareText({
@@ -371,6 +386,14 @@ export default function SummaryScreen() {
       // bill that never touched Payments shouldn't get a "Settle up" block
       // (or "Paid" lines) in its shared text either.
       settlementTransactions: hasAnyContribution ? settlement.transactions : undefined,
+      paymentDetails:
+        meParticipant && paymentDetails
+          ? {
+              meParticipantId: meParticipant.id,
+              gcashNumber: paymentDetails.gcashNumber,
+              mayaNumber: paymentDetails.mayaNumber,
+            }
+          : undefined,
     });
   }
 
@@ -420,6 +443,18 @@ export default function SummaryScreen() {
       if (result === 'copied') showToast(copy.summary.copiedToast, 'share');
     } catch {
       setShareError(copy.summary.shareFailure);
+    }
+  }
+
+  async function handleShareQr() {
+    if (!qrImageUri) return;
+    setShareQrError(null);
+    try {
+      const result = await shareQrImage(qrImageUri);
+      // Web-only: this browser can't share files, so the image was downloaded.
+      if (result === 'downloaded') showToast(copy.paymentDetails.qrDownloadedToast, 'share');
+    } catch {
+      setShareQrError(copy.paymentDetails.shareQrFailure);
     }
   }
 
@@ -501,6 +536,17 @@ export default function SummaryScreen() {
               {copyError ? <InlineError message={copyError} /> : null}
             </View>
           </View>
+          {qrImageUri !== null ? (
+            <View>
+              <AppButton
+                variant="secondary"
+                label={copy.paymentDetails.shareQrAction}
+                onPress={handleShareQr}
+                icon={(color) => <Feather name="image" size={18} color={color} />}
+              />
+              {shareQrError ? <InlineError message={shareQrError} /> : null}
+            </View>
+          ) : null}
           {toastMessage !== null && toastPlacement === 'share' ? (
             <View style={styles.toast} accessibilityLiveRegion="polite">
               <AppText color="onPrimary" style={styles.uniformText}>

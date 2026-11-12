@@ -7,6 +7,7 @@ import { useMemo, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
+import { PaymentDetailsSection } from '@/components/settings/PaymentDetailsSection';
 import { PrivacyDetailsModal } from '@/components/settings/PrivacyDetailsModal';
 import { AppText } from '@/components/ui/AppText';
 import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
@@ -307,6 +308,15 @@ export default function SettingsScreen() {
             />
           </GroupedCard>
           {logOutError ? <InlineError message={logOutError} /> : null}
+        </View>
+
+        <View style={styles.section}>
+          <SettingsSectionHeader
+            icon="credit-card"
+            title={copy.paymentDetails.section}
+            caption={copy.paymentDetails.caption}
+          />
+          <PaymentDetailsSection />
         </View>
 
         <View style={styles.section}>
