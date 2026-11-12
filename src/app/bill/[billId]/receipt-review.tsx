@@ -43,6 +43,7 @@ import type { Participant } from '@/db/repositories/participants.repository';
 import { participantsRepository } from '@/db/repositories/participants.repository';
 import { useAdjustmentEditor } from '@/features/adjustments/useAdjustmentEditor';
 import { deleteBill } from '@/features/bills/bill.service';
+import { discardUntouchedScanDraft } from '@/features/bills/discardUntouchedScanDraft';
 import { createGalleryBill, pickGalleryImageUri } from '@/features/bills/galleryBill';
 import { useEnsureBillEditable } from '@/features/bills/useEnsureBillEditable';
 import {
@@ -60,7 +61,7 @@ import {
 } from '@/features/receipt-review/buildTotalsSummary';
 import { buildDateRolledOverWarning } from '@/features/receipt-review/buildDateRolledOverWarning';
 import { canRescanReceipt } from '@/features/receipt-review/canRescanReceipt';
-import { isValidDateOnly, nowIso } from '@/lib/date';
+import { getReceiptDateError, nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
 import { formatCentavos, formatCentavosForSpeech } from '@/lib/money';
 import type { ColorTokens } from '@/theme/tokens';
@@ -69,6 +70,17 @@ import { tint } from '@/theme/tint';
 import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
+
+// Same cap as item names (LineItemEditorSheet's MAX_NAME_LENGTH).
+const MAX_MERCHANT_NAME_LENGTH = 80;
+
+// Maps getReceiptDateError's reason to the field's message.
+function receiptDateErrorMessage(text: string): string | null {
+  const reason = getReceiptDateError(text);
+  if (reason === 'invalid') return copy.receiptReview.invalidDateError;
+  if (reason === 'future') return copy.receiptReview.futureDateError;
+  return null;
+}
 
 // 'success' here is the "Read by AI — double-check…" banner: a caution, not
 // a verified state, so it renders as a lavender info outline (primary
@@ -218,8 +230,14 @@ export default function ReceiptReviewScreen() {
   // is Home → capture → review (preview/processing replace themselves), so a
   // plain back would land on the camera. dismissTo pops to Home when it's in
   // the stack and otherwise replaces this screen with it.
+  // A scan that found nothing and was never touched (no items, no people)
+  // is discarded on the way out instead of lingering as an empty draft —
+  // discardUntouchedScanDraft re-checks that against storage first, and
+  // never deletes a manual or non-DRAFT bill.
+  // Navigation never waits on it (same as processing.tsx's Cancel).
   function handleBack() {
     router.dismissTo('/');
+    void discardUntouchedScanDraft(billId);
   }
 
   async function refreshItems() {
@@ -237,7 +255,7 @@ export default function ReceiptReviewScreen() {
     setActionError(null);
     try {
       await billsRepository.update(billId, {
-        merchantName: merchantName.trim() || null,
+        merchantName: merchantName.trim().slice(0, MAX_MERCHANT_NAME_LENGTH) || null,
         updatedAt: nowIso(),
       });
     } catch {
@@ -245,11 +263,15 @@ export default function ReceiptReviewScreen() {
     }
   }
 
-  async function handleDateBlur() {
+  // Validates the typed date and, if it's acceptable, saves it. Shared by the
+  // field's blur and Continue. Returns false (with the field error or the
+  // shared actionError shown) when the date is invalid or couldn't be saved.
+  async function persistReceiptDate(): Promise<boolean> {
     const trimmed = receiptDate.trim();
-    if (trimmed !== '' && !isValidDateOnly(trimmed)) {
-      setDateError(copy.receiptReview.invalidDateError);
-      return;
+    const error = receiptDateErrorMessage(trimmed);
+    if (error) {
+      setDateError(error);
+      return false;
     }
     setDateError(null);
     setActionError(null);
@@ -258,9 +280,24 @@ export default function ReceiptReviewScreen() {
         receiptDate: trimmed || null,
         updatedAt: nowIso(),
       });
+      return true;
     } catch {
       setActionError(copy.global.storageFailure);
+      return false;
     }
+  }
+
+  async function handleDateBlur() {
+    await persistReceiptDate();
+  }
+
+  // A date that isn't valid (or is in the future) blocks moving on, with its
+  // error shown — the typed text is kept, never silently dropped or reverted.
+  // A valid one is saved first (Continue can be pressed while the field still
+  // has focus, or on web without a blur), and a failed save doesn't move on.
+  async function handleContinue() {
+    if (!(await persistReceiptDate())) return;
+    router.push(`/bill/${billId}/participants`);
   }
 
   async function handleSaveItem(draft: LineItemDraft) {
@@ -535,6 +572,7 @@ export default function ReceiptReviewScreen() {
             value={merchantName}
             onChangeText={setMerchantName}
             onBlur={handleMerchantBlur}
+            maxLength={MAX_MERCHANT_NAME_LENGTH}
             leadingIcon={(color) => <Feather name="shopping-bag" size={18} color={color} />}
           />
           <AppTextInput
@@ -586,8 +624,16 @@ export default function ReceiptReviewScreen() {
 
           {items.length === 0 ? (
             <EmptyState
-              heading={copy.receiptReview.noItemsHeading}
-              body={copy.receiptReview.noItemsBody}
+              heading={
+                bill?.entryMethod === 'MANUAL'
+                  ? copy.receiptReview.noItemsHeadingManual
+                  : copy.receiptReview.noItemsHeading
+              }
+              body={
+                bill?.entryMethod === 'MANUAL'
+                  ? copy.receiptReview.noItemsBodyManual
+                  : copy.receiptReview.noItemsBody
+              }
               actionLabel={copy.receiptReview.addItem}
               onAction={() => setEditingItem('new')}
             />
@@ -847,8 +893,9 @@ export default function ReceiptReviewScreen() {
             </View>
           ) : null}
 
-          {/* Discounts bigger than the items: a warning only (icon + text,
-              not color alone) — Continue below stays enabled. */}
+          {/* Discounts bigger than the items: a warning (icon + text, not
+              color alone), and Continue below is disabled until the total
+              is zero or more — a negative bill can't be split. */}
           {negativeTotalWarning ? (
             <View style={[styles.reconciliationRow, styles.warning]}>
               <Feather name="alert-triangle" size={18} color={colors.warning} />
@@ -864,9 +911,9 @@ export default function ReceiptReviewScreen() {
         <AppButton
           large
           label={copy.receiptReview.continueButton}
-          disabled={items.length === 0}
+          disabled={items.length === 0 || computedTotalCentavos < 0}
           trailingArrow
-          onPress={() => router.push(`/bill/${billId}/participants`)}
+          onPress={handleContinue}
         />
       </ScrollView>
 

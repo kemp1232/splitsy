@@ -4,6 +4,7 @@ import {
 } from './BackendReceiptOcrService';
 import {
   OcrDailyLimitError,
+  OcrNetworkError,
   OcrQueuedError,
   OcrRateLimitedError,
   OcrServiceBusyError,
@@ -375,6 +376,26 @@ describe('BackendReceiptOcrService', () => {
       const rejection = service.recognize('file:///receipt.jpg');
       await expect(rejection).rejects.toBeInstanceOf(OcrTruncatedError);
       await expect(rejection).rejects.not.toBeInstanceOf(OcrUnreadableError);
+    });
+
+    it('throws OcrNetworkError when the request itself fails (offline)', async () => {
+      global.fetch = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
+      const service = new BackendReceiptOcrService();
+
+      await expect(service.recognize('file:///receipt.jpg')).rejects.toBeInstanceOf(
+        OcrNetworkError,
+      );
+    });
+
+    it('keeps an AbortError as is rather than calling it a network failure', async () => {
+      const abortError = new Error('The operation was aborted.');
+      abortError.name = 'AbortError';
+      global.fetch = jest.fn().mockRejectedValue(abortError);
+      const service = new BackendReceiptOcrService();
+
+      const rejection = service.recognize('file:///receipt.jpg');
+      await expect(rejection).rejects.toBe(abortError);
+      await expect(rejection).rejects.not.toBeInstanceOf(OcrNetworkError);
     });
   });
 });

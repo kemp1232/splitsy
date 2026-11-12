@@ -42,6 +42,29 @@ export function rollOverDateOnly(value: string): { date: string; rolledOver: boo
   };
 }
 
+// True for a valid YYYY-MM-DD that falls after `now`'s local calendar day
+// (the device's own date, not UTC). Today itself is not in the future.
+export function isFutureDateOnly(value: string, now: Date = new Date()): boolean {
+  if (!isValidDateOnly(value)) return false;
+  const pad = (part: number) => String(part).padStart(2, '0');
+  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  // Same fixed-width shape, so string order is date order.
+  return value > today;
+}
+
+// Validation for the receipt-date field (already trimmed): empty is allowed
+// (no date), otherwise it must be a real YYYY-MM-DD day that isn't after
+// today. The caller maps the reason to its own copy.
+export function getReceiptDateError(
+  value: string,
+  now: Date = new Date(),
+): 'invalid' | 'future' | null {
+  if (value === '') return null;
+  if (!isValidDateOnly(value)) return 'invalid';
+  if (isFutureDateOnly(value, now)) return 'future';
+  return null;
+}
+
 export function formatBillListDate(isoDate: string): string {
   const date = parseBillDate(isoDate);
   return date.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });

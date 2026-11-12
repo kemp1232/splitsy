@@ -12,6 +12,7 @@ import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { copy } from '@/constants/copy';
 import { useBillSourceActions } from '@/features/bills/useBillSourceActions';
+import { putCapturedPhoto } from '@/features/receipt-capture/capturedPhotoStore';
 import { goBackOrHome } from '@/lib/navigation';
 import { cameraOverlay, radius, spacing, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -118,9 +119,11 @@ export default function CaptureScreen() {
   async function handleCapture() {
     const photo = await cameraRef.current?.takePictureAsync({ quality: 1 });
     if (!photo) return;
+    // Only a short id goes in the route — on web photo.uri is the whole
+    // base64 data URI (see capturedPhotoStore).
     router.push({
       pathname: '/bill/preview',
-      params: { imageUri: photo.uri, entryMethod: 'CAMERA' },
+      params: { photoId: putCapturedPhoto(photo.uri), entryMethod: 'CAMERA' },
     });
   }
 

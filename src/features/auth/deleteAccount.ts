@@ -1,4 +1,4 @@
-import { resetAllLocalData } from '@/features/bills/bill.service';
+import { wipeAllLocalData } from '@/features/bills/bill.service';
 import { authClient } from '@/lib/authClient';
 
 import { clearPendingLocalWipe, setPendingLocalWipe } from './pendingLocalWipe';
@@ -10,14 +10,15 @@ export type DeleteAccountResult = { ok: true } | { ok: false; reason: DeleteAcco
 /**
  * Settings > Delete account (2026-11-09 spec Amendment, decision D3): deletes
  * the server account first (Better Auth's /delete-user, password-verified
- * server-side), and only then wipes this device's local data via the same
- * resetAllLocalData "Delete all local data" uses. Nothing local is touched if
+ * server-side), and only then wipes ALL of this device's local data, trips
+ * and their member lists included, via wipeAllLocalData (Settings' "Delete
+ * all local data" uses resetAllLocalData, which keeps trips). Nothing local is touched if
  * the server delete fails, so a wrong password or a network error leaves
  * everything as it was.
  *
  * The wipe is durable: a "pending local wipe" marker (pendingLocalWipe.ts) is
  * persisted BEFORE the server delete, cleared again if that delete fails, and
- * cleared after resetAllLocalData succeeds. If the wipe fails — or the app is
+ * cleared after wipeAllLocalData succeeds. If the wipe fails — or the app is
  * closed in between — the root layout retries it on the next start
  * (completePendingLocalWipe.ts) before any screen can read bills.
  *
@@ -25,7 +26,7 @@ export type DeleteAccountResult = { ok: true } | { ok: false; reason: DeleteAcco
  * Better Auth's client would normally refresh its session right after
  * /delete-user (it's in the client's session-signal path list), letting the
  * root SessionGate unmount Settings mid-wipe. `disableSignal` suppresses that,
- * and the session signal is fired explicitly only after resetAllLocalData
+ * and the session signal is fired explicitly only after wipeAllLocalData
  * succeeds — SessionGate then swaps to the (auth) screens, same as sign-out.
  * If the wipe fails, the signal is not fired, so Settings stays mounted to
  * show the error; any later session refresh signs the user out, since the
@@ -65,7 +66,7 @@ export async function deleteAccount(password: string): Promise<DeleteAccountResu
   }
 
   try {
-    await resetAllLocalData();
+    await wipeAllLocalData();
   } catch {
     // Marker stays set: retried on the next app start.
     return { ok: false, reason: 'local_reset_failed' };

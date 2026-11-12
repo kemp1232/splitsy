@@ -8,6 +8,7 @@ import { getAuthRequestInit } from '@/lib/authRequestInit';
 import { buildImageFormDataPart } from './buildImageFormDataPart';
 import {
   OcrDailyLimitError,
+  OcrNetworkError,
   OcrQueuedError,
   OcrRateLimitedError,
   OcrServiceBusyError,
@@ -151,12 +152,27 @@ export class BackendReceiptOcrService implements ReceiptOcrService {
     // /api/ocr is signed-in-only: attach the Better Auth session (native: the
     // cookie expoClient stored; web: the browser's own cookie) — see
     // src/lib/authRequestInit.ts / .web.ts.
-    const response = await fetch(`${OCR_BACKEND_URL}/api/ocr`, {
-      method: 'POST',
-      body: formData,
-      signal: options?.signal,
-      ...(await getAuthRequestInit()),
-    });
+    const authRequestInit = await getAuthRequestInit();
+    let response: Response;
+    try {
+      response = await fetch(`${OCR_BACKEND_URL}/api/ocr`, {
+        method: 'POST',
+        body: formData,
+        signal: options?.signal,
+        ...authRequestInit,
+      });
+    } catch (error) {
+      // An aborted request (the fallback's own timeout) keeps its original
+      // error; anything else fetch rejects with means the request never got
+      // an answer — a connection problem (see OcrNetworkError).
+      const aborted =
+        options?.signal?.aborted === true ||
+        (error instanceof Error && error.name === 'AbortError');
+      if (aborted) throw error;
+      throw new OcrNetworkError('OCR backend request could not be sent (network error).', {
+        cause: error,
+      });
+    }
 
     if (!response.ok) {
       const detail = await response.text().catch(() => '');

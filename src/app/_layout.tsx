@@ -10,6 +10,7 @@ import { AUTH_BACKEND_URL } from '@/constants/config';
 import { copy } from '@/constants/copy';
 import { useDatabaseMigrations } from '@/db/migrations';
 import { completePendingLocalWipe } from '@/features/auth/completePendingLocalWipe';
+import { useLocalDataOwnerGate } from '@/features/auth/useLocalDataOwnerGate';
 import { authClient } from '@/lib/authClient';
 import { fixWebViewportHeight } from '@/lib/fixWebViewportHeight';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
@@ -58,13 +59,31 @@ function SessionGate({ migrationsReady }: { migrationsReady: boolean }) {
   const [hasCheckedSessionOnce, setHasCheckedSessionOnce] = useState(false);
   if (!isPending && !hasCheckedSessionOnce) setHasCheckedSessionOnce(true);
 
+  // Account switch on one device (useLocalDataOwnerGate.ts): `hasSession`
+  // below only turns true once the owner check (wiping the previous
+  // account's local data if needed) has succeeded for the current user id,
+  // and every data screen sits behind it — so sign-in, sign-up/verification
+  // and a session restored at start all pass through here.
+  const userId = session?.user.id ?? null;
+  const {
+    verified: ownerVerified,
+    ownerCheckFailed,
+    ownerResolved,
+    retry: retryOwnerCheck,
+  } = useLocalDataOwnerGate({ userId, migrationsReady });
+  // Latched like hasCheckedSessionOnce, so the splash covers the check for a
+  // session restored at start, but a later sign-in's check never tears the
+  // whole Stack down (the (auth) screens just stay up until it finishes).
+  const [ownerCheckedOnce, setOwnerCheckedOnce] = useState(false);
+  if (!isPending && ownerResolved && !ownerCheckedOnce) setOwnerCheckedOnce(true);
+
   // True for the rest of the session once both this and migrationsReady
   // have ever been true together — never flips back false afterward (a
   // later `refetch()` from the error state's own retry button re-pends
   // this query, but hasCheckedSessionOnce already latched true by then, so
   // the splash never reappears for that — same reasoning as the comment
   // above on why isPending alone can't gate this).
-  const bootReady = migrationsReady && hasCheckedSessionOnce;
+  const bootReady = migrationsReady && hasCheckedSessionOnce && ownerCheckedOnce;
 
   // Separate from `bootReady` — this is what actually keeps
   // SplashLoadingScreen mounted. Flips false (permanently) only once its
@@ -72,7 +91,7 @@ function SessionGate({ migrationsReady }: { migrationsReady: boolean }) {
   // animate away instead of vanishing the instant real content is ready.
   const [showSplash, setShowSplash] = useState(true);
 
-  const hasSession = Boolean(session);
+  const hasSession = ownerVerified;
 
   return (
     <>
@@ -84,6 +103,15 @@ function SessionGate({ migrationsReady }: { migrationsReady: boolean }) {
               body={copy.auth.sessionCheckFailedBody}
               retryLabel={copy.global.retryAction}
               onRetry={() => refetch()}
+            />
+          </Screen>
+        ) : ownerCheckFailed ? (
+          <Screen>
+            <ErrorState
+              heading={copy.auth.localDataSwitchFailedHeading}
+              body={copy.auth.localDataSwitchFailedBody}
+              retryLabel={copy.global.retryAction}
+              onRetry={retryOwnerCheck}
             />
           </Screen>
         ) : (

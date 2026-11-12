@@ -1,5 +1,6 @@
 import {
   OcrDailyLimitError,
+  OcrNetworkError,
   OcrQueuedError,
   OcrRateLimitedError,
   OcrTruncatedError,
@@ -75,7 +76,16 @@ export class FallbackReceiptOcrService implements ReceiptOcrService {
       if (__DEV__) {
         console.warn('[FallbackReceiptOcrService] primary OCR failed, falling back:', error);
       }
-      const result = await this.fallback.recognize(imageUri);
+      // Offline is exactly when on-device reading helps, so a network
+      // failure still falls back — but if that also fails, the user needs to
+      // hear about the connection (OcrNetworkError), not the on-device error.
+      let result: OcrRecognitionResult;
+      try {
+        result = await this.fallback.recognize(imageUri);
+      } catch (fallbackError) {
+        if (error instanceof OcrNetworkError) throw error;
+        throw fallbackError;
+      }
       // Rate limiting and token-cap truncation are the fallback reasons the
       // UI currently explains to the user (see receipt-review.tsx) — every
       // other reason (network down, misconfigured, timeout, bad response)

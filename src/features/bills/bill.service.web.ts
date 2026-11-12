@@ -1,6 +1,9 @@
 import { and, eq } from 'drizzle-orm';
 
 import { db } from '@/db/client';
+// Explicit .web path, like receiptImage.service.web below: native client.ts
+// has no counterpart (its writes are already durable).
+import { persistDatabaseNow } from '@/db/client.web';
 import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
 import type { Adjustment } from '@/db/repositories/adjustments.repository';
 import type { Bill, NewBill } from '@/db/repositories/bills.repository';
@@ -12,9 +15,12 @@ import {
   bills,
   lineItems,
   participants,
+  tripParticipants,
+  trips,
 } from '@/db/schema';
 import { deleteReceiptsDirectory } from '@/features/receipt-capture/receiptImage.service';
 import { deleteStoredImage } from '@/features/receipt-capture/receiptImage.service.web';
+import { deleteAllImages } from '@/features/receipt-capture/web/imageStore';
 import { PARSER_VERSION } from '@/features/receipt-parser/parseReceipt';
 import { validateParsedReceipt } from '@/features/receipt-parser/receiptParser.schemas';
 import type { ParsedReceipt } from '@/features/receipt-parser/receiptParser.types';
@@ -227,4 +233,21 @@ export async function resetAllLocalData(): Promise<void> {
   });
 
   deleteReceiptsDirectory();
+}
+
+// Web counterpart to bill.service.ts's wipeAllLocalData — see there. Unlike
+// resetAllLocalData, it only resolves once the wipe is durable: the emptied
+// database is saved to IndexedDB immediately (not after the usual debounce)
+// and the stored receipt images are cleared, both awaited, so any failure
+// rejects and the caller keeps its pending-wipe marker for a retry.
+export async function wipeAllLocalData(): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.delete(bills);
+    await tx.delete(tripParticipants);
+    await tx.delete(trips);
+    await tx.delete(appSettings);
+  });
+
+  await persistDatabaseNow();
+  await deleteAllImages();
 }
