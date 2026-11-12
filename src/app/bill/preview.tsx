@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
@@ -15,6 +15,7 @@ import type { NewBill } from '@/db/repositories/bills.repository';
 import { createDraftBill } from '@/features/bills/bill.service';
 import { copyImageToAppStorage } from '@/features/receipt-capture/receiptImage.service';
 import { createBillInTrip } from '@/features/trips/trip.service';
+import { showAlert } from '@/lib/alert';
 import type { ColorTokens } from '@/theme/tokens';
 import { radius, spacing } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -73,7 +74,7 @@ export default function PreviewScreen() {
         : await createDraftBill(draftInput);
       router.replace({ pathname: '/bill/processing', params: { billId: bill.id } });
     } catch {
-      Alert.alert(copy.global.genericErrorHeading, copy.global.imageCopyFailure);
+      showAlert(copy.global.genericErrorHeading, copy.global.imageCopyFailure);
       setBusy(false);
     }
   }

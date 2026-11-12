@@ -1,6 +1,6 @@
 import { MAX_SAFE_CENTAVOS } from '@/lib/money';
 
-import { computeSettlement } from './settlement';
+import { computeSettlement, computeUnsettledCredits } from './settlement';
 import type { SettlementParticipant, SettlementResult } from './settlement.types';
 
 // Cross-checks settlement.ts's doc-comment claim: whatever is left unmatched
@@ -275,5 +275,39 @@ describe('computeSettlement', () => {
       result.transactions.flatMap((t) => [t.fromParticipantId, t.toParticipantId]),
     );
     expect(involvedParticipantIds.has('p2')).toBe(false);
+  });
+});
+
+describe('computeUnsettledCredits', () => {
+  it('lists both creditors still owed money when two creditors and one debtor overpaid the bill', () => {
+    // Bill 150.00 (50.00 each), 200.00 collected: A +60.00, B +40.00, C -50.00.
+    // The greedy match pays C's 50.00 to A, leaving A owed 10.00 and B owed
+    // 40.00 with no debtor left — B never appears in any transaction.
+    const participants: SettlementParticipant[] = [
+      { participantId: 'a', fairShareCentavos: 5000, contributedCentavos: 11000 },
+      { participantId: 'b', fairShareCentavos: 5000, contributedCentavos: 9000 },
+      { participantId: 'c', fairShareCentavos: 5000, contributedCentavos: 0 },
+    ];
+
+    const result = computeSettlement(participants);
+
+    expect(result.transactions).toEqual([
+      { fromParticipantId: 'c', toParticipantId: 'a', amountCentavos: 5000 },
+    ]);
+    expect(result.unaccountedCentavos).toBe(-5000);
+    expect(computeUnsettledCredits(participants, result)).toEqual([
+      { participantId: 'a', amountCentavos: 1000 },
+      { participantId: 'b', amountCentavos: 4000 },
+    ]);
+  });
+
+  it('is empty for a balanced bill where every creditor is fully paid', () => {
+    const participants: SettlementParticipant[] = [
+      { participantId: 'p1', fairShareCentavos: 3000, contributedCentavos: 9000 },
+      { participantId: 'p2', fairShareCentavos: 3000, contributedCentavos: 0 },
+      { participantId: 'p3', fairShareCentavos: 3000, contributedCentavos: 0 },
+    ];
+
+    expect(computeUnsettledCredits(participants, computeSettlement(participants))).toEqual([]);
   });
 });

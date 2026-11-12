@@ -51,6 +51,8 @@ export const copy = {
     // Shown instead of attempting Share on a draft that isn't far enough
     // along to compute a split yet (spec doesn't cover this edge case).
     shareUnavailable: 'Add participants and assign items before sharing this bill.',
+    // Share on a draft with no items or no people yet (nothing to summarize).
+    shareNothingYet: 'Nothing to share yet — add items and people first.',
   },
 
   // Section 13.3 — New bill source
@@ -365,6 +367,9 @@ export const copy = {
     removeAccessibilityLabel: 'Remove {name}',
     removeConfirmHeading: 'Remove {name}?',
     removeConfirmBody: 'Their item assignments and custom adjustment amounts will also be removed.',
+    // One line per custom-split fee the person has an amount in, appended
+    // to removeConfirmBody (see findAffectedCustomAdjustments).
+    removeConfirmAdjustmentLine: '{label} will switch to a proportional split.',
     removeAction: 'Remove person',
   },
 
@@ -507,6 +512,9 @@ export const copy = {
     continueButton: 'Continue',
     unaccountedNote: "{amount} of the bill hasn't been marked as paid yet.",
     overCollectedNote: "{amount} more was marked as paid than the bill's total.",
+    // Inline error on the Payments screen; Continue stays disabled while shown.
+    overpaidError:
+      "{amount} more than the bill's total has been entered. Lower the amounts to continue.",
     // Not from the spec — a direct entry point to the Payments screen from
     // Summary, reachable regardless of draft-progression state (see
     // resolveNextRoute.ts's header comment on why Payments isn't part of that
@@ -533,6 +541,9 @@ export const copy = {
     // progress bar on SettlementCard (status is conveyed by this label text,
     // never by the bar's color alone).
     collectedLabel: '{collected} of {total} collected',
+    // Over-collected bills: a creditor the greedy settlement couldn't pair
+    // with any debtor (see computeUnsettledCredits).
+    stillOwedLabel: '{name} is still owed {amount}',
   },
 
   // Not from the spec — the Trip feature's combined multi-bill settlement

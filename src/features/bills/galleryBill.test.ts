@@ -1,9 +1,9 @@
 import * as ImagePicker from 'expo-image-picker';
-import { Alert } from 'react-native';
 
 import { copy } from '@/constants/copy';
 import { copyImageToAppStorage } from '@/features/receipt-capture/receiptImage.service';
 import { createBillInTrip } from '@/features/trips/trip.service';
+import { showAlert } from '@/lib/alert';
 
 import { createDraftBill } from './bill.service';
 import { createGalleryBill, pickGalleryImageUri } from './galleryBill';
@@ -20,6 +20,7 @@ jest.mock('@/features/receipt-capture/receiptImage.service', () => ({
 }));
 jest.mock('@/features/trips/trip.service', () => ({ createBillInTrip: jest.fn() }));
 jest.mock('./bill.service', () => ({ createDraftBill: jest.fn() }));
+jest.mock('@/lib/alert', () => ({ showAlert: jest.fn() }));
 
 const requestPermission = ImagePicker.requestMediaLibraryPermissionsAsync as jest.Mock;
 const launchLibrary = ImagePicker.launchImageLibraryAsync as jest.Mock;
@@ -27,15 +28,10 @@ const copyImage = copyImageToAppStorage as jest.Mock;
 const createInTrip = createBillInTrip as jest.Mock;
 const createDraft = createDraftBill as jest.Mock;
 
-let alertSpy: jest.SpyInstance;
+const alertSpy = showAlert as jest.Mock;
 
 beforeEach(() => {
   jest.clearAllMocks();
-  alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-});
-
-afterEach(() => {
-  alertSpy.mockRestore();
 });
 
 describe('pickGalleryImageUri', () => {
@@ -66,6 +62,28 @@ describe('pickGalleryImageUri', () => {
     expect(alertSpy).toHaveBeenCalledWith(
       copy.global.genericErrorHeading,
       copy.global.unsupportedImage,
+    );
+  });
+
+  it('returns null and alerts instead of throwing when the picker rejects a non-image file', async () => {
+    requestPermission.mockResolvedValue({ granted: true });
+    launchLibrary.mockRejectedValue(new Error('Unsupported file type'));
+
+    await expect(pickGalleryImageUri()).resolves.toBeNull();
+    expect(alertSpy).toHaveBeenCalledWith(
+      copy.global.genericErrorHeading,
+      copy.global.unsupportedImage,
+    );
+  });
+
+  it('returns null and shows the generic error when the picker fails for another reason', async () => {
+    requestPermission.mockResolvedValue({ granted: true });
+    launchLibrary.mockRejectedValue(new Error('Picker crashed'));
+
+    await expect(pickGalleryImageUri()).resolves.toBeNull();
+    expect(alertSpy).toHaveBeenCalledWith(
+      copy.global.genericErrorHeading,
+      copy.global.genericErrorBody,
     );
   });
 

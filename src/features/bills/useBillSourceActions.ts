@@ -1,8 +1,8 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Alert } from 'react-native';
 
 import { copy } from '@/constants/copy';
 import { createBillInTrip } from '@/features/trips/trip.service';
+import { showAlert } from '@/lib/alert';
 
 import { createDraftBill } from './bill.service';
 import { createGalleryBill, pickGalleryImageUri } from './galleryBill';
@@ -39,7 +39,7 @@ export function useBillSourceActions() {
     } catch {
       // Same failure Alert preview.tsx's "Use this photo" shows for this
       // exact copy-then-create step.
-      Alert.alert(copy.global.genericErrorHeading, copy.global.imageCopyFailure);
+      showAlert(copy.global.genericErrorHeading, copy.global.imageCopyFailure);
     }
   }
 
@@ -53,10 +53,10 @@ export function useBillSourceActions() {
       // Matches this hook's own two other failure paths above (permission
       // denial, an unsupported gallery asset): neither /bill/new nor
       // /bill/capture (this hook's two callers) has an inline-error slot of
-      // its own for "starting a bill" specifically, so Alert.alert is this
+      // its own for "starting a bill" specifically, so showAlert is this
       // hook's established way of surfacing a failure without either caller
       // needing its own bespoke handling.
-      Alert.alert(copy.global.genericErrorHeading, copy.global.storageFailure);
+      showAlert(copy.global.genericErrorHeading, copy.global.storageFailure);
     }
   }
 

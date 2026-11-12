@@ -35,6 +35,10 @@ type Props = {
   // derived here (spec section 7: components render what they're given).
   // Empty when the bill has no participants yet (a fresh draft).
   participantNames: string[];
+  // The bill's computed total (items + fees, computeBillTotalCentavos) —
+  // computed by the caller, not here (list-row perf rule), and the same
+  // figure the bill detail screen shows. Null for an empty draft (no amount).
+  totalCentavos: number | null;
   onPress: (bill: Bill) => void;
   // Spec 13.2's per-row overflow actions (Edit bill/Share summary/Delete
   // bill) — kept as a single trigger prop rather than three separate
@@ -49,6 +53,7 @@ type Props = {
 export const BillListItem = memo(function BillListItem({
   entry,
   participantNames,
+  totalCentavos,
   onPress,
   onOverflowPress,
 }: Props) {
@@ -74,10 +79,7 @@ export const BillListItem = memo(function BillListItem({
   const [pressAnimation] = useState(() => new Animated.Value(0));
   const { bill, participantCount } = entry;
   const title = getBillDisplayTitle(bill);
-  const total =
-    bill.detectedReceiptTotalCentavos != null
-      ? formatCentavos(bill.detectedReceiptTotalCentavos)
-      : null;
+  const total = totalCentavos != null ? formatCentavos(totalCentavos) : null;
   const visibleNames = participantNames.slice(0, MAX_VISIBLE_NAME_CHIPS);
   const remainingNameCount = participantNames.length - visibleNames.length;
   const isCompleted = bill.status === 'COMPLETED';
@@ -137,9 +139,7 @@ export const BillListItem = memo(function BillListItem({
         }}
         accessibilityRole="button"
         accessibilityLabel={`${title}, ${statusLabel}${
-          bill.detectedReceiptTotalCentavos != null
-            ? `, ${formatCentavosForSpeech(bill.detectedReceiptTotalCentavos)}`
-            : ''
+          totalCentavos != null ? `, ${formatCentavosForSpeech(totalCentavos)}` : ''
         }`}
         style={styles.main}
       >

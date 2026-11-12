@@ -89,6 +89,20 @@ export class OcrServiceBusyError extends Error {
   }
 }
 
+// Thrown when the backend answered 502 with `reason: 'unreadable'`: the
+// reading service worked, but nothing usable could be extracted from this
+// photo (server/src/ocr/receiptExtraction.schema.ts). Deliberately NOT an
+// OcrServiceBusyError, so processing.tsx shows the "couldn't read this
+// receipt / try a clearer photo" copy instead of "scanning is busy".
+// FallbackReceiptOcrService treats it like any other failure (reads
+// on-device instead).
+export class OcrUnreadableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OcrUnreadableError';
+  }
+}
+
 // Which implementation actually produced this result — lets the UI show
 // whether a scan used the Groq backend or fell back to on-device OCR (see
 // FallbackReceiptOcrService). A UI hint only, never treated as bill data

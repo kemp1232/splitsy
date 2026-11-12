@@ -19,10 +19,13 @@ import { InlineError } from '@/components/ui/InlineError';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
 import { copy } from '@/constants/copy';
+import { adjustmentAllocationsRepository } from '@/db/repositories/adjustmentAllocations.repository';
+import { adjustmentsRepository } from '@/db/repositories/adjustments.repository';
 import type { Participant } from '@/db/repositories/participants.repository';
 import { participantsRepository } from '@/db/repositories/participants.repository';
 import { removeParticipant } from '@/features/bills/bill.service';
 import { useEnsureBillEditable } from '@/features/bills/useEnsureBillEditable';
+import { findAffectedCustomAdjustments } from '@/features/participants/findAffectedCustomAdjustments';
 import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
 import {
   MAX_PARTICIPANT_NAME_LENGTH,
@@ -57,6 +60,13 @@ export default function ParticipantsScreen() {
   // The sheet is edit-only now — new people are added via the inline field.
   const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null);
   const [removingParticipant, setRemovingParticipant] = useState<Participant | null>(null);
+  // Custom-split fees the pending removal will switch to proportional —
+  // listed in the confirmation body (findAffectedCustomAdjustments).
+  const [removalAffectedAdjustmentLabels, setRemovalAffectedAdjustmentLabels] = useState<string[]>(
+    [],
+  );
+  // Latest remove-tap id — see handleRequestRemove.
+  const removeRequestIdRef = useRef(0);
   // One shared error slot for this screen's three write paths below (save,
   // quick-add, remove) rather than one state variable per handler — none of
   // them can fire at the same time as another (each is gated behind its own
@@ -181,6 +191,35 @@ export default function ParticipantsScreen() {
     } catch {
       setActionError(copy.global.storageFailure);
     }
+  }
+
+  // Reads the bill's adjustments first so the confirmation can name every
+  // custom-split fee this removal will switch to proportional (the same
+  // rewrite removeParticipant performs). A failed read never blocks the
+  // removal — the dialog just opens with the generic body. Only the latest
+  // tap's read is applied (removeRequestIdRef), so out-of-order reads can
+  // never open the dialog for an earlier person; the person and their
+  // labels always come from the same request.
+  async function handleRequestRemove(participant: Participant) {
+    removeRequestIdRef.current += 1;
+    const requestId = removeRequestIdRef.current;
+    let affectedLabels: string[] = [];
+    try {
+      const [adjustmentRows, allocationRows] = await Promise.all([
+        adjustmentsRepository.listByBillId(billId),
+        adjustmentAllocationsRepository.listByBillId(billId),
+      ]);
+      affectedLabels = findAffectedCustomAdjustments(
+        adjustmentRows,
+        allocationRows,
+        participant.id,
+      );
+    } catch {
+      affectedLabels = [];
+    }
+    if (requestId !== removeRequestIdRef.current) return;
+    setRemovalAffectedAdjustmentLabels(affectedLabels);
+    setRemovingParticipant(participant);
   }
 
   async function handleConfirmRemove() {
@@ -328,7 +367,7 @@ export default function ParticipantsScreen() {
                       '{name}',
                       item.name,
                     )}
-                    onPress={() => setRemovingParticipant(item)}
+                    onPress={() => handleRequestRemove(item)}
                     icon={<Feather name="trash" size={20} color={colors.danger} />}
                   />
                 </View>
@@ -376,7 +415,12 @@ export default function ParticipantsScreen() {
           '{name}',
           removingParticipant?.name ?? '',
         )}
-        body={copy.participants.removeConfirmBody}
+        body={[
+          copy.participants.removeConfirmBody,
+          ...removalAffectedAdjustmentLabels.map((label) =>
+            copy.participants.removeConfirmAdjustmentLine.replace('{label}', () => label),
+          ),
+        ].join('\n')}
         confirmLabel={copy.participants.removeAction}
         cancelLabel={copy.global.cancelAction}
         destructive

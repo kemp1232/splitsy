@@ -13,6 +13,7 @@ import {
   OcrServiceBusyError,
   OcrTruncatedError,
   OcrUnauthenticatedError,
+  OcrUnreadableError,
   type OcrRecognitionResult,
   type ReceiptOcrService,
   type RecognizeOptions,
@@ -207,6 +208,12 @@ export class BackendReceiptOcrService implements ReceiptOcrService {
           );
         }
         throw new OcrRateLimitedError(`OCR backend rate-limited (429): ${detail}`);
+      }
+      // The service answered but nothing usable could be read from this photo
+      // (server/src/routes/ocr.ts) — a photo problem, not a busy service, so
+      // it's checked before the busy mapping below.
+      if (response.status === 502 && parsed?.reason === 'unreadable') {
+        throw new OcrUnreadableError(`OCR backend could not read the receipt (502): ${detail}`);
       }
       // Same message shape as the generic failure below, just a distinct
       // class the processing screen can explain ("busy, try again").

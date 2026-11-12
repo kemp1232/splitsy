@@ -1,7 +1,7 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, StyleSheet, View } from 'react-native';
+import { FlatList, StyleSheet, View } from 'react-native';
 
 import { BillListItem } from '@/components/bill/BillListItem';
 import { BillOverflowSheet } from '@/components/bill/BillOverflowSheet';
@@ -53,6 +53,9 @@ import {
 } from '@/features/trips/formatTripBillCount';
 import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { useBillSourceActions } from '@/features/bills/useBillSourceActions';
+import { computeBillTotalCentavos } from '@/features/bills/computeBillTotalCentavos';
+import { hasShareableContent } from '@/features/bills/hasShareableContent';
+import { hasUnresolvedDiscrepancy } from '@/features/bills/hasUnresolvedDiscrepancy';
 import { resolveNextRoute, type NextRoute } from '@/features/bills/resolveNextRoute';
 import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
@@ -60,6 +63,7 @@ import { computeSettlement } from '@/features/splitting/settlement';
 import { buildShareText } from '@/features/splitting/shareText';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import { deleteTrip } from '@/features/trips/trip.service';
+import { showAlert } from '@/lib/alert';
 import { nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
 import { shareText } from '@/lib/share';
@@ -78,32 +82,10 @@ type LoadedTripHubData = {
   // BillListItem row's own initials-avatar-stack (never derived from a route
   // param; spec section 7).
   participantNamesByBillId: Map<string, string[]>;
+  // Each row's computed total (computeBillTotalCentavos), keyed by bill id —
+  // same figure as the home list and the bill detail screen.
+  totalCentavosByBillId: Map<string, number | null>;
 };
-
-// Same lighter-weight sum used by the home screen's own trip-total
-// computation (see src/app/index.tsx) — the hub only needs one running
-// number, not a full per-person calculateSplit breakdown, so this reads
-// straight from each COMPLETED bill's own line items and adjustments rather
-// than assembling calculateSplit's full input shape.
-async function computeCompletedTotalCentavos(
-  completedBills: BillWithParticipantCount[],
-): Promise<number> {
-  const totals = await Promise.all(
-    completedBills.map(async ({ bill }) => {
-      const [items, adjustments] = await Promise.all([
-        lineItemsRepository.listByBillId(bill.id),
-        adjustmentsRepository.listByBillId(bill.id),
-      ]);
-      const itemSubtotal = items.reduce((sum, item) => sum + item.lineTotalCentavos, 0);
-      const adjustmentTotal = adjustments.reduce(
-        (sum, adjustment) => sum + adjustment.amountCentavos,
-        0,
-      );
-      return itemSubtotal + adjustmentTotal;
-    }),
-  );
-  return totals.reduce((sum, total) => sum + total, 0);
-}
 
 async function fetchTripHubData(tripId: string): Promise<LoadedTripHubData | null> {
   const [trip, roster, bills] = await Promise.all([
@@ -114,21 +96,38 @@ async function fetchTripHubData(tripId: string): Promise<LoadedTripHubData | nul
 
   if (!trip) return null;
 
-  const completedBills = bills.filter((entry) => entry.bill.status === 'COMPLETED');
-  const completedTotalCentavos = await computeCompletedTotalCentavos(completedBills);
-
   const participantNamesByBillId = new Map<string, string[]>();
+  const totalCentavosByBillId = new Map<string, number | null>();
   await Promise.all(
     bills.map(async ({ bill }) => {
-      const rows = await participantsRepository.listByBillId(bill.id);
+      const [rows, itemRows, adjustmentRows] = await Promise.all([
+        participantsRepository.listByBillId(bill.id),
+        lineItemsRepository.listByBillId(bill.id),
+        adjustmentsRepository.listByBillId(bill.id),
+      ]);
       participantNamesByBillId.set(
         bill.id,
         rows.map((participant) => participant.name),
       );
+      totalCentavosByBillId.set(bill.id, computeBillTotalCentavos(itemRows, adjustmentRows));
     }),
   );
 
-  return { trip, roster, bills, completedTotalCentavos, participantNamesByBillId };
+  // The hub's running total: the same per-bill figure, summed over COMPLETED
+  // bills only (an empty bill counts as 0) — reuses the reads above rather
+  // than fetching each completed bill's items/adjustments a second time.
+  const completedTotalCentavos = bills
+    .filter((entry) => entry.bill.status === 'COMPLETED')
+    .reduce((sum, { bill }) => sum + (totalCentavosByBillId.get(bill.id) ?? 0), 0);
+
+  return {
+    trip,
+    roster,
+    bills,
+    completedTotalCentavos,
+    participantNamesByBillId,
+    totalCentavosByBillId,
+  };
 }
 
 // Same draft-progression resolution the home screen uses for its own bill
@@ -165,7 +164,7 @@ async function resolveDraftNextRoute(billId: string): Promise<NextRoute> {
     hasItems: itemRows.length > 0,
     participantCount: participantRows.length,
     hasUnassignedItems: unassignedItems.length > 0,
-    hasUnresolvedDiscrepancy: !reconciliation.matches && !billRow.discrepancyAcknowledged,
+    hasUnresolvedDiscrepancy: hasUnresolvedDiscrepancy(reconciliation, billRow),
   });
 }
 
@@ -173,13 +172,16 @@ async function resolveDraftNextRoute(billId: string): Promise<NextRoute> {
 // bill rows (spec F-017) — see that screen's own copy of this function for
 // the full reasoning on why calculateSplit can throw here and why that's
 // treated as "can't share this right now" rather than a crash.
-async function buildShareTextForBill(bill: Bill): Promise<string> {
+async function buildShareTextForBill(bill: Bill): Promise<string | null> {
   const [itemRows, participantRows, adjustmentRows, assignmentRows] = await Promise.all([
     lineItemsRepository.listByBillId(bill.id),
     participantsRepository.listByBillId(bill.id),
     adjustmentsRepository.listByBillId(bill.id),
     itemAssignmentsRepository.listByBillId(bill.id),
   ]);
+
+  // Same "nothing to share yet" case as the home screen's copy.
+  if (!hasShareableContent(itemRows.length, participantRows.length)) return null;
 
   const customAllocationsByAdjustmentId = new Map<string, AdjustmentAllocation[]>();
   await Promise.all(
@@ -449,13 +451,17 @@ export default function TripHubScreen() {
     if (!bill) return;
     try {
       const text = await buildShareTextForBill(bill);
+      if (text === null) {
+        showAlert(copy.global.genericErrorHeading, copy.home.shareNothingYet);
+        return;
+      }
       const result = await shareText(text);
       // Web-only: no native share sheet on this browser, silently fell back
       // to the clipboard instead (src/lib/share.web.ts) — this quick overflow
       // action has no toast mechanism of its own to reuse.
-      if (result === 'copied') Alert.alert(copy.global.sharedTextCopiedToast);
+      if (result === 'copied') showAlert(copy.global.sharedTextCopiedToast);
     } catch {
-      Alert.alert(copy.global.genericErrorHeading, copy.home.shareUnavailable);
+      showAlert(copy.global.genericErrorHeading, copy.home.shareUnavailable);
     }
   }
 
@@ -472,7 +478,7 @@ export default function TripHubScreen() {
     try {
       await deleteBill(deletingBill);
     } catch {
-      Alert.alert(copy.global.genericErrorHeading, copy.global.deleteFailure);
+      showAlert(copy.global.genericErrorHeading, copy.global.deleteFailure);
       return;
     }
     await load();
@@ -592,6 +598,7 @@ export default function TripHubScreen() {
                 <BillListItem
                   entry={item}
                   participantNames={data.participantNamesByBillId.get(item.bill.id) ?? []}
+                  totalCentavos={data.totalCentavosByBillId.get(item.bill.id) ?? null}
                   onPress={handleOpenBill}
                   onOverflowPress={handleOverflowPress}
                 />

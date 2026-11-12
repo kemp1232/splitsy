@@ -30,11 +30,13 @@ import {
   buildSplitLineItems,
 } from '@/features/adjustments/buildSplitInputs';
 import { partitionLineItemsByAssignment } from '@/features/assignments/partitionLineItemsByAssignment';
+import { hasUnresolvedDiscrepancy } from '@/features/bills/hasUnresolvedDiscrepancy';
 import { useEnsureBillEditable } from '@/features/bills/useEnsureBillEditable';
 import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
 import { resolveQuickAddMeName } from '@/features/participants/validateParticipantName';
 import { buildInitialContributions } from '@/features/payments/buildInitialContributions';
 import { computeContributionUpdates } from '@/features/payments/computeContributionUpdates';
+import { computeOverpaymentCentavos } from '@/features/payments/computeOverpaymentCentavos';
 import { getNegativeTotalWarning } from '@/features/receipt-review/buildTotalsSummary';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
@@ -44,6 +46,7 @@ import type {
 } from '@/features/splitting/split.types';
 import { authClient } from '@/lib/authClient';
 import { nowIso } from '@/lib/date';
+import { formatCentavos } from '@/lib/money';
 import { spacing } from '@/theme/tokens';
 
 type LoadState = 'loading' | 'ready' | 'error';
@@ -150,8 +153,10 @@ export default function PaymentsScreen() {
   const [computedTotalCentavos, setComputedTotalCentavos] = useState(0);
   // Local, in-progress form state — participant id -> their contribution in
   // centavos. Never written back to the repository until Continue is
-  // pressed (Skip discards it entirely), matching this screen's own
-  // "no validation needed beyond AmountInput's own structural checks" brief.
+  // pressed (Skip discards it entirely). Beyond AmountInput's own structural
+  // checks, the only validation is the total: entering more than the bill's
+  // computed total shows an inline error and disables Continue
+  // (computeOverpaymentCentavos); exactly the total is allowed.
   const [contributions, setContributions] = useState<Record<string, number>>({});
   // AmountInput deliberately only seeds its displayed text from valueCentavos
   // once, at mount — it never re-syncs on a later prop change, so typing
@@ -211,7 +216,7 @@ export default function PaymentsScreen() {
 
         const { splitResult, reconciliation } = computeSplitAndReconciliation(data);
 
-        if (!reconciliation.matches && !data.billRow.discrepancyAcknowledged) {
+        if (hasUnresolvedDiscrepancy(reconciliation, data.billRow)) {
           router.replace(`/bill/${billId}/adjustments`);
           return;
         }
@@ -238,8 +243,16 @@ export default function PaymentsScreen() {
   // coming back re-reads just the bill total — the negative-total warning and
   // "Paid the whole bill" then match the current items/discounts — without
   // touching the contributions being typed. Skips the first focus (the load
-  // effect above already read it).
+  // effect above already read it). If the user hasn't edited anything, the
+  // "nothing paid yet" pre-fill is rebuilt against the new total too, so a
+  // stale pre-filled amount never trips the overpayment block on its own.
   const hasFocusedRef = useRef(false);
+  // Mirrors of render state the focus callback reads without re-subscribing
+  // (updated in an effect, never during render).
+  const prefillStateRef = useRef({ hasEdited, prefillChecked, meName });
+  useEffect(() => {
+    prefillStateRef.current = { hasEdited, prefillChecked, meName };
+  }, [hasEdited, prefillChecked, meName]);
   useFocusEffect(
     useCallback(() => {
       if (!hasFocusedRef.current) {
@@ -252,7 +265,22 @@ export default function PaymentsScreen() {
           const data = await fetchPaymentsData(billId);
           if (!data.billRow) return;
           const { splitResult } = computeSplitAndReconciliation(data);
-          if (active) setComputedTotalCentavos(splitResult.computedTotalCentavos);
+          if (!active) return;
+          setComputedTotalCentavos(splitResult.computedTotalCentavos);
+          const prefillState = prefillStateRef.current;
+          // Before the pre-fill has run, the render-time pre-fill below
+          // already uses the updated total; after an edit, never overwrite.
+          if (prefillState.prefillChecked && !prefillState.hasEdited) {
+            setParticipants(data.participantRows);
+            setContributions(
+              buildInitialContributions(
+                data.participantRows,
+                splitResult.computedTotalCentavos,
+                prefillState.meName,
+              ),
+            );
+            setResetToken((token) => token + 1);
+          }
         } catch {
           // Incomplete bill (calculateSplit threw) or a read failure: keep
           // the last total; the load effect's guards handle real problems.
@@ -315,6 +343,8 @@ export default function PaymentsScreen() {
   }
 
   async function handleContinue() {
+    // Continue is disabled while overpaid; this also covers a stale press.
+    if (computeOverpaymentCentavos(contributions, computedTotalCentavos) > 0) return;
     setActionError(null);
     setSaving(true);
     try {
@@ -377,6 +407,7 @@ export default function PaymentsScreen() {
   }
 
   const negativeTotalWarning = getNegativeTotalWarning(computedTotalCentavos);
+  const overpaymentCentavos = computeOverpaymentCentavos(contributions, computedTotalCentavos);
 
   return (
     <Screen tabBarHidden scroll padded={false}>
@@ -422,6 +453,13 @@ export default function PaymentsScreen() {
             the polish-pass icon-mapping table). */}
         <View style={styles.actionsBlock}>
           {actionError ? <InlineError message={actionError} /> : null}
+          {overpaymentCentavos > 0 ? (
+            <InlineError
+              message={copy.payments.overpaidError.replace('{amount}', () =>
+                formatCentavos(overpaymentCentavos),
+              )}
+            />
+          ) : null}
           <AppButton
             variant="text"
             label={copy.payments.skipAction}
@@ -433,7 +471,7 @@ export default function PaymentsScreen() {
             label={copy.payments.continueButton}
             onPress={handleContinue}
             loading={saving}
-            disabled={saving}
+            disabled={saving || overpaymentCentavos > 0}
             trailingArrow
           />
         </View>

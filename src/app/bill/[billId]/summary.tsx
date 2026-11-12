@@ -40,6 +40,7 @@ import {
 } from '@/features/assignments/partitionLineItemsByAssignment';
 import { endBillEdit } from '@/features/bills/billEditSession';
 import { getBillCustomName, getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
+import { hasUnresolvedDiscrepancy } from '@/features/bills/hasUnresolvedDiscrepancy';
 import { useEnsureBillEditable } from '@/features/bills/useEnsureBillEditable';
 import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
 import {
@@ -56,7 +57,7 @@ import {
 } from '@/features/participants/validateParticipantName';
 import { buildShareText } from '@/features/splitting/shareText';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
-import { computeSettlement } from '@/features/splitting/settlement';
+import { computeSettlement, computeUnsettledCredits } from '@/features/splitting/settlement';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
 import type {
   ReconciliationResult,
@@ -71,7 +72,7 @@ import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
-// How long the bottom-of-screen toast banner stays visible before clearing
+// How long the in-flow toast banner stays visible before clearing
 // itself (spec F-016's "Save as completed"/"Copy text" both need some
 // lightweight confirmation — this codebase has no toast/snackbar primitive
 // yet, so this screen builds the smallest thing that works rather than
@@ -178,6 +179,10 @@ export default function SummaryScreen() {
   const [shareError, setShareError] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  // Where the toast renders: next to the Share/Copy buttons for their
+  // "Breakdown copied." confirmation (otherwise it appeared far below, out of
+  // view), or by the Save button for "Bill saved.".
+  const [toastPlacement, setToastPlacement] = useState<'share' | 'finish'>('finish');
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Trip feature addition (not from the numbered MVP spec, see the
   // 2026-08-18 spec Amendment): set only when this bill's `tripId` is not
@@ -192,8 +197,9 @@ export default function SummaryScreen() {
     };
   }, []);
 
-  function showToast(message: string) {
+  function showToast(message: string, placement: 'share' | 'finish') {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToastPlacement(placement);
     setToastMessage(message);
     toastTimeoutRef.current = setTimeout(() => setToastMessage(null), TOAST_VISIBLE_MS);
   }
@@ -244,7 +250,7 @@ export default function SummaryScreen() {
       const { splitResult: nextSplitResult, reconciliation: nextReconciliation } =
         computeSplitAndReconciliation(data);
 
-      if (!nextReconciliation.matches && !data.billRow.discrepancyAcknowledged) {
+      if (hasUnresolvedDiscrepancy(nextReconciliation, data.billRow)) {
         router.replace(`/bill/${billId}/adjustments`);
         return;
       }
@@ -334,6 +340,7 @@ export default function SummaryScreen() {
     contributionByParticipantId,
   );
   const settlement = computeSettlement(settlementParticipants);
+  const unsettledCredits = computeUnsettledCredits(settlementParticipants, settlement);
   // Nobody has used the Payments screen for this bill yet — every
   // contribution defaults to 0, which would otherwise make
   // unaccountedCentavos equal the entire bill total and render as a warning
@@ -379,7 +386,7 @@ export default function SummaryScreen() {
       });
       // Saved for real: an earlier Edit bill snapshot has nothing to restore.
       endBillEdit(billId);
-      showToast(copy.summary.savedToast);
+      showToast(copy.summary.savedToast, 'finish');
       // Back to Home, where the saved bill is listed and still openable.
       // dismissTo (not replace) pops the whole bill flow off the stack — same
       // as receipt-review.tsx's/index.tsx's own back-to-Home handling. A bill
@@ -410,7 +417,7 @@ export default function SummaryScreen() {
       // Web-only: no native share sheet on this browser, silently fell back
       // to the clipboard instead (src/lib/share.web.ts) — same confirmation
       // handleCopy below already shows for its own explicit copy action.
-      if (result === 'copied') showToast(copy.summary.copiedToast);
+      if (result === 'copied') showToast(copy.summary.copiedToast, 'share');
     } catch {
       setShareError(copy.summary.shareFailure);
     }
@@ -420,7 +427,7 @@ export default function SummaryScreen() {
     setCopyError(null);
     try {
       await Clipboard.setStringAsync(buildShareTextForBill());
-      showToast(copy.summary.copiedToast);
+      showToast(copy.summary.copiedToast, 'share');
     } catch {
       // Same reasoning as handleSave's fallback above — expo-clipboard's
       // setStringAsync always resolves on iOS/Android per its own docs, so
@@ -494,6 +501,13 @@ export default function SummaryScreen() {
               {copyError ? <InlineError message={copyError} /> : null}
             </View>
           </View>
+          {toastMessage !== null && toastPlacement === 'share' ? (
+            <View style={styles.toast} accessibilityLiveRegion="polite">
+              <AppText color="onPrimary" style={styles.uniformText}>
+                {toastMessage}
+              </AppText>
+            </View>
+          ) : null}
           <AppButton
             variant="text"
             label={copy.summary.editAction}
@@ -543,6 +557,7 @@ export default function SummaryScreen() {
           <SettlementCard
             transactions={settlement.transactions}
             unaccountedCentavos={settlement.unaccountedCentavos}
+            unsettledCredits={unsettledCredits}
             nameByParticipantId={nameByParticipantId}
             totalCentavos={splitResult.computedTotalCentavos}
           />
@@ -563,7 +578,7 @@ export default function SummaryScreen() {
           {/* Was a sticky BottomActionBar footer — moved inline, per the
               user's own explicit request (2026-08-27) to drop sticky nav
               footers in favor of plain in-flow buttons. */}
-          {toastMessage ? (
+          {toastMessage !== null && toastPlacement === 'finish' ? (
             <View style={styles.toast} accessibilityLiveRegion="polite">
               <AppText color="onPrimary" style={styles.uniformText}>
                 {toastMessage}

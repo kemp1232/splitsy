@@ -26,7 +26,18 @@ export type PendingBillEdit = {
 
 // Bookkeeping columns, not content: a write that stores the same values again
 // (an autosave on blur, a no-op Continue) only bumps these.
-const IGNORED_KEYS = new Set(['createdAt', 'updatedAt', 'status', 'completedAt']);
+// acknowledgedDiscrepancyCentavos is derived bookkeeping too: the receipt
+// difference only changes through fingerprinted content (items, fees,
+// receipt total), so re-acknowledging an unchanged bill — e.g. a legacy
+// acknowledgment (null amount) re-prompted during Edit — must still let the
+// bill be restored to COMPLETED.
+const IGNORED_KEYS = new Set([
+  'createdAt',
+  'updatedAt',
+  'status',
+  'completedAt',
+  'acknowledgedDiscrepancyCentavos',
+]);
 
 function stripIgnored(row: object): Record<string, unknown> {
   return Object.fromEntries(

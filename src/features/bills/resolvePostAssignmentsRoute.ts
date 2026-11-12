@@ -1,5 +1,7 @@
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
 
+import { hasUnresolvedDiscrepancy } from './hasUnresolvedDiscrepancy';
+
 // Not from the spec — the forward-flow shortcut out of the assignments
 // screen: once every item is assigned, the separate "Fees, tax, and
 // discounts" screen is only worth stopping at when the bill doesn't already
@@ -16,6 +18,8 @@ export type PostAssignmentsRouteInput = {
   adjustments: { amountCentavos: number }[];
   detectedReceiptTotalCentavos: number | null;
   discrepancyAcknowledged: boolean;
+  // The difference that acknowledgment covered — see hasUnresolvedDiscrepancy.
+  acknowledgedDiscrepancyCentavos: number | null;
 };
 
 export function resolvePostAssignmentsRoute(
@@ -35,5 +39,5 @@ export function resolvePostAssignmentsRoute(
     detectedReceiptTotalCentavos: input.detectedReceiptTotalCentavos,
   });
 
-  return !reconciliation.matches && !input.discrepancyAcknowledged ? 'adjustments' : 'payments';
+  return hasUnresolvedDiscrepancy(reconciliation, input) ? 'adjustments' : 'payments';
 }

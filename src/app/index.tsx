@@ -2,7 +2,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { BillListItem } from '@/components/bill/BillListItem';
 import { BillOverflowSheet } from '@/components/bill/BillOverflowSheet';
@@ -39,14 +39,18 @@ import {
   beginCompletedBillEdit,
   restoreUnchangedBillEdits,
 } from '@/features/bills/billEditSession';
+import { computeBillTotalCentavos } from '@/features/bills/computeBillTotalCentavos';
 import { useRestoringBillIds } from '@/features/bills/useRestoringBillIds';
 import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
+import { hasShareableContent } from '@/features/bills/hasShareableContent';
+import { hasUnresolvedDiscrepancy } from '@/features/bills/hasUnresolvedDiscrepancy';
 import { resolveNextRoute, type NextRoute } from '@/features/bills/resolveNextRoute';
 import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
 import { computeSettlement } from '@/features/splitting/settlement';
 import { buildShareText } from '@/features/splitting/shareText';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
+import { showAlert } from '@/lib/alert';
 import { authClient } from '@/lib/authClient';
 import { shareText } from '@/lib/share';
 import type { ColorTokens } from '@/theme/tokens';
@@ -69,7 +73,14 @@ type LoadState = 'loading' | 'ready' | 'error';
 // see InitialsAvatar.tsx's own header note on why initials substitute for
 // photos in an app with no accounts).
 type HomeEntry =
-  | { kind: 'bill'; data: BillWithParticipantCount; participantNames: string[] }
+  | {
+      kind: 'bill';
+      data: BillWithParticipantCount;
+      participantNames: string[];
+      // computeBillTotalCentavos — the same items + fees total the bill
+      // detail screen shows (null for an empty draft).
+      totalCentavos: number | null;
+    }
   | {
       kind: 'trip';
       data: TripWithBillCount;
@@ -87,11 +98,9 @@ function sortHomeEntriesNewestFirst(entries: HomeEntry[]): HomeEntry[] {
   return [...entries].sort((a, b) => (getEntryUpdatedAt(a) < getEntryUpdatedAt(b) ? 1 : -1));
 }
 
-// Same lighter-weight sum the trip hub screen uses for its own running total
-// (see src/app/trip/[tripId]/index.tsx's own copy of this function) — kept as
-// its own colocated copy rather than shared, matching this codebase's
-// existing precedent of not sharing fetch/calculation functions across
-// screens.
+// Same per-bill total the trip hub sums for its own running total
+// (computeBillTotalCentavos), over a trip's COMPLETED bills; an empty bill
+// counts as 0.
 async function computeTripTotalCentavos(tripId: string): Promise<number> {
   const bills = await billsRepository.listByTripId(tripId);
   const completedBills = bills.filter((entry) => entry.bill.status === 'COMPLETED');
@@ -101,12 +110,7 @@ async function computeTripTotalCentavos(tripId: string): Promise<number> {
         lineItemsRepository.listByBillId(bill.id),
         adjustmentsRepository.listByBillId(bill.id),
       ]);
-      const itemSubtotal = items.reduce((sum, item) => sum + item.lineTotalCentavos, 0);
-      const adjustmentTotal = adjustments.reduce(
-        (sum, adjustment) => sum + adjustment.amountCentavos,
-        0,
-      );
-      return itemSubtotal + adjustmentTotal;
+      return computeBillTotalCentavos(items, adjustments) ?? 0;
     }),
   );
   return totals.reduce((sum, total) => sum + total, 0);
@@ -131,13 +135,19 @@ async function buildHomeEntries(): Promise<HomeEntry[]> {
   const standaloneBillRows = billRows.filter((row) => row.bill.tripId === null);
 
   const billEntries: HomeEntry[] = await Promise.all(
-    standaloneBillRows.map(async (row) => ({
-      kind: 'bill' as const,
-      data: row,
-      participantNames: (await participantsRepository.listByBillId(row.bill.id)).map(
-        (participant) => participant.name,
-      ),
-    })),
+    standaloneBillRows.map(async (row) => {
+      const [participantRows, itemRows, adjustmentRows] = await Promise.all([
+        participantsRepository.listByBillId(row.bill.id),
+        lineItemsRepository.listByBillId(row.bill.id),
+        adjustmentsRepository.listByBillId(row.bill.id),
+      ]);
+      return {
+        kind: 'bill' as const,
+        data: row,
+        participantNames: participantRows.map((participant) => participant.name),
+        totalCentavos: computeBillTotalCentavos(itemRows, adjustmentRows),
+      };
+    }),
   );
   const tripEntries: HomeEntry[] = await Promise.all(
     tripRows.map(async (row) => {
@@ -199,7 +209,7 @@ async function resolveDraftNextRoute(billId: string): Promise<NextRoute> {
     hasItems: itemRows.length > 0,
     participantCount: participantRows.length,
     hasUnassignedItems: unassignedItems.length > 0,
-    hasUnresolvedDiscrepancy: !reconciliation.matches && !billRow.discrepancyAcknowledged,
+    hasUnresolvedDiscrepancy: hasUnresolvedDiscrepancy(reconciliation, billRow),
   });
 }
 
@@ -210,14 +220,17 @@ async function resolveDraftNextRoute(billId: string): Promise<NextRoute> {
 // unassigned item. calculateSplit throws in exactly those cases (spec 10.7's
 // own participant-count guard, and allocateEqual's divide-by-zero guard for
 // an item with no assignees) — the caller is expected to catch that and show
-// copy.home.shareUnavailable rather than let it propagate.
-async function buildShareTextForBill(bill: Bill): Promise<string> {
+// copy.home.shareUnavailable rather than let it propagate. Resolves null for
+// a draft with no items or no people yet (copy.home.shareNothingYet).
+async function buildShareTextForBill(bill: Bill): Promise<string | null> {
   const [itemRows, participantRows, adjustmentRows, assignmentRows] = await Promise.all([
     lineItemsRepository.listByBillId(bill.id),
     participantsRepository.listByBillId(bill.id),
     adjustmentsRepository.listByBillId(bill.id),
     itemAssignmentsRepository.listByBillId(bill.id),
   ]);
+
+  if (!hasShareableContent(itemRows.length, participantRows.length)) return null;
 
   const customAllocationsByAdjustmentId = new Map<string, AdjustmentAllocation[]>();
   await Promise.all(
@@ -408,13 +421,17 @@ export default function HomeScreen() {
 
     try {
       const text = await buildShareTextForBill(bill);
+      if (text === null) {
+        showAlert(copy.global.genericErrorHeading, copy.home.shareNothingYet);
+        return;
+      }
       const result = await shareText(text);
       // Web-only: no native share sheet on this browser, silently fell back
       // to the clipboard instead (src/lib/share.web.ts) — this quick overflow
       // action has no toast mechanism of its own to reuse.
-      if (result === 'copied') Alert.alert(copy.global.sharedTextCopiedToast);
+      if (result === 'copied') showAlert(copy.global.sharedTextCopiedToast);
     } catch {
-      Alert.alert(copy.global.genericErrorHeading, copy.home.shareUnavailable);
+      showAlert(copy.global.genericErrorHeading, copy.home.shareUnavailable);
     }
   }
 
@@ -436,9 +453,9 @@ export default function HomeScreen() {
     } catch {
       // This screen has no inline-error slot of its own (unlike
       // handleOverflowShare's copy.home.shareUnavailable, there's no fixed
-      // spot on the list row to show it) — Alert.alert matches that same
+      // spot on the list row to show it) — showAlert matches that same
       // handler's own established convention for a failure here.
-      Alert.alert(copy.global.genericErrorHeading, copy.global.deleteFailure);
+      showAlert(copy.global.genericErrorHeading, copy.global.deleteFailure);
       return;
     }
     await load();
@@ -533,6 +550,7 @@ export default function HomeScreen() {
                 <BillListItem
                   entry={item.data}
                   participantNames={item.participantNames}
+                  totalCentavos={item.totalCentavos}
                   onPress={handleOpenBill}
                   onOverflowPress={handleOverflowPress}
                 />

@@ -279,8 +279,12 @@ export default function AdjustmentsScreen() {
   }
 
   async function handleConfirmContinueWithDifference() {
+    // Stores the exact difference being accepted, not just a flag: if items,
+    // people or fees later change the difference, the acknowledgment no
+    // longer applies and the flow comes back here (hasUnresolvedDiscrepancy).
     await billsRepository.update(billId, {
       discrepancyAcknowledged: true,
+      acknowledgedDiscrepancyCentavos: reconciliation?.differenceCentavos ?? null,
       updatedAt: nowIso(),
     });
     setShowContinueWithDifference(false);

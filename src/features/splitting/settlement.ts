@@ -142,3 +142,40 @@ export function computeSettlement(participants: SettlementParticipant[]): Settle
 
   return { transactions, unaccountedCentavos };
 }
+
+/**
+ * Every creditor who is still owed money after `computeSettlement`'s
+ * transactions — with how much — in the original `participants` order.
+ *
+ * Only non-empty when more was contributed than the bill required
+ * (`unaccountedCentavos < 0`): the greedy loop runs out of debtors first, so
+ * some creditors are left partly paid or never appear in any transaction at
+ * all. Listing them keeps every person who is owed money visible next to
+ * the over-collected note. A separate function (rather than a new
+ * `SettlementResult` field) so `computeSettlement`'s output stays exactly as
+ * it was in every case.
+ */
+export function computeUnsettledCredits(
+  participants: SettlementParticipant[],
+  result: SettlementResult,
+): { participantId: string; amountCentavos: number }[] {
+  const receivedByParticipantId = new Map<string, number>();
+  for (const transaction of result.transactions) {
+    receivedByParticipantId.set(
+      transaction.toParticipantId,
+      (receivedByParticipantId.get(transaction.toParticipantId) ?? 0) + transaction.amountCentavos,
+    );
+  }
+
+  const unsettled: { participantId: string; amountCentavos: number }[] = [];
+  for (const participant of participants) {
+    const netBalanceCentavos = participant.contributedCentavos - participant.fairShareCentavos;
+    if (netBalanceCentavos <= 0) continue;
+    const remaining =
+      netBalanceCentavos - (receivedByParticipantId.get(participant.participantId) ?? 0);
+    if (remaining > 0) {
+      unsettled.push({ participantId: participant.participantId, amountCentavos: remaining });
+    }
+  }
+  return unsettled;
+}
