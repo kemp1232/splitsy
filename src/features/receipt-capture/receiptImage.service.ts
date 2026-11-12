@@ -44,6 +44,14 @@ export async function resolveImageUri(uri: string): Promise<string> {
   return uri;
 }
 
+// Native counterpart to receiptImage.service.web.ts's deleteStoredImage —
+// removes one stored image by its uri (same guarded delete as deleteBill).
+// Used by the payment-details QR image on replace/remove.
+export async function deleteStoredImage(uri: string): Promise<void> {
+  const file = new File(uri);
+  if (file.exists) file.delete();
+}
+
 export async function copyImageToAppStorage(sourceUri: string): Promise<string> {
   const sourceFile = new File(sourceUri);
   const extension = sourceFile.extension || '.jpg';

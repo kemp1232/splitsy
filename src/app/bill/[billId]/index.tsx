@@ -51,8 +51,12 @@ import { reconcileBillTotals } from '@/features/splitting/reconciliation';
 import { computeSettlement, computeUnsettledCredits } from '@/features/splitting/settlement';
 import {
   displayParticipantName,
+  findMeParticipant,
   resolveQuickAddMeName,
 } from '@/features/participants/validateParticipantName';
+import { isCreditor } from '@/features/payment-details/phMobileNumber';
+import { shareQrImage } from '@/features/payment-details/shareQrImage';
+import { useSavedPaymentDetails } from '@/features/payment-details/useSavedPaymentDetails';
 import { buildShareText } from '@/features/splitting/shareText';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import type {
@@ -147,6 +151,8 @@ export default function SavedBillDetailScreen() {
   const [showReceiptImage, setShowReceiptImage] = useState(false);
   const [showRawText, setShowRawText] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [shareQrError, setShareQrError] = useState<string | null>(null);
+  const paymentDetails = useSavedPaymentDetails();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   // Trip feature addition (not from the numbered MVP spec, see the
@@ -303,6 +309,26 @@ export default function SavedBillDetailScreen() {
     (participant) => participant.contributedCentavos !== 0,
   );
 
+  // Same "me is owed money" gate as summary.tsx (spec Amendment 2026-11-12).
+  const meParticipant = findMeParticipant(participants, meName);
+  const meIsCreditor =
+    hasAnyContribution &&
+    meParticipant !== undefined &&
+    isCreditor(settlement.transactions, meParticipant.id);
+  const qrImageUri = meIsCreditor ? (paymentDetails?.qrImageUri ?? null) : null;
+
+  async function handleShareQr() {
+    if (!qrImageUri) return;
+    setShareQrError(null);
+    try {
+      const result = await shareQrImage(qrImageUri);
+      // Web-only: this browser can't share files, so the image was downloaded.
+      if (result === 'downloaded') showAlert(copy.paymentDetails.qrDownloadedToast);
+    } catch {
+      setShareQrError(copy.paymentDetails.shareQrFailure);
+    }
+  }
+
   async function handleShare() {
     // TypeScript doesn't retain the outer `!splitResult` narrowing above
     // across this nested function's closure boundary (same reasoning as
@@ -330,6 +356,14 @@ export default function SavedBillDetailScreen() {
         // bill that never touched Payments shouldn't get a "Settle up" block
         // (or "Paid" lines) in its shared text either.
         settlementTransactions: hasAnyContribution ? settlement.transactions : undefined,
+        paymentDetails:
+          meParticipant && paymentDetails
+            ? {
+                meParticipantId: meParticipant.id,
+                gcashNumber: paymentDetails.gcashNumber,
+                mayaNumber: paymentDetails.mayaNumber,
+              }
+            : undefined,
       });
       const result = await shareText(text);
       // Web-only: no native share sheet on this browser, silently fell back
@@ -532,6 +566,17 @@ export default function SavedBillDetailScreen() {
           onPress={handleShare}
           icon={(color) => <Feather name="share" size={18} color={color} />}
         />
+        {qrImageUri !== null ? (
+          <View>
+            <AppButton
+              variant="secondary"
+              label={copy.paymentDetails.shareQrAction}
+              onPress={handleShareQr}
+              icon={(color) => <Feather name="image" size={18} color={color} />}
+            />
+            {shareQrError ? <InlineError message={shareQrError} /> : null}
+          </View>
+        ) : null}
       </View>
 
       <Modal

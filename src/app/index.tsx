@@ -48,6 +48,11 @@ import { resolveNextRoute, type NextRoute } from '@/features/bills/resolveNextRo
 import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
 import { computeSettlement } from '@/features/splitting/settlement';
+import {
+  findMeParticipant,
+  resolveQuickAddMeName,
+} from '@/features/participants/validateParticipantName';
+import { getPaymentDetails } from '@/features/payment-details/paymentDetails.service';
 import { buildShareText } from '@/features/splitting/shareText';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import { showAlert } from '@/lib/alert';
@@ -222,13 +227,19 @@ async function resolveDraftNextRoute(billId: string): Promise<NextRoute> {
 // an item with no assignees) — the caller is expected to catch that and show
 // copy.home.shareUnavailable rather than let it propagate. Resolves null for
 // a draft with no items or no people yet (copy.home.shareNothingYet).
-async function buildShareTextForBill(bill: Bill): Promise<string | null> {
-  const [itemRows, participantRows, adjustmentRows, assignmentRows] = await Promise.all([
-    lineItemsRepository.listByBillId(bill.id),
-    participantsRepository.listByBillId(bill.id),
-    adjustmentsRepository.listByBillId(bill.id),
-    itemAssignmentsRepository.listByBillId(bill.id),
-  ]);
+// `meName` (resolveQuickAddMeName's output) finds this bill's "me"
+// participant, so the user's saved payment details (spec Amendment
+// 2026-11-12) can follow the "Settle up" block when they're owed money.
+async function buildShareTextForBill(bill: Bill, meName: string): Promise<string | null> {
+  const [itemRows, participantRows, adjustmentRows, assignmentRows, paymentDetails] =
+    await Promise.all([
+      lineItemsRepository.listByBillId(bill.id),
+      participantsRepository.listByBillId(bill.id),
+      adjustmentsRepository.listByBillId(bill.id),
+      itemAssignmentsRepository.listByBillId(bill.id),
+      // Best effort: an unreadable setting must never block sharing the bill.
+      getPaymentDetails().catch(() => null),
+    ]);
 
   if (!hasShareableContent(itemRows.length, participantRows.length)) return null;
 
@@ -269,6 +280,8 @@ async function buildShareTextForBill(bill: Bill): Promise<string | null> {
       ).transactions
     : undefined;
 
+  const meParticipant = findMeParticipant(participantRows, meName);
+
   return buildShareText({
     billTitle: getBillDisplayTitle(bill),
     participants: participantRows.map((participant) => ({
@@ -283,6 +296,14 @@ async function buildShareTextForBill(bill: Bill): Promise<string | null> {
     })),
     splitResult,
     settlementTransactions,
+    paymentDetails:
+      meParticipant && paymentDetails
+        ? {
+            meParticipantId: meParticipant.id,
+            gcashNumber: paymentDetails.gcashNumber,
+            mayaNumber: paymentDetails.mayaNumber,
+          }
+        : undefined,
   });
 }
 
@@ -296,6 +317,7 @@ export default function HomeScreen() {
   // anything else this screen would have to invent").
   const { data: session } = authClient.useSession();
   const displayName = session?.user.name.trim() || copy.home.fallbackName;
+  const meName = resolveQuickAddMeName(session?.user.name);
   const [entries, setEntries] = useState<HomeEntry[]>([]);
   const [state, setState] = useState<LoadState>('loading');
   const [refreshing, setRefreshing] = useState(false);
@@ -420,7 +442,7 @@ export default function HomeScreen() {
     if (!bill) return;
 
     try {
-      const text = await buildShareTextForBill(bill);
+      const text = await buildShareTextForBill(bill, meName);
       if (text === null) {
         showAlert(copy.global.genericErrorHeading, copy.home.shareNothingYet);
         return;

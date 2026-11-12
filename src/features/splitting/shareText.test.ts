@@ -317,7 +317,7 @@ describe('buildShareText', () => {
     expect(withEmptyArray).toBe(withoutField);
   });
 
-  it("appends each participant's own \"Paid\" line when paidCentavos is provided", () => {
+  it('appends each participant\'s own "Paid" line when paidCentavos is provided', () => {
     const splitInput: SplitCalculationInput = {
       participants: [{ participantId: 'a' }, { participantId: 'b' }],
       items: [{ lineItemId: 'meal', lineTotalCentavos: 2000, assigneeParticipantIds: ['a', 'b'] }],
@@ -389,5 +389,113 @@ describe('buildShareText', () => {
         splitResult,
       }),
     ).toThrow();
+  });
+});
+
+describe('buildShareText payment details', () => {
+  const splitResult = calculateSplit({
+    participants: [{ participantId: 'me' }, { participantId: 'b' }],
+    items: [{ lineItemId: 'meal', lineTotalCentavos: 2000, assigneeParticipantIds: ['me', 'b'] }],
+    adjustments: [],
+  });
+
+  function build(overrides: Partial<ShareTextInput>): string {
+    return buildShareText({
+      billTitle: 'Coffee Run',
+      participants: [
+        { participantId: 'me', name: 'Kemp' },
+        { participantId: 'b', name: 'Bea' },
+      ],
+      items: [{ lineItemId: 'meal', name: 'Meal' }],
+      adjustments: [],
+      splitResult,
+      settlementTransactions: [
+        { fromParticipantId: 'b', toParticipantId: 'me', amountCentavos: 1000 },
+      ],
+      ...overrides,
+    });
+  }
+
+  const baseLines = [
+    'Splitsy — Coffee Run',
+    'Total: ₱20.00',
+    '',
+    'Kemp — ₱10.00',
+    '• Meal — ₱10.00',
+    '',
+    'Bea — ₱10.00',
+    '• Meal — ₱10.00',
+    '',
+    'Settle up',
+  ];
+
+  it('appends payment details after Settle up when Me is a creditor', () => {
+    const text = build({
+      paymentDetails: {
+        meParticipantId: 'me',
+        gcashNumber: '09171234567',
+        mayaNumber: '09187654321',
+      },
+    });
+
+    expect(text).toBe(
+      [
+        ...baseLines,
+        'Bea owes Kemp — ₱10.00',
+        '',
+        'Pay Kemp via:',
+        'GCash: 0917 123 4567',
+        'Maya: 0918 765 4321',
+        '',
+        'Calculated with Splitsy.',
+      ].join('\n'),
+    );
+  });
+
+  it('lists only the saved number when just one is saved', () => {
+    const text = build({
+      paymentDetails: { meParticipantId: 'me', gcashNumber: null, mayaNumber: '09187654321' },
+    });
+
+    expect(text).toContain('Pay Kemp via:\nMaya: 0918 765 4321\n\nCalculated with Splitsy.');
+    expect(text).not.toContain('GCash');
+  });
+
+  it('omits payment details when no numbers are saved', () => {
+    const withoutDetails = build({});
+    const withEmptyDetails = build({
+      paymentDetails: { meParticipantId: 'me', gcashNumber: null, mayaNumber: null },
+    });
+
+    expect(withEmptyDetails).toBe(withoutDetails);
+    expect(withEmptyDetails).not.toContain('Pay ');
+  });
+
+  it('omits payment details when Me only owes money', () => {
+    const text = build({
+      settlementTransactions: [
+        { fromParticipantId: 'me', toParticipantId: 'b', amountCentavos: 1000 },
+      ],
+      paymentDetails: { meParticipantId: 'me', gcashNumber: '09171234567', mayaNumber: null },
+    });
+
+    expect(text).toBe(
+      [...baseLines, 'Kemp owes Bea — ₱10.00', '', 'Calculated with Splitsy.'].join('\n'),
+    );
+  });
+
+  it('omits payment details when there is no Settle up block', () => {
+    const paymentDetails = {
+      meParticipantId: 'me',
+      gcashNumber: '09171234567',
+      mayaNumber: '09187654321',
+    };
+
+    for (const settlementTransactions of [undefined, []]) {
+      const text = build({ settlementTransactions, paymentDetails });
+      expect(text).not.toContain('Settle up');
+      expect(text).not.toContain('Pay ');
+      expect(text.endsWith('• Meal — ₱10.00\n\nCalculated with Splitsy.')).toBe(true);
+    }
   });
 });

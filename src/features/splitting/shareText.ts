@@ -9,6 +9,7 @@
 // data passed in by whichever screen/hook already has the names loaded.
 
 import { copy } from '@/constants/copy';
+import { buildPaymentDetailsBlock, isCreditor } from '@/features/payment-details/phMobileNumber';
 import { formatCentavos } from '@/lib/money';
 
 import type { SettlementTransaction } from './settlement.types';
@@ -52,6 +53,16 @@ export type ShareTextInput = {
   // meaningless "Settle up" section in its shared text, matching
   // SettlementCard's own on-screen hasAnyContribution gate.
   settlementTransactions?: SettlementTransaction[];
+  // Not from spec F-017 — the user's own saved GCash/Maya numbers (spec
+  // Amendment 2026-11-12), with the id of the bill's "me" participant
+  // (findMeParticipant). Appended as its own block after "Settle up" only
+  // when that block is rendered, "me" is owed money in at least one of its
+  // transactions, and at least one number is saved; otherwise ignored.
+  paymentDetails?: {
+    meParticipantId: string;
+    gcashNumber: string | null;
+    mayaNumber: string | null;
+  };
 };
 
 const FOOTER_LINE = 'Calculated with Splitsy.';
@@ -106,8 +117,15 @@ const FOOTER_LINE = 'Calculated with Splitsy.';
  * `calculateSplit`'s invariant assertion.
  */
 export function buildShareText(input: ShareTextInput): string {
-  const { billTitle, participants, items, adjustments, splitResult, settlementTransactions } =
-    input;
+  const {
+    billTitle,
+    participants,
+    items,
+    adjustments,
+    splitResult,
+    settlementTransactions,
+    paymentDetails,
+  } = input;
 
   const nameByParticipantId = new Map(
     participants.map((participant) => [participant.participantId, participant.name]),
@@ -186,10 +204,27 @@ export function buildShareText(input: ShareTextInput): string {
         ].join('\n')
       : null;
 
+  const meName = paymentDetails
+    ? nameByParticipantId.get(paymentDetails.meParticipantId)
+    : undefined;
+  const paymentDetailsBlock =
+    settlementBlock !== null &&
+    settlementTransactions &&
+    paymentDetails &&
+    meName !== undefined &&
+    isCreditor(settlementTransactions, paymentDetails.meParticipantId)
+      ? buildPaymentDetailsBlock({
+          name: meName,
+          gcashNumber: paymentDetails.gcashNumber,
+          mayaNumber: paymentDetails.mayaNumber,
+        })
+      : null;
+
   return [
     headerBlock,
     ...participantBlocks,
     ...(settlementBlock !== null ? [settlementBlock] : []),
+    ...(paymentDetailsBlock !== null ? [paymentDetailsBlock] : []),
     FOOTER_LINE,
   ].join('\n\n');
 }

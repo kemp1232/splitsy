@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 
-import type { ShareResult } from './share';
+import type { ShareImageResult, ShareResult } from './share';
 
 // react-native-web has no `Share` implementation at all. This uses the
 // browser's own Web Share API where available (mobile Safari/Chrome),
@@ -27,4 +27,53 @@ export async function shareText(message: string): Promise<ShareResult> {
   }
   await Clipboard.setStringAsync(message);
   return 'copied';
+}
+
+// File extension for the shared image's name, by its MIME type (jpg when
+// the type is missing or not listed).
+const IMAGE_EXTENSIONS: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+};
+
+// Web counterpart to share.ts's shareImage (no expo-sharing here: its web
+// build only shares URLs, not files). `uri` must already be loadable (a
+// `blob:`/`data:` URL — resolve a stored `splitsy-idb-image:` reference with
+// resolveImageUri first). Shares the image as a file through the Web Share
+// API where the browser supports file sharing; otherwise downloads it, so
+// the user can still attach it themselves. Canceling the share sheet is a
+// silent no-op, same as shareText.
+export async function shareImage(uri: string): Promise<ShareImageResult> {
+  const blob = await (await fetch(uri)).blob();
+  const extension = IMAGE_EXTENSIONS[blob.type] ?? 'jpg';
+  const fileName = `payment-qr.${extension}`;
+  const file = new File([blob], fileName, { type: blob.type || 'image/jpeg' });
+
+  if (
+    typeof navigator !== 'undefined' &&
+    typeof navigator.share === 'function' &&
+    typeof navigator.canShare === 'function' &&
+    navigator.canShare({ files: [file] })
+  ) {
+    try {
+      await navigator.share({ files: [file] });
+      return 'shared';
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return 'shared';
+      // Any other failure falls through to the download fallback below.
+    }
+  }
+
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Revoked a moment later: some browsers start the download asynchronously.
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  return 'downloaded';
 }
