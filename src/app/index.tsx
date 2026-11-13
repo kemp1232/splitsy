@@ -8,6 +8,7 @@ import { BillListItem } from '@/components/bill/BillListItem';
 import { BillOverflowSheet } from '@/components/bill/BillOverflowSheet';
 import { TripListItem } from '@/components/trip/TripListItem';
 import { AppText } from '@/components/ui/AppText';
+import { AppTextInput } from '@/components/ui/AppTextInput';
 import { TAB_BAR_CONTENT_CLEARANCE } from '@/components/ui/BottomTabBar';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -45,6 +46,7 @@ import { getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { hasShareableContent } from '@/features/bills/hasShareableContent';
 import { hasUnresolvedDiscrepancy } from '@/features/bills/hasUnresolvedDiscrepancy';
 import { resolveNextRoute, type NextRoute } from '@/features/bills/resolveNextRoute';
+import { matchesHomeSearch } from '@/features/home/matchesHomeSearch';
 import { buildSettlementParticipants } from '@/features/settlement/buildSettlementParticipants';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
 import { computeSettlement } from '@/features/splitting/settlement';
@@ -326,6 +328,26 @@ export default function HomeScreen() {
   // is still running (billEditSession.ts).
   const restoringBillIds = useRestoringBillIds();
   const [deletingBill, setDeletingBill] = useState<Bill | null>(null);
+  const [query, setQuery] = useState('');
+
+  // Client-side filter over the loaded rows (bills inside a trip stay reachable
+  // through the trip row, as in buildHomeEntries).
+  const visibleEntries = useMemo(
+    () =>
+      entries.filter((entry) =>
+        entry.kind === 'bill'
+          ? matchesHomeSearch(
+              [
+                getBillDisplayTitle(entry.data.bill),
+                entry.data.bill.merchantName,
+                ...entry.participantNames,
+              ],
+              query,
+            )
+          : matchesHomeSearch([entry.data.trip.name, ...entry.rosterNames], query),
+      ),
+    [entries, query],
+  );
 
   const load = useCallback(async () => {
     try {
@@ -557,11 +579,22 @@ export default function HomeScreen() {
               shows every bill/trip (there's no separate "all bills" screen
               to link out to), so unlike the reference there's no "See all"
               action here. */}
+          <View style={styles.searchRow}>
+            <AppTextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder={copy.home.searchPlaceholder}
+              accessibilityLabel={copy.home.searchPlaceholder}
+              autoCorrect={false}
+              returnKeyType="search"
+              leadingIcon={(color) => <Feather name="search" size={18} color={color} />}
+            />
+          </View>
           <AppText variant="sectionTitle" style={styles.sectionTitle}>
             {copy.home.recentSectionTitle}
           </AppText>
           <FlatList
-            data={entries}
+            data={visibleEntries}
             keyExtractor={(entry) =>
               entry.kind === 'bill' ? `bill-${entry.data.bill.id}` : `trip-${entry.data.trip.id}`
             }
@@ -586,6 +619,11 @@ export default function HomeScreen() {
               )
             }
             ItemSeparatorComponent={() => <View style={styles.separator} />}
+            ListEmptyComponent={
+              <AppText color="textSecondary" style={styles.noResults}>
+                {copy.home.searchNoResults.replace('{query}', () => query.trim())}
+              </AppText>
+            }
           />
         </>
       )}
@@ -640,6 +678,14 @@ function createStyles(colors: ColorTokens) {
     logo: {
       width: 28,
       height: 28,
+    },
+    searchRow: {
+      paddingHorizontal: spacing.lg,
+      paddingBottom: spacing.md,
+    },
+    noResults: {
+      textAlign: 'center',
+      paddingVertical: spacing.xl,
     },
     sectionTitle: {
       paddingHorizontal: spacing.lg,
