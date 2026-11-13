@@ -1,6 +1,14 @@
 import { db } from '@/db/client';
 import { persistDatabaseNow } from '@/db/client.web';
-import { appSettings, bills, debtPayments, tripParticipants, trips } from '@/db/schema';
+import {
+  appSettings,
+  bills,
+  debtPayments,
+  savedGroups,
+  savedPeople,
+  tripParticipants,
+  trips,
+} from '@/db/schema';
 import { deleteReceiptsDirectory } from '@/features/receipt-capture/receiptImage.service';
 import { deleteAllImages } from '@/features/receipt-capture/web/imageStore';
 
@@ -58,11 +66,26 @@ beforeEach(() => {
   transaction.mockReset().mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx));
 });
 
-const FULL_WIPE = [bills, tripParticipants, trips, appSettings, 'receiptsDirectory'];
-const BILLS_ONLY_RESET = [debtPayments, bills, appSettings, 'receiptsDirectory'];
+const FULL_WIPE = [
+  bills,
+  tripParticipants,
+  trips,
+  appSettings,
+  savedGroups,
+  savedPeople,
+  'receiptsDirectory',
+];
+const BILLS_ONLY_RESET = [
+  debtPayments,
+  bills,
+  appSettings,
+  savedGroups,
+  savedPeople,
+  'receiptsDirectory',
+];
 
 describe('wipeAllLocalData (native)', () => {
-  it('deletes bills, trip participants, trips and app settings in one transaction, then removes the receipts directory', () => {
+  it('deletes bills, trip participants, trips, app settings and saved people and groups in one transaction, then removes the receipts directory', () => {
     nativeService.wipeAllLocalData();
 
     expect(transaction).toHaveBeenCalledTimes(1);
@@ -86,7 +109,7 @@ describe('wipeAllLocalData (native)', () => {
 });
 
 describe('wipeAllLocalData (web)', () => {
-  it('deletes bills, trip participants, trips and app settings, then clears stored receipt images', async () => {
+  it('deletes bills, trip participants, trips, app settings and saved people and groups, then clears stored receipt images', async () => {
     await webService.wipeAllLocalData();
 
     expect(transaction).toHaveBeenCalledTimes(1);
@@ -96,6 +119,8 @@ describe('wipeAllLocalData (web)', () => {
       tripParticipants,
       trips,
       appSettings,
+      savedGroups,
+      savedPeople,
       'persistDatabase',
       'clearImages',
     ]);
@@ -116,13 +141,13 @@ describe('wipeAllLocalData (web)', () => {
 });
 
 describe('resetAllLocalData', () => {
-  it('(native) deletes debt payments, bills and app settings but keeps trips and trip participants', () => {
+  it('(native) deletes debt payments, bills, app settings and saved people and groups but keeps trips and trip participants', () => {
     nativeService.resetAllLocalData();
 
     expect(events).toEqual(BILLS_ONLY_RESET);
   });
 
-  it('(web) deletes debt payments, bills and app settings but keeps trips and trip participants', async () => {
+  it('(web) deletes debt payments, bills, app settings and saved people and groups but keeps trips and trip participants', async () => {
     await webService.resetAllLocalData();
 
     expect(events).toEqual(BILLS_ONLY_RESET);

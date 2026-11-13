@@ -21,6 +21,13 @@ export const participantsRepository = {
     return row;
   },
 
+  // One multi-row INSERT, so adding a saved group's members is all-or-nothing
+  // without needing a (platform-specific) transaction.
+  async createMany(rows: NewParticipant[]): Promise<void> {
+    if (rows.length === 0) return;
+    await db.insert(participants).values(rows);
+  },
+
   async update(id: string, patch: Partial<NewParticipant>): Promise<void> {
     await db.update(participants).set(patch).where(eq(participants.id, id));
   },

@@ -320,6 +320,18 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
+          <SettingsSectionHeader icon="users" title={copy.savedPeople.settingsSection} />
+          <GroupedCard>
+            <SettingsRow
+              icon="user-plus"
+              title={copy.savedPeople.settingsRowTitle}
+              caption={copy.savedPeople.settingsRowCaption}
+              onPress={() => router.push('/saved-people')}
+            />
+          </GroupedCard>
+        </View>
+
+        <View style={styles.section}>
           <SettingsSectionHeader icon="shield" title={copy.settings.privacySection} />
           <GroupedCard>
             {PRIVACY_SUMMARY.map((item) => (

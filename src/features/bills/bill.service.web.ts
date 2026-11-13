@@ -17,6 +17,8 @@ import {
   debtPayments,
   lineItems,
   participants,
+  savedGroups,
+  savedPeople,
   tripParticipants,
   trips,
 } from '@/db/schema';
@@ -253,6 +255,9 @@ export async function resetAllLocalData(): Promise<void> {
     await tx.delete(debtPayments);
     await tx.delete(bills);
     await tx.delete(appSettings);
+    // Saved people and groups (memberships cascade) — see bill.service.ts.
+    await tx.delete(savedGroups);
+    await tx.delete(savedPeople);
   });
 
   deleteReceiptsDirectory();
@@ -269,6 +274,8 @@ export async function wipeAllLocalData(): Promise<void> {
     await tx.delete(tripParticipants);
     await tx.delete(trips);
     await tx.delete(appSettings);
+    await tx.delete(savedGroups);
+    await tx.delete(savedPeople);
   });
 
   await persistDatabaseNow();

@@ -273,3 +273,63 @@ export const appSettings = sqliteTable('app_settings', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),
 });
+
+// Not from the spec — saved people and groups (#6). Device-wide names
+// remembered from standalone bills (tripId null) and offered as one-tap
+// suggestions on the participants screen. Deliberately independent of
+// `participants`: no FK either way, so renaming or deleting a saved person
+// never touches a bill, and saved people are hard-deleted. Uniqueness is
+// case-insensitive through `normalizedName` (normalizeParticipantName's
+// output, computed in JS — SQLite's lower() only folds ASCII).
+export const savedPeople = sqliteTable(
+  'saved_people',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    normalizedName: text('normalized_name').notNull(),
+    // Bumped every time the name is added to a standalone bill; suggestions
+    // are ordered by it, most recent first.
+    lastUsedAt: text('last_used_at').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(current_timestamp)`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`(current_timestamp)`),
+  },
+  (table) => [uniqueIndex('saved_people_normalized_name_idx').on(table.normalizedName)],
+);
+
+// Named groups of saved people (e.g. "Housemates") that add every member to
+// a standalone bill in one tap.
+export const savedGroups = sqliteTable('saved_groups', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+});
+
+// Group membership. Cascades from both sides: deleting a saved person drops
+// them from every group; deleting a group keeps its people.
+export const savedGroupMembers = sqliteTable(
+  'saved_group_members',
+  {
+    groupId: text('group_id')
+      .notNull()
+      .references(() => savedGroups.id, { onDelete: 'cascade' }),
+    savedPersonId: text('saved_person_id')
+      .notNull()
+      .references(() => savedPeople.id, { onDelete: 'cascade' }),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(current_timestamp)`),
+  },
+  (table) => [
+    primaryKey({ columns: [table.groupId, table.savedPersonId] }),
+    index('saved_group_members_saved_person_id_idx').on(table.savedPersonId),
+  ],
+);
