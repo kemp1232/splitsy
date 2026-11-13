@@ -486,6 +486,15 @@ export default function HomeScreen() {
     setDeletingBill(bill);
   }
 
+  // Home rows are standalone bills only, so this is the one entry point for
+  // moving a bill into a trip; the move screen re-checks everything itself.
+  function handleOverflowMoveToTrip() {
+    const bill = overflowBill;
+    closeOverflow();
+    if (!bill) return;
+    router.push(`/bill/${bill.id}/move-to-trip`);
+  }
+
   // The actual fix for the gap this menu exists to close: deleteBill has no
   // precondition on participants/items/status (spec F-019), so this works
   // for a brand-new DRAFT with nothing in it yet, not just a COMPLETED bill.
@@ -634,6 +643,8 @@ export default function HomeScreen() {
         onEdit={handleOverflowEdit}
         onShare={handleOverflowShare}
         onDelete={handleOverflowDelete}
+        onMoveToTrip={handleOverflowMoveToTrip}
+        moveDisabled={overflowBill !== null && restoringBillIds.has(overflowBill.id)}
         onCancel={closeOverflow}
       />
 

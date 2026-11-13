@@ -35,6 +35,7 @@ export const copy = {
     overflowEdit: 'Edit bill',
     overflowShare: 'Share summary',
     overflowDelete: 'Delete bill',
+    overflowMoveToTrip: 'Move to trip',
     overflowAccessibilityLabel: 'More actions',
     // Not from the spec — the visual revamp's reference-inspired "Recent"
     // section label above the bill/trip list (see the visual-revamp task
@@ -140,6 +141,35 @@ export const copy = {
     deleteConfirmBodySingular:
       'This permanently removes the trip and the 1 bill in it, including its receipt image.',
     deleteConfirmBodyEmpty: 'This permanently removes the trip.',
+  },
+
+  // Not from the spec — moving a standalone bill into a trip
+  // (/bill/[billId]/move-to-trip): pick the trip, then say who each of the
+  // bill's people is on that trip.
+  moveToTrip: {
+    pickTripHeading: 'Move to trip',
+    pickTripBody: 'Choose the trip this bill belongs to.',
+    noTripsHeading: 'No trips yet',
+    noTripsBody: 'Start a trip from the home screen first, then move this bill into it.',
+    paidMarksBlockedHeading: 'This bill has paid marks',
+    paidMarksBlockedBody:
+      'Some debts on this bill are marked as paid. Unmark them on the bill’s settle-up screen before moving it into a trip.',
+    alreadyInTrip: 'This bill is already part of a trip.',
+    mapHeading: 'Who’s who?',
+    mapBody: 'Match each person on this bill to someone on {trip}, or add them to the trip.',
+    addNewOption: 'Add to trip as new person',
+    mappedTo: 'Same as {name}',
+    choiceSheetHeading: 'Who is {name} on this trip?',
+    memberTakenHint: 'Already matched',
+    invalidMapping:
+      'Each trip member can be matched once, and new people need a name not already on the trip.',
+    staleState: 'This bill or trip changed. Go back and try again.',
+    changedReview: 'This bill or trip changed. Review the matches below, then move the bill again.',
+    newNameOnTrip: '{name} is already in this trip — match them to the existing member.',
+    memberUsedTwice:
+      '{name} is matched to a trip member someone else already has. Pick another member or add them as a new person.',
+    confirmAction: 'Move bill',
+    backAction: 'Back',
   },
 
   // Not from the spec — the quick-split entry screen (see PLAN.md's
