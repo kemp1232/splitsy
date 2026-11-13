@@ -127,6 +127,9 @@ export const copy = {
     settleUpAction: 'Settle up',
     emptyBillsHeading: 'No bills yet',
     emptyBillsBody: 'Scan your first receipt to start this trip.',
+    renameTripAction: 'Rename trip',
+    renameTripTitle: 'Rename trip',
+    renameSave: 'Save name',
     deleteTripAction: 'Delete trip',
     deleteConfirmHeading: 'Delete this trip?',
     deleteConfirmBody:
