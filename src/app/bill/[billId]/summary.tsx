@@ -519,7 +519,11 @@ export default function SummaryScreen() {
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         >
-          <SummaryShareCard ref={summaryCardRef} model={shareImageModel} />
+          <SummaryShareCard
+            ref={summaryCardRef}
+            model={shareImageModel}
+            qrImageUri={qrImageUri}
+          />
         </View>
       ) : null}
       <View style={styles.headerRow}>

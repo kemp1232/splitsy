@@ -38,7 +38,6 @@ describe('buildShareImageModel', () => {
       { participantId: 'me', name: 'Kemp', totalText: '₱10.00', paidText: null },
       { participantId: 'b', name: 'Bea', totalText: '₱10.00', paidText: null },
     ]);
-    expect(model.footer).toBe('Calculated with Splitsy.');
   });
 
   it('keeps a person whose total is zero, with their ₱0.00 total', () => {

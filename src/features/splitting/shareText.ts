@@ -65,7 +65,7 @@ export type ShareTextInput = {
   };
 };
 
-export const FOOTER_LINE = 'Calculated with Splitsy.';
+const FOOTER_LINE = 'Calculated with Splitsy.';
 
 /**
  * Builds the exact plain-text bill summary from spec F-017 — the format
