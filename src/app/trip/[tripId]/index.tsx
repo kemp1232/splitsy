@@ -9,6 +9,7 @@ import {
   ParticipantEditorSheet,
   type ParticipantDraft,
 } from '@/components/bill/ParticipantEditorSheet';
+import { TripNameEditorSheet } from '@/components/trip/TripNameEditorSheet';
 import { TripOverflowSheet } from '@/components/trip/TripOverflowSheet';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
@@ -67,6 +68,7 @@ import {
 import { getPaymentDetails } from '@/features/payment-details/paymentDetails.service';
 import { buildShareText } from '@/features/splitting/shareText';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
+import { normalizeTripName } from '@/features/trips/normalizeTripName';
 import { deleteTrip } from '@/features/trips/trip.service';
 import { showAlert } from '@/lib/alert';
 import { authClient } from '@/lib/authClient';
@@ -298,6 +300,7 @@ export default function TripHubScreen() {
   const [deletingBill, setDeletingBill] = useState<Bill | null>(null);
 
   const [tripOverflowVisible, setTripOverflowVisible] = useState(false);
+  const [renamingTrip, setRenamingTrip] = useState(false);
   const [confirmingDeleteTrip, setConfirmingDeleteTrip] = useState(false);
   const [deleteTripError, setDeleteTripError] = useState<string | null>(null);
 
@@ -522,6 +525,26 @@ export default function TripHubScreen() {
     await load();
   }
 
+  function handleTripOverflowRename() {
+    setTripOverflowVisible(false);
+    setRenamingTrip(true);
+  }
+
+  async function handleSaveTripName(rawName: string) {
+    if (!data) return;
+    setRenamingTrip(false);
+    setActionError(null);
+    try {
+      await tripsRepository.update(data.trip.id, {
+        name: normalizeTripName(rawName),
+        updatedAt: nowIso(),
+      });
+      await load();
+    } catch {
+      setActionError(copy.global.storageFailure);
+    }
+  }
+
   function handleTripOverflowDelete() {
     setTripOverflowVisible(false);
     setConfirmingDeleteTrip(true);
@@ -727,8 +750,16 @@ export default function TripHubScreen() {
 
       <TripOverflowSheet
         visible={tripOverflowVisible}
+        onRename={handleTripOverflowRename}
         onDelete={handleTripOverflowDelete}
         onCancel={() => setTripOverflowVisible(false)}
+      />
+
+      <TripNameEditorSheet
+        visible={renamingTrip}
+        initialName={data.trip.name ?? ''}
+        onSave={handleSaveTripName}
+        onCancel={() => setRenamingTrip(false)}
       />
 
       <ConfirmationDialog

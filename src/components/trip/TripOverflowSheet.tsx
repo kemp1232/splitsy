@@ -11,6 +11,7 @@ import { useTheme } from '@/theme/ThemeProvider';
 
 type Props = {
   visible: boolean;
+  onRename: () => void;
   onDelete: () => void;
   onCancel: () => void;
 };
@@ -20,7 +21,7 @@ type Props = {
 // action for now (Delete trip). Kept as its own small sheet component (not
 // inlined into the hub screen) so a future trip-level action has an
 // established place to go without reshaping the hub screen itself.
-export function TripOverflowSheet({ visible, onDelete, onCancel }: Props) {
+export function TripOverflowSheet({ visible, onRename, onDelete, onCancel }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const translateY = useSlideUpAnimation(visible);
@@ -33,6 +34,12 @@ export function TripOverflowSheet({ visible, onDelete, onCancel }: Props) {
       <Pressable style={styles.backdrop} onPress={onCancel}>
         <Animated.View style={{ transform: [{ translateY }] }}>
           <Pressable style={styles.sheet} onPress={() => {}}>
+            <AppButton
+              variant="secondary"
+              label={copy.trip.renameTripAction}
+              onPress={onRename}
+              icon={(color) => <Feather name="edit-2" size={18} color={color} />}
+            />
             <AppButton
               variant="destructive"
               label={copy.trip.deleteTripAction}
