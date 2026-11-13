@@ -53,6 +53,9 @@ export const copy = {
     shareUnavailable: 'Add participants and assign items before sharing this bill.',
     // Share on a draft with no items or no people yet (nothing to summarize).
     shareNothingYet: 'Nothing to share yet — add items and people first.',
+    // Not from the spec — the home list's search field; {query} is the typed text.
+    searchPlaceholder: 'Search bills and trips',
+    searchNoResults: 'No bills or trips match "{query}"',
   },
 
   // Section 13.3 — New bill source
