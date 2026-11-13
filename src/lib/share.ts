@@ -20,7 +20,9 @@ export type ShareImageResult = 'shared' | 'downloaded';
 // 2026-11-12). React Native's own `Share` only takes a file `url` on iOS, so
 // this uses expo-sharing, which also shares files on Android (through its
 // own FileProvider). Throws, like shareText, when sharing isn't possible.
-export async function shareImage(uri: string): Promise<ShareImageResult> {
+// `_fileBaseName` only names the downloaded file on web (share.web.ts); a
+// native file keeps its own name.
+export async function shareImage(uri: string, _fileBaseName?: string): Promise<ShareImageResult> {
   if (!(await Sharing.isAvailableAsync())) {
     throw new Error('shareImage: sharing is not available on this device');
   }

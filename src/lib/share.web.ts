@@ -44,11 +44,15 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
 // resolveImageUri first). Shares the image as a file through the Web Share
 // API where the browser supports file sharing; otherwise downloads it, so
 // the user can still attach it themselves. Canceling the share sheet is a
-// silent no-op, same as shareText.
-export async function shareImage(uri: string): Promise<ShareImageResult> {
+// silent no-op, same as shareText. `fileBaseName` names the shared or
+// downloaded file (the extension comes from the image's type).
+export async function shareImage(
+  uri: string,
+  fileBaseName = 'payment-qr',
+): Promise<ShareImageResult> {
   const blob = await (await fetch(uri)).blob();
   const extension = IMAGE_EXTENSIONS[blob.type] ?? 'jpg';
-  const fileName = `payment-qr.${extension}`;
+  const fileName = `${fileBaseName}.${extension}`;
   const file = new File([blob], fileName, { type: blob.type || 'image/jpeg' });
 
   if (

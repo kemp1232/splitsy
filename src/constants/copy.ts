@@ -671,6 +671,10 @@ export const copy = {
     peopleSectionWithCount: 'People ({count})',
     peopleSectionAccessibilityLabel: '{count} people',
     peopleCaption: 'Tap a person to see their items and fees.',
+    // The summary shared as a PNG card (useShareSummaryImage).
+    shareImageAction: 'Share as image',
+    shareImageFailure: "We couldn't share the summary image. Try sharing the text instead.",
+    imageDownloadedToast: 'Summary image downloaded.',
   },
 
   // Section 13.19 — Saved bill detail

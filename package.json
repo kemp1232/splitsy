@@ -30,6 +30,7 @@
     "expo-sqlite": "~57.0.1",
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.2",
+    "html2canvas": "^1.4.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-hook-form": "^7.83.0",
@@ -37,6 +38,7 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
+    "react-native-view-shot": "5.1.0",
     "react-native-web": "^0.21.2",
     "zod": "^4.4.3",
     "zustand": "^5.0.14"

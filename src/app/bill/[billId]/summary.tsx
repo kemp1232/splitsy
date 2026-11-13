@@ -7,6 +7,7 @@ import { StyleSheet, View } from 'react-native';
 import { BillTotalCard } from '@/components/bill/BillTotalCard';
 import { PersonTotalCard } from '@/components/bill/PersonTotalCard';
 import { SettlementCard } from '@/components/bill/SettlementCard';
+import { SummaryShareCard } from '@/components/bill/SummaryShareCard';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -42,6 +43,7 @@ import { endBillEdit } from '@/features/bills/billEditSession';
 import { getBillCustomName, getBillDisplayTitle } from '@/features/bills/getBillDisplayTitle';
 import { hasUnresolvedDiscrepancy } from '@/features/bills/hasUnresolvedDiscrepancy';
 import { useEnsureBillEditable } from '@/features/bills/useEnsureBillEditable';
+import { useShareSummaryImage } from '@/features/bills/useShareSummaryImage';
 import { hasMinimumParticipants } from '@/features/participants/hasMinimumParticipants';
 import {
   buildParticipantAdjustmentShareDisplay,
@@ -59,7 +61,8 @@ import {
 import { isCreditor } from '@/features/payment-details/phMobileNumber';
 import { shareQrImage } from '@/features/payment-details/shareQrImage';
 import { useSavedPaymentDetails } from '@/features/payment-details/useSavedPaymentDetails';
-import { buildShareText } from '@/features/splitting/shareText';
+import { buildShareImageModel, type ShareImageModel } from '@/features/splitting/shareImageModel';
+import { buildShareText, type ShareTextInput } from '@/features/splitting/shareText';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import { computeSettlement, computeUnsettledCredits } from '@/features/splitting/settlement';
 import { reconcileBillTotals } from '@/features/splitting/reconciliation';
@@ -184,6 +187,12 @@ export default function SummaryScreen() {
   const [copyError, setCopyError] = useState<string | null>(null);
   const [shareQrError, setShareQrError] = useState<string | null>(null);
   const paymentDetails = useSavedPaymentDetails();
+  const {
+    cardRef: summaryCardRef,
+    error: shareImageError,
+    busy: shareImageBusy,
+    share: shareSummaryImage,
+  } = useShareSummaryImage();
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   // Where the toast renders: next to the Share/Copy buttons for their
   // "Breakdown copied." confirmation (otherwise it appeared far below, out of
@@ -367,9 +376,11 @@ export default function SummaryScreen() {
     isCreditor(settlement.transactions, meParticipant.id);
   const qrImageUri = meIsCreditor ? (paymentDetails?.qrImageUri ?? null) : null;
 
-  function buildShareTextForBill(): string {
-    if (!splitResult) throw new Error('buildShareTextForBill: split result not loaded');
-    return buildShareText({
+  // One input for both the text share and the image share, so the two never
+  // disagree on a number.
+  function buildShareInputForBill(): ShareTextInput {
+    if (!splitResult) throw new Error('buildShareInputForBill: split result not loaded');
+    return {
       billTitle: title,
       participants: participants.map((participant) => ({
         participantId: participant.id,
@@ -394,7 +405,28 @@ export default function SummaryScreen() {
               mayaNumber: paymentDetails.mayaNumber,
             }
           : undefined,
-    });
+    };
+  }
+
+  function buildShareTextForBill(): string {
+    return buildShareText(buildShareInputForBill());
+  }
+
+  // The offscreen card's rows. A plain call, not useMemo: its inputs
+  // (settlement, title, meParticipant) are only derived after the early
+  // returns above, where no hook may run, and the screen already recomputes
+  // the settlement itself on every render. Never throws during render: on a
+  // failure no card is mounted, and "Share as image" then shows its own
+  // failure message (useShareSummaryImage's not-mounted path).
+  let shareImageModel: ShareImageModel | null;
+  try {
+    shareImageModel = buildShareImageModel(buildShareInputForBill());
+  } catch {
+    shareImageModel = null;
+  }
+
+  async function handleShareImage() {
+    await shareSummaryImage(() => showToast(copy.summary.imageDownloadedToast, 'share'));
   }
 
   async function handleSave() {
@@ -478,6 +510,18 @@ export default function SummaryScreen() {
 
   return (
     <Screen tabBarHidden scroll padded={false} background="summary">
+      {/* The card "Share as image" captures: kept offscreen and hidden from
+          touch and assistive tech, so the visible layout is unchanged. */}
+      {shareImageModel !== null ? (
+        <View
+          style={styles.offscreenCapture}
+          aria-hidden
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
+          <SummaryShareCard ref={summaryCardRef} model={shareImageModel} />
+        </View>
+      ) : null}
       <View style={styles.headerRow}>
         <ScreenHeader icon="share-2" heading={copy.summary.heading} body={copy.summary.body} />
       </View>
@@ -535,6 +579,17 @@ export default function SummaryScreen() {
               />
               {copyError ? <InlineError message={copyError} /> : null}
             </View>
+          </View>
+          <View>
+            <AppButton
+              variant="secondary"
+              label={copy.summary.shareImageAction}
+              onPress={handleShareImage}
+              loading={shareImageBusy}
+              disabled={shareImageBusy}
+              icon={(color) => <Feather name="image" size={18} color={color} />}
+            />
+            {shareImageError ? <InlineError message={shareImageError} /> : null}
           </View>
           {qrImageUri !== null ? (
             <View>
@@ -665,6 +720,12 @@ function createStyles(colors: ColorTokens) {
       // link + save) block. spacing.lg matches receipt-review.tsx's rhythm;
       // spacing.sm stays reserved for tight, within-section grouping.
       gap: spacing.lg,
+    },
+    offscreenCapture: {
+      position: 'absolute',
+      top: 0,
+      left: -10000,
+      pointerEvents: 'none',
     },
     headerRow: {
       paddingHorizontal: spacing.lg,
