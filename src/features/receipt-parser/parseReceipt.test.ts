@@ -491,6 +491,44 @@ describe('real-receipt regression: explicit printed negative sign respected over
   });
 });
 
+describe('senior citizen / PWD discount lines', () => {
+  it('SENIOR DISCOUNT line becomes a negative DISCOUNT', () => {
+    const result = parseReceipt(
+      buildOcrDocument(['SAMPLE STORE', 'BURGER 100.00', 'SENIOR DISCOUNT 20.00', 'TOTAL 80.00']),
+    );
+    expect(result.adjustments).toHaveLength(1);
+    expect(result.adjustments[0]).toMatchObject({
+      type: 'DISCOUNT',
+      label: 'SENIOR DISCOUNT',
+      amountCentavos: -2000,
+      allocationMethod: 'PROPORTIONAL',
+      source: 'OCR',
+    });
+  });
+
+  it('PWD DISCOUNT line becomes a negative DISCOUNT', () => {
+    const result = parseReceipt(
+      buildOcrDocument(['SAMPLE STORE', 'BURGER 100.00', 'PWD DISCOUNT 20.00', 'TOTAL 80.00']),
+    );
+    expect(result.adjustments).toHaveLength(1);
+    expect(result.adjustments[0]).toMatchObject({
+      type: 'DISCOUNT',
+      label: 'PWD DISCOUNT',
+      amountCentavos: -2000,
+      allocationMethod: 'PROPORTIONAL',
+      source: 'OCR',
+    });
+  });
+
+  it('keeps an explicitly negative SENIOR DISCOUNT at -20.00 without double negation', () => {
+    const result = parseReceipt(
+      buildOcrDocument(['SAMPLE STORE', 'BURGER 100.00', 'SENIOR DISCOUNT -20.00', 'TOTAL 80.00']),
+    );
+    const discount = result.adjustments.find((adj) => adj.type === 'DISCOUNT');
+    expect(discount?.amountCentavos).toBe(-2000);
+  });
+});
+
 describe('real-device/VLM regression: reconstructed GrabFood delivery receipt', () => {
   // Reconstructed/representative fixture — see grabFoodReceipt.ts for the
   // full provenance note. Covers: a leading quantity glued onto a

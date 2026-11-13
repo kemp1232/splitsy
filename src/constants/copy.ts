@@ -506,6 +506,15 @@ export const copy = {
     labelPlaceholder: 'Example: Corkage fee',
     amountField: 'Amount',
     discountHelper: 'Discounts reduce the bill.',
+    // Not spec-mandated — quick-fill presets for a new adjustment. A preset
+    // only fills type, label and split; the amount always comes from the
+    // receipt.
+    presetsLabel: 'Quick fill',
+    presetSeniorPwd: 'Senior/PWD discount',
+    presetSeniorPwdHelper:
+      'Enter the discount printed on the receipt, then put it under the senior or PWD diner in Custom amounts.',
+    presetSeniorPwdNoParticipantsHelper:
+      'Enter the discount printed on the receipt. With two or more people on the bill, you can assign it to the senior or PWD diner.',
     // Shown for an existing negative non-discount adjustment (e.g. a "Receipt
     // total difference" row): the amount field only holds the magnitude.
     negativeAdjustmentHelper: 'This amount reduces the bill.',

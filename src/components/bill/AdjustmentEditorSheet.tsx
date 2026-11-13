@@ -20,6 +20,12 @@ import { useSlideUpAnimation } from '@/components/ui/useSlideUpAnimation';
 import { copy } from '@/constants/copy';
 import type { AdjustmentAllocation } from '@/db/repositories/adjustmentAllocations.repository';
 import type { Participant } from '@/db/repositories/participants.repository';
+import {
+  ADJUSTMENT_PRESETS,
+  applyAdjustmentPreset,
+  type AdjustmentPreset,
+  type AdjustmentPresetId,
+} from '@/features/adjustments/adjustmentPresets';
 import { adjustmentAmountSign } from '@/features/adjustments/adjustmentSign';
 import {
   defaultAllocationMethodForType,
@@ -141,6 +147,13 @@ export function AdjustmentEditorSheet({
   >({});
   const [amountError, setAmountError] = useState<string | null>(null);
   const [customError, setCustomError] = useState<string | null>(null);
+  // Which quick-fill preset (new adjustments only) was last tapped — drives
+  // its helper line. Never saved.
+  const [appliedPresetId, setAppliedPresetId] = useState<AdjustmentPresetId | null>(null);
+  // True while the allocation method is still the one the preset picked (not
+  // one the user chose themselves) — so switching the type away from the
+  // preset's can undo it.
+  const [allocationSetByPreset, setAllocationSetByPreset] = useState(false);
   // -1 for DISCOUNT and for an existing negative adjustment whose type is
   // unchanged (adjustmentSign.ts).
   const amountSign = adjustmentAmountSign(type, initial);
@@ -152,6 +165,7 @@ export function AdjustmentEditorSheet({
     hasMinimumParticipants(participants.length) || initial?.allocationMethod === 'CUSTOM'
       ? ALLOCATION_OPTIONS
       : ALLOCATION_OPTIONS.filter((option) => option.value !== 'CUSTOM');
+  const customAllocationAvailable = allocationOptions.some((option) => option.value === 'CUSTOM');
 
   // Re-seeds local state every time the sheet opens (mirrors
   // LineItemEditorSheet / ParticipantEditorSheet), so reopening for a
@@ -174,9 +188,46 @@ export function AdjustmentEditorSheet({
     setCustomMagnitudesByParticipantId(magnitudes);
     setAmountError(null);
     setCustomError(null);
+    setAppliedPresetId(null);
+    setAllocationSetByPreset(false);
+  }
+
+  // Pre-fills type, label and split only — never the amount (the user types
+  // the receipt's figure) and never saves.
+  function handlePresetPress(preset: AdjustmentPreset) {
+    const applied = applyAdjustmentPreset(preset, { customAllocationAvailable });
+    setType(applied.type);
+    setLabel(applied.label);
+    setAllocationMethod(applied.allocationMethod);
+    if (applied.allocationMethod === 'CUSTOM') {
+      setAllocationMethodTouched(true);
+    }
+    setCustomError(null);
+    setAppliedPresetId(preset.id);
+    setAllocationSetByPreset(true);
   }
 
   function handleTypeChange(nextType: AdjustmentType) {
+    let allocationTouched = allocationMethodTouched;
+    // Switching away from the preset's type undoes what the preset filled in
+    // (its label and split) — otherwise e.g. a Tax could be saved named
+    // "Senior/PWD discount" with the preset's Custom split. A label or split
+    // the user changed themselves is left alone.
+    const appliedPreset =
+      appliedPresetId === null
+        ? undefined
+        : ADJUSTMENT_PRESETS.find((preset) => preset.id === appliedPresetId);
+    if (appliedPreset && nextType !== appliedPreset.type) {
+      if (label.trim().toLowerCase() === appliedPreset.label.toLowerCase()) {
+        setLabel('');
+      }
+      if (allocationSetByPreset) {
+        allocationTouched = false;
+        setAllocationMethodTouched(false);
+      }
+      setAllocationSetByPreset(false);
+      setAppliedPresetId(null);
+    }
     // A label that's just the previous type's default name (what handleSave
     // fills in for a blank label, or what OCR detected) would otherwise stick
     // after a type switch — e.g. a "Discount" that now adds to the bill.
@@ -185,7 +236,7 @@ export function AdjustmentEditorSheet({
       setLabel('');
     }
     setType(nextType);
-    if (!allocationMethodTouched) {
+    if (!allocationTouched) {
       setAllocationMethod(defaultAllocationMethodForType(nextType));
     }
   }
@@ -193,6 +244,7 @@ export function AdjustmentEditorSheet({
   function handleAllocationMethodChange(next: AllocationMethod) {
     setAllocationMethod(next);
     setAllocationMethodTouched(true);
+    setAllocationSetByPreset(false);
     setCustomError(null);
   }
 
@@ -298,6 +350,23 @@ export function AdjustmentEditorSheet({
 
             <ScrollView style={styles.scroll}>
               <View style={styles.scrollContent}>
+                {initial === null ? (
+                  <View style={styles.field}>
+                    <AppText variant="caption" color="textSecondary">
+                      {copy.adjustmentEditor.presetsLabel}
+                    </AppText>
+                    <View style={styles.chipWrap}>
+                      {ADJUSTMENT_PRESETS.map((preset) => (
+                        <PresetChip
+                          key={preset.id}
+                          label={preset.chipLabel}
+                          onPress={() => handlePresetPress(preset)}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
+
                 <View style={styles.field}>
                   <AppText variant="caption" color="textSecondary">
                     {copy.adjustmentEditor.typeLabel}
@@ -331,6 +400,20 @@ export function AdjustmentEditorSheet({
                 {type === 'DISCOUNT' ? (
                   <AppText variant="caption" color="textSecondary">
                     {copy.adjustmentEditor.discountHelper}
+                  </AppText>
+                ) : null}
+                {appliedPresetId === 'SENIOR_PWD_DISCOUNT' &&
+                type === 'DISCOUNT' &&
+                allocationMethod === 'CUSTOM' ? (
+                  <AppText variant="caption" color="textSecondary">
+                    {copy.adjustmentEditor.presetSeniorPwdHelper}
+                  </AppText>
+                ) : null}
+                {appliedPresetId === 'SENIOR_PWD_DISCOUNT' &&
+                type === 'DISCOUNT' &&
+                !customAllocationAvailable ? (
+                  <AppText variant="caption" color="textSecondary">
+                    {copy.adjustmentEditor.presetSeniorPwdNoParticipantsHelper}
                   </AppText>
                 ) : null}
                 {type !== 'DISCOUNT' && amountSign < 0 ? (
@@ -424,6 +507,28 @@ function TypeChip({ label, selected, onPress }: TypeChipProps) {
       <AppText variant="body" color={selected ? 'onPrimary' : 'textPrimary'}>
         {selected ? `✓ ${label}` : label}
       </AppText>
+    </Pressable>
+  );
+}
+
+type PresetChipProps = {
+  label: string;
+  onPress: () => void;
+};
+
+// A one-shot quick-fill action, not a selection — so a plain "button" role
+// and no selected state, unlike TypeChip's radio semantics.
+function PresetChip({ label, onPress }: PresetChipProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [styles.typeChip, pressed && styles.typeChipPressed]}
+    >
+      <AppText variant="body">{label}</AppText>
     </Pressable>
   );
 }
