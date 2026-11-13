@@ -72,6 +72,12 @@ describe('buildPaymentDetailsBlock', () => {
     ).toBe('Pay Ana via:\nGCash: 0917 123 4567\nMaya: 0918 765 4321');
   });
 
+  it('inserts a name containing "$&" literally in the heading', () => {
+    expect(
+      buildPaymentDetailsBlock({ name: 'A$&a', gcashNumber: '09171234567', mayaNumber: null }),
+    ).toBe('Pay A$&a via:\nGCash: 0917 123 4567');
+  });
+
   it('returns null when no number is saved', () => {
     expect(buildPaymentDetailsBlock({ name: 'Ana', gcashNumber: null, mayaNumber: null })).toBe(
       null,

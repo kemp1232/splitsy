@@ -294,6 +294,30 @@ describe('buildShareText', () => {
     );
   });
 
+  it('inserts a name containing "$&" literally in an "owes" line', () => {
+    const splitResult = calculateSplit({
+      participants: [{ participantId: 'a' }, { participantId: 'b' }],
+      items: [{ lineItemId: 'meal', lineTotalCentavos: 2000, assigneeParticipantIds: ['a', 'b'] }],
+      adjustments: [],
+    });
+
+    const text = buildShareText({
+      billTitle: 'Coffee Run',
+      participants: [
+        { participantId: 'a', name: 'Ana' },
+        { participantId: 'b', name: 'B$&a' },
+      ],
+      items: [{ lineItemId: 'meal', name: 'Meal' }],
+      adjustments: [],
+      splitResult,
+      settlementTransactions: [
+        { fromParticipantId: 'b', toParticipantId: 'a', amountCentavos: 1000 },
+      ],
+    });
+
+    expect(text).toContain('B$&a owes Ana — ₱10.00');
+  });
+
   it('omits the "Settle up" block entirely when settlementTransactions is undefined or empty', () => {
     const splitInput: SplitCalculationInput = {
       participants: [{ participantId: 'solo' }],

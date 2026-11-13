@@ -9,9 +9,14 @@
 // data passed in by whichever screen/hook already has the names loaded.
 
 import { copy } from '@/constants/copy';
-import { buildPaymentDetailsBlock, isCreditor } from '@/features/payment-details/phMobileNumber';
 import { formatCentavos } from '@/lib/money';
 
+import {
+  buildMePaymentDetailsBlock,
+  buildParticipantLookups,
+  formatOwesLabel,
+  formatPaidLine,
+} from './shareRules';
 import type { SettlementTransaction } from './settlement.types';
 import type { SplitCalculationResult } from './split.types';
 
@@ -127,14 +132,8 @@ export function buildShareText(input: ShareTextInput): string {
     paymentDetails,
   } = input;
 
-  const nameByParticipantId = new Map(
-    participants.map((participant) => [participant.participantId, participant.name]),
-  );
-  const paidCentavosByParticipantId = new Map(
-    participants
-      .filter((participant) => participant.paidCentavos !== undefined)
-      .map((participant) => [participant.participantId, participant.paidCentavos as number]),
-  );
+  const { nameByParticipantId, paidCentavosByParticipantId } =
+    buildParticipantLookups(participants);
   const nameByLineItemId = new Map(items.map((item) => [item.lineItemId, item.name]));
   const labelByAdjustmentId = new Map(
     adjustments.map((adjustment) => [adjustment.adjustmentId, adjustment.label]),
@@ -177,7 +176,7 @@ export function buildShareText(input: ShareTextInput): string {
 
     const paidCentavos = paidCentavosByParticipantId.get(share.participantId);
     if (paidCentavos !== undefined) {
-      bulletLines.push(`${copy.tripSettlement.paidLabel}: ${formatCentavos(paidCentavos)}`);
+      bulletLines.push(formatPaidLine(paidCentavos));
     }
 
     const headerLine = `${name} — ${formatCentavos(share.finalTotalCentavos)}`;
@@ -196,29 +195,17 @@ export function buildShareText(input: ShareTextInput): string {
                 'buildShareText: no display name provided for a settlement participant',
               );
             }
-            const label = copy.settlement.owesLabel
-              .replace('{debtor}', debtorName)
-              .replace('{creditor}', creditorName);
+            const label = formatOwesLabel(debtorName, creditorName);
             return `${label} — ${formatCentavos(transaction.amountCentavos)}`;
           }),
         ].join('\n')
       : null;
 
-  const meName = paymentDetails
-    ? nameByParticipantId.get(paymentDetails.meParticipantId)
-    : undefined;
-  const paymentDetailsBlock =
-    settlementBlock !== null &&
-    settlementTransactions &&
-    paymentDetails &&
-    meName !== undefined &&
-    isCreditor(settlementTransactions, paymentDetails.meParticipantId)
-      ? buildPaymentDetailsBlock({
-          name: meName,
-          gcashNumber: paymentDetails.gcashNumber,
-          mayaNumber: paymentDetails.mayaNumber,
-        })
-      : null;
+  const paymentDetailsBlock = buildMePaymentDetailsBlock({
+    settlementTransactions,
+    paymentDetails,
+    nameByParticipantId,
+  });
 
   return [
     headerBlock,

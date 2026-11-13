@@ -1,14 +1,18 @@
 // The bill summary as display rows for the shareable image card
 // (SummaryShareCard). Takes the exact same input as buildShareText and
-// applies the same rules (settle-up only when transactions are given, Me's
+// applies the same rules (shared in shareRules.ts: settle-up only when transactions are given, Me's
 // payment numbers only when Me is owed money), so the image never shows
 // anything the text share wouldn't. Purely presentational: every amount comes
 // from `splitResult`/`settlementTransactions` and goes through formatCentavos.
 
-import { copy } from '@/constants/copy';
-import { buildPaymentDetailsBlock, isCreditor } from '@/features/payment-details/phMobileNumber';
 import { formatCentavos } from '@/lib/money';
 
+import {
+  buildMePaymentDetailsBlock,
+  buildParticipantLookups,
+  formatOwesLabel,
+  formatPaidLine,
+} from './shareRules';
 import type { ShareTextInput } from './shareText';
 
 export type ShareImagePersonRow = {
@@ -38,14 +42,8 @@ export type ShareImageModel = {
 export function buildShareImageModel(input: ShareTextInput): ShareImageModel {
   const { billTitle, participants, splitResult, settlementTransactions, paymentDetails } = input;
 
-  const nameByParticipantId = new Map(
-    participants.map((participant) => [participant.participantId, participant.name]),
-  );
-  const paidCentavosByParticipantId = new Map(
-    participants
-      .filter((participant) => participant.paidCentavos !== undefined)
-      .map((participant) => [participant.participantId, participant.paidCentavos as number]),
-  );
+  const { nameByParticipantId, paidCentavosByParticipantId } =
+    buildParticipantLookups(participants);
 
   const people = splitResult.participantShares.map((share) => {
     const name = nameByParticipantId.get(share.participantId);
@@ -59,10 +57,7 @@ export function buildShareImageModel(input: ShareTextInput): ShareImageModel {
       participantId: share.participantId,
       name,
       totalText: formatCentavos(share.finalTotalCentavos),
-      paidText:
-        paidCentavos !== undefined
-          ? `${copy.tripSettlement.paidLabel}: ${formatCentavos(paidCentavos)}`
-          : null,
+      paidText: paidCentavos !== undefined ? formatPaidLine(paidCentavos) : null,
     };
   });
 
@@ -76,30 +71,16 @@ export function buildShareImageModel(input: ShareTextInput): ShareImageModel {
     }
     return {
       key: `${index}:${transaction.fromParticipantId}->${transaction.toParticipantId}`,
-      label: copy.settlement.owesLabel
-        // Function replacers: a name is inserted literally, even one
-        // containing `$&` or `$'` (special in a string replacement).
-        .replace('{debtor}', () => debtorName)
-        .replace('{creditor}', () => creditorName),
+      label: formatOwesLabel(debtorName, creditorName),
       amountText: formatCentavos(transaction.amountCentavos),
     };
   });
 
-  const meName = paymentDetails
-    ? nameByParticipantId.get(paymentDetails.meParticipantId)
-    : undefined;
-  const paymentBlock =
-    settleLines.length > 0 &&
-    settlementTransactions &&
-    paymentDetails &&
-    meName !== undefined &&
-    isCreditor(settlementTransactions, paymentDetails.meParticipantId)
-      ? buildPaymentDetailsBlock({
-          name: meName,
-          gcashNumber: paymentDetails.gcashNumber,
-          mayaNumber: paymentDetails.mayaNumber,
-        })
-      : null;
+  const paymentBlock = buildMePaymentDetailsBlock({
+    settlementTransactions,
+    paymentDetails,
+    nameByParticipantId,
+  });
   const [paymentHeading, ...paymentLines] = paymentBlock !== null ? paymentBlock.split('\n') : [];
 
   return {
