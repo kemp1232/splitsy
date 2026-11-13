@@ -5,6 +5,10 @@ import { ThemeProvider } from '@/theme/ThemeProvider';
 
 import { SummaryShareCard } from './SummaryShareCard';
 
+jest.mock('@/features/receipt-capture/receiptImage.service', () => ({
+  resolveImageUri: jest.fn((uri: string) => Promise.resolve(uri)),
+}));
+
 jest.mock('expo-splash-screen', () => ({
   preventAutoHideAsync: jest.fn(() => Promise.resolve()),
   hideAsync: jest.fn(() => Promise.resolve()),
@@ -19,13 +23,12 @@ const fullModel: ShareImageModel = {
   ],
   settleLines: [{ key: '0:b->me', label: 'Bea owes Kemp', amountText: '₱10.00' }],
   payment: { heading: 'Pay Kemp via:', lines: ['GCash: 0917 123 4567'] },
-  footer: 'Calculated with Splitsy.',
 };
 
-async function renderCard(model: ShareImageModel) {
+async function renderCard(model: ShareImageModel, qrImageUri: string | null = null) {
   await render(
     <ThemeProvider>
-      <SummaryShareCard model={model} />
+      <SummaryShareCard model={model} qrImageUri={qrImageUri} />
     </ThemeProvider>,
   );
 }
@@ -43,7 +46,26 @@ describe('SummaryShareCard', () => {
     expect(screen.getByText('Bea owes Kemp')).toBeTruthy();
     expect(screen.getByText('Pay Kemp via:')).toBeTruthy();
     expect(screen.getByText('GCash: 0917 123 4567')).toBeTruthy();
-    expect(screen.getByText('Calculated with Splitsy.')).toBeTruthy();
+  });
+
+  it('shows the Splitsy name at the top', async () => {
+    await renderCard(fullModel);
+
+    expect(await screen.findByText('Splitsy')).toBeTruthy();
+  });
+
+  it('shows the payment QR when one is given', async () => {
+    await renderCard(fullModel, 'file:///qr.png');
+
+    expect(await screen.findByText('Payment QR code')).toBeTruthy();
+    expect(await screen.findByLabelText('Your saved payment QR code')).toBeTruthy();
+  });
+
+  it('shows no QR section when there is no QR', async () => {
+    await renderCard(fullModel, null);
+
+    expect(await screen.findByText('Coffee Run')).toBeTruthy();
+    expect(screen.queryByText('Payment QR code')).toBeNull();
   });
 
   it('renders no settle-up, payment or paid rows when the model has none', async () => {

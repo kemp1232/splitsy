@@ -9,7 +9,7 @@ import { copy } from '@/constants/copy';
 import { buildPaymentDetailsBlock, isCreditor } from '@/features/payment-details/phMobileNumber';
 import { formatCentavos } from '@/lib/money';
 
-import { FOOTER_LINE, type ShareTextInput } from './shareText';
+import type { ShareTextInput } from './shareText';
 
 export type ShareImagePersonRow = {
   participantId: string;
@@ -33,7 +33,6 @@ export type ShareImageModel = {
   settleLines: ShareImageSettleLine[];
   // Null when the text share would have no payment details block.
   payment: { heading: string; lines: string[] } | null;
-  footer: string;
 };
 
 export function buildShareImageModel(input: ShareTextInput): ShareImageModel {
@@ -109,6 +108,5 @@ export function buildShareImageModel(input: ShareTextInput): ShareImageModel {
     people,
     settleLines,
     payment: paymentHeading !== undefined ? { heading: paymentHeading, lines: paymentLines } : null,
-    footer: FOOTER_LINE,
   };
 }
