@@ -1,13 +1,17 @@
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import type { Bill } from '@/db/repositories/bills.repository';
 import type { Trip } from '@/db/repositories/trips.repository';
 import { tripsRepository } from '@/db/repositories/trips.repository';
 import { tripParticipantsRepository } from '@/db/repositories/tripParticipants.repository';
-import { bills, participants, tripParticipants, trips } from '@/db/schema';
+import { bills, debtPayments, participants, tripParticipants, trips } from '@/db/schema';
 import type { CreateDraftBillInput } from '@/features/bills/bill.service';
 import { deleteBill } from '@/features/bills/bill.service';
+import {
+  planBillToTripMove,
+  type BillToTripMapping,
+} from '@/features/trips/buildBillToTripMapping';
 import { nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
 
@@ -122,6 +126,90 @@ export async function createBillInTrip(tripId: string, input: CreateDraftBillInp
     }
 
     return bill;
+  });
+}
+
+// Moves a standalone bill (tripId null) into an existing trip. One
+// transaction, and every guard is re-checked inside it against fresh rows
+// (planBillToTripMove) — the bill must still be standalone, have no
+// bill-scoped paid marks (those are keyed by this bill's participant ids and
+// mean nothing in the trip's combined settle-up, so the move is blocked
+// rather than deleting or converting them), and the mapping must still match
+// the bill's current participants and the trip's active roster. Any throw
+// rolls everything back. An "Add to trip" person named like a deactivated
+// roster member reactivates that row instead of inserting a duplicate.
+// Bill participants keep their own names (bill-level
+// shares are unchanged); the trip settlement shows the roster name. A SETTLED
+// trip is reopened the way the hub's ensureTripActive does when a bill is
+// added; an ACTIVE trip is left untouched, as createBillInTrip does.
+export async function moveBillToTrip(
+  billId: string,
+  tripId: string,
+  mapping: BillToTripMapping,
+): Promise<void> {
+  const timestamp = nowIso();
+
+  db.transaction((tx) => {
+    const [bill] = tx.select().from(bills).where(eq(bills.id, billId)).all();
+    const paidMarks = tx.select().from(debtPayments).where(eq(debtPayments.billId, billId)).all();
+    const [trip] = tx.select().from(trips).where(eq(trips.id, tripId)).all();
+    const roster = tx
+      .select()
+      .from(tripParticipants)
+      .where(eq(tripParticipants.tripId, tripId))
+      .orderBy(asc(tripParticipants.sortOrder))
+      .all();
+    const billParticipants = tx
+      .select()
+      .from(participants)
+      .where(eq(participants.billId, billId))
+      .orderBy(asc(participants.sortOrder))
+      .all();
+
+    const plan = planBillToTripMove(
+      { bill, trip, paidMarkCount: paidMarks.length, roster, participants: billParticipants },
+      mapping,
+    );
+
+    for (const memberId of plan.reactivateMemberIds) {
+      tx.update(tripParticipants)
+        .set({ isActive: true, updatedAt: timestamp })
+        .where(eq(tripParticipants.id, memberId))
+        .run();
+    }
+
+    const links = [...plan.links];
+    for (const member of plan.newMembers) {
+      const id = createId();
+      tx.insert(tripParticipants)
+        .values({
+          id,
+          tripId,
+          name: member.name,
+          sortOrder: member.sortOrder,
+          isActive: true,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        })
+        .run();
+      links.push({ participantId: member.participantId, tripParticipantId: id });
+    }
+
+    for (const link of links) {
+      tx.update(participants)
+        .set({ tripParticipantId: link.tripParticipantId, updatedAt: timestamp })
+        .where(eq(participants.id, link.participantId))
+        .run();
+    }
+
+    tx.update(bills).set({ tripId, updatedAt: timestamp }).where(eq(bills.id, billId)).run();
+
+    if (plan.reopenTrip) {
+      tx.update(trips)
+        .set({ status: 'ACTIVE', updatedAt: timestamp })
+        .where(eq(trips.id, tripId))
+        .run();
+    }
   });
 }
 

@@ -147,6 +147,7 @@ function SessionGate({ migrationsReady }: { migrationsReady: boolean }) {
                 <Stack.Screen name="bill/[billId]/adjustments" />
                 <Stack.Screen name="bill/[billId]/payments" />
                 <Stack.Screen name="bill/[billId]/summary" />
+                <Stack.Screen name="bill/[billId]/move-to-trip" />
                 <Stack.Screen name="trip/new" />
                 <Stack.Screen name="trip/[tripId]/index" />
                 <Stack.Screen name="trip/[tripId]/settlement" />

@@ -17,6 +17,11 @@ type Props = {
   onEdit: () => void;
   onShare: () => void;
   onDelete: () => void;
+  // Only the home list passes this (its rows are standalone bills); the trip
+  // hub doesn't, so the action never shows for a bill already in a trip.
+  onMoveToTrip?: () => void;
+  // Disables only Move to trip — same restore-in-flight reason as Edit.
+  moveDisabled?: boolean;
   onCancel: () => void;
 };
 
@@ -34,6 +39,8 @@ export function BillOverflowSheet({
   onEdit,
   onShare,
   onDelete,
+  onMoveToTrip,
+  moveDisabled,
   onCancel,
 }: Props) {
   const { colors } = useTheme();
@@ -64,6 +71,15 @@ export function BillOverflowSheet({
               onPress={onShare}
               icon={(color) => <Feather name="share" size={18} color={color} />}
             />
+            {onMoveToTrip ? (
+              <AppButton
+                variant="text"
+                label={copy.home.overflowMoveToTrip}
+                onPress={onMoveToTrip}
+                disabled={moveDisabled}
+                icon={(color) => <Feather name="briefcase" size={18} color={color} />}
+              />
+            ) : null}
             <AppButton
               variant="destructive"
               label={copy.home.overflowDelete}
