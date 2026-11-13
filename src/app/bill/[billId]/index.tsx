@@ -7,6 +7,7 @@ import { BillTotalCard } from '@/components/bill/BillTotalCard';
 import { PersonTotalCard } from '@/components/bill/PersonTotalCard';
 import { SettlementCard } from '@/components/bill/SettlementCard';
 import { ActionRow } from '@/components/ui/ActionRow';
+import { SummaryShareCard } from '@/components/bill/SummaryShareCard';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
@@ -64,8 +65,10 @@ import {
 } from '@/features/participants/validateParticipantName';
 import { isCreditor } from '@/features/payment-details/phMobileNumber';
 import { shareQrImage } from '@/features/payment-details/shareQrImage';
+import { useShareSummaryImage } from '@/features/bills/useShareSummaryImage';
 import { useSavedPaymentDetails } from '@/features/payment-details/useSavedPaymentDetails';
-import { buildShareText } from '@/features/splitting/shareText';
+import { buildShareImageModel, type ShareImageModel } from '@/features/splitting/shareImageModel';
+import { buildShareText, type ShareTextInput } from '@/features/splitting/shareText';
 import { calculateSplit } from '@/features/splitting/splitCalculator';
 import type {
   ReconciliationResult,
@@ -161,6 +164,12 @@ export default function SavedBillDetailScreen() {
   const [shareError, setShareError] = useState<string | null>(null);
   const [shareQrError, setShareQrError] = useState<string | null>(null);
   const paymentDetails = useSavedPaymentDetails();
+  const {
+    cardRef: summaryCardRef,
+    error: shareImageError,
+    busy: shareImageBusy,
+    share: shareSummaryImage,
+  } = useShareSummaryImage();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   // Trip feature addition (not from the numbered MVP spec, see the
@@ -392,42 +401,60 @@ export default function SavedBillDetailScreen() {
     }
   }
 
-  async function handleShare() {
+  // One input for both the text share and the image share, so the two never
+  // disagree on a number (same as summary.tsx's buildShareInputForBill).
+  function buildShareInputForBill(): ShareTextInput {
     // TypeScript doesn't retain the outer `!splitResult` narrowing above
-    // across this nested function's closure boundary (same reasoning as
-    // summary.tsx's own buildShareTextForBill) — re-checked here rather than
-    // asserted, even though this handler is never wired up while the earlier
+    // across this nested function's closure boundary — re-checked here rather
+    // than asserted, even though nothing calls this while the earlier
     // loading/error guard is still showing.
-    if (!splitResult) return;
+    if (!splitResult) throw new Error('buildShareInputForBill: split result not loaded');
+    return {
+      billTitle: title,
+      participants: participants.map((participant) => ({
+        participantId: participant.id,
+        name: displayParticipantName(participant.name, meName),
+        paidCentavos: hasAnyContribution ? participant.contributedCentavos : undefined,
+      })),
+      items: items.map((item) => ({ lineItemId: item.id, name: item.name })),
+      adjustments: adjustments.map((adjustment) => ({
+        adjustmentId: adjustment.id,
+        label: adjustment.label,
+      })),
+      splitResult,
+      // Same hasAnyContribution gate as the on-screen SettlementCard — a
+      // bill that never touched Payments shouldn't get a "Settle up" block
+      // (or "Paid" lines) in its shared text either.
+      settlementTransactions: hasAnyContribution ? settlement.transactions : undefined,
+      paymentDetails:
+        meParticipant && paymentDetails
+          ? {
+              meParticipantId: meParticipant.id,
+              gcashNumber: paymentDetails.gcashNumber,
+              mayaNumber: paymentDetails.mayaNumber,
+            }
+          : undefined,
+    };
+  }
 
+  // The offscreen card "Share as image" captures. Never throws during
+  // render: on a failure no card is mounted, and the button then shows its
+  // own failure message (useShareSummaryImage's not-mounted path).
+  let shareImageModel: ShareImageModel | null;
+  try {
+    shareImageModel = buildShareImageModel(buildShareInputForBill());
+  } catch {
+    shareImageModel = null;
+  }
+
+  async function handleShareImage() {
+    await shareSummaryImage(() => showAlert(copy.summary.imageDownloadedToast));
+  }
+
+  async function handleShare() {
     setShareError(null);
     try {
-      const text = buildShareText({
-        billTitle: title,
-        participants: participants.map((participant) => ({
-          participantId: participant.id,
-          name: displayParticipantName(participant.name, meName),
-          paidCentavos: hasAnyContribution ? participant.contributedCentavos : undefined,
-        })),
-        items: items.map((item) => ({ lineItemId: item.id, name: item.name })),
-        adjustments: adjustments.map((adjustment) => ({
-          adjustmentId: adjustment.id,
-          label: adjustment.label,
-        })),
-        splitResult,
-        // Same hasAnyContribution gate as the on-screen SettlementCard — a
-        // bill that never touched Payments shouldn't get a "Settle up" block
-        // (or "Paid" lines) in its shared text either.
-        settlementTransactions: hasAnyContribution ? settlement.transactions : undefined,
-        paymentDetails:
-          meParticipant && paymentDetails
-            ? {
-                meParticipantId: meParticipant.id,
-                gcashNumber: paymentDetails.gcashNumber,
-                mayaNumber: paymentDetails.mayaNumber,
-              }
-            : undefined,
-      });
+      const text = buildShareText(buildShareInputForBill());
       const result = await shareText(text);
       // Web-only: no native share sheet on this browser, silently fell back
       // to the clipboard instead (src/lib/share.web.ts) — this screen has no
@@ -487,6 +514,18 @@ export default function SavedBillDetailScreen() {
 
   return (
     <Screen tabBarHidden scroll padded={false}>
+      {/* The card "Share as image" captures: kept offscreen and hidden from
+          touch and assistive tech, so the visible layout is unchanged. */}
+      {shareImageModel !== null ? (
+        <View
+          style={styles.offscreenCapture}
+          aria-hidden
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
+          <SummaryShareCard ref={summaryCardRef} model={shareImageModel} />
+        </View>
+      ) : null}
       <View style={styles.body}>
         <View style={styles.headerBlock}>
           <ScreenHeader
@@ -633,6 +672,17 @@ export default function SavedBillDetailScreen() {
           onPress={handleShare}
           icon={(color) => <Feather name="share" size={18} color={color} />}
         />
+        <View>
+          <AppButton
+            variant="secondary"
+            label={copy.summary.shareImageAction}
+            onPress={handleShareImage}
+            loading={shareImageBusy}
+            disabled={shareImageBusy}
+            icon={(color) => <Feather name="image" size={18} color={color} />}
+          />
+          {shareImageError ? <InlineError message={shareImageError} /> : null}
+        </View>
         {qrImageUri !== null ? (
           <View>
             <AppButton
@@ -705,6 +755,12 @@ export default function SavedBillDetailScreen() {
 
 function createStyles(colors: ColorTokens) {
   return StyleSheet.create({
+    offscreenCapture: {
+      position: 'absolute',
+      top: 0,
+      left: -10000,
+      pointerEvents: 'none',
+    },
     body: {
       padding: spacing.lg,
       // No tab-bar clearance: the global BottomTabBar is hidden on /bill/**.
