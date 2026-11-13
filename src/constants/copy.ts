@@ -396,6 +396,53 @@ export const copy = {
     tooLongNameError: 'Use 30 characters or fewer.',
   },
 
+  // Not from the spec — saved people and groups (#6). Chips on a standalone
+  // bill's participants screen (SavedPeopleSuggestions) and the Settings
+  // management screen (src/app/saved-people.tsx + SavedGroupEditorSheet).
+  savedPeople: {
+    // Participants screen suggestions
+    suggestionsHeading: 'Saved people',
+    groupsHeading: 'Groups',
+    addPersonAccessibilityLabel: 'Add {name}',
+    groupChipLabel: '{name} (+{count})',
+    addGroupAccessibilityLabel: 'Add {count} people from {name}',
+    addGroupAccessibilityLabelSingular: 'Add 1 person from {name}',
+    // Settings entry
+    settingsSection: 'People',
+    settingsRowTitle: 'Saved people & groups',
+    settingsRowCaption: 'Add the people you split with in one tap.',
+    // Management screen
+    heading: 'Saved people & groups',
+    body: 'Names you add to bills outside a trip are saved here.',
+    groupsSection: 'Groups ({count})',
+    groupsCaption: 'Add everyone in a group to a bill in one tap.',
+    newGroupAction: 'New group',
+    groupMemberCount: '{count} people',
+    groupMemberCountSingular: '1 person',
+    groupNoMembers: 'No members yet',
+    peopleSection: 'Saved people ({count})',
+    emptyHeading: 'No saved people yet',
+    emptyBody: 'Names you add to a bill outside a trip will show up here.',
+    editGroupAccessibilityLabel: 'Edit {name}',
+    renamePersonAccessibilityLabel: 'Rename {name}',
+    deleteAccessibilityLabel: 'Delete {name}',
+    deletePersonHeading: 'Delete {name}?',
+    deletePersonBody: "They'll be removed from your groups. Bills they're already on won't change.",
+    deleteGroupHeading: 'Delete {name}?',
+    deleteGroupBody: 'The people in this group stay saved.',
+    deleteAction: 'Delete',
+    duplicateNameError: 'That name is already saved.',
+    // Group editor sheet
+    groupNewHeading: 'New group',
+    groupEditHeading: 'Edit group',
+    groupNameLabel: 'Group name',
+    groupNamePlaceholder: 'Example: Housemates',
+    groupDuplicateNameError: 'A group with that name already exists.',
+    groupMembersLabel: 'Members',
+    groupNoSavedPeople: 'Add people to a bill first. Their names will show up here.',
+    groupSaveAction: 'Save group',
+  },
+
   // Section 13.13 — Item assignment
   assignments: {
     heading: 'Who had what?',
@@ -753,17 +800,19 @@ export const copy = {
       "Splitsy's server stores your account sign-in details, a daily count of your receipt scans, and a small record used to pace receipt scans. It doesn't save your receipt photos, receipt text, or bills.",
     dataSection: 'Local data',
     deleteAllAction: 'Delete all local data',
-    deleteAllCaption: 'Permanently removes saved bills, receipt photos, and payment details.',
+    deleteAllCaption:
+      'Permanently removes saved bills, receipt photos, payment details, and saved people and groups.',
     // Matches resetAllLocalData (bill.service.ts / bill.service.web.ts):
     // deletes every bill (cascading items, participants, assignments,
     // adjustments; drafts are bills too, including bills inside trips), the
-    // app_settings table (incl. payment details), and the receipts image
+    // app_settings table (incl. payment details), the saved people and
+    // groups tables, and the receipts image
     // directory (incl. the payment QR image). Trips and trip
     // members, the theme preference (AsyncStorage), and the sign-in session
     // are NOT touched — keep this copy in sync if that function changes.
-    deleteAllHeading: 'Delete all bills and receipts?',
+    deleteAllHeading: 'Delete bills, receipts and saved people?',
     deleteAllBody:
-      "This permanently removes every saved bill and draft, including bills inside trips, plus all receipt photos and your payment details, from this device. Your trips and their member lists, your theme choice, and your sign-in are kept. This can't be undone.",
+      "This permanently removes every saved bill and draft, including bills inside trips, plus all receipt photos, your payment details, and your saved people and groups, from this device. Your trips and their member lists, your theme choice, and your sign-in are kept. This can't be undone.",
     deleteAllConfirm: 'Delete permanently',
     deleteAllCancel: 'Cancel',
     versionLabel: 'Version',

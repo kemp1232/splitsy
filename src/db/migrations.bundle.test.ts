@@ -39,4 +39,24 @@ describe('drizzle migrations bundle', () => {
     expect(sql).toContain('CREATE UNIQUE INDEX `debt_payments_bill_pair_idx`');
     expect(sql).toContain('CREATE UNIQUE INDEX `debt_payments_trip_pair_idx`');
   });
+
+  it('0005 creates the saved people tables with cascading FKs and the unique name index', () => {
+    const entry = bundle.journal.entries.find((e) => e.tag === '0005_saved_people');
+    expect(entry?.idx).toBe(5);
+    const sql = sqlFor(5);
+    expect(sql).toContain('CREATE TABLE `saved_people`');
+    expect(sql).toContain('CREATE TABLE `saved_groups`');
+    expect(sql).toContain('CREATE TABLE `saved_group_members`');
+    expect(sql).toContain(
+      'FOREIGN KEY (`group_id`) REFERENCES `saved_groups`(`id`) ON UPDATE no action ON DELETE cascade',
+    );
+    expect(sql).toContain(
+      'FOREIGN KEY (`saved_person_id`) REFERENCES `saved_people`(`id`) ON UPDATE no action ON DELETE cascade',
+    );
+    expect(sql).toContain(
+      'CREATE UNIQUE INDEX `saved_people_normalized_name_idx` ON `saved_people` (`normalized_name`)',
+    );
+    // Additive only: nothing in 0005 alters or drops an existing table.
+    expect(sql).not.toMatch(/ALTER TABLE|DROP TABLE/);
+  });
 });

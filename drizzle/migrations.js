@@ -6,6 +6,7 @@ import m0001 from './0001_lying_amphibian.sql';
 import m0002 from './0002_wonderful_beyonder.sql';
 import m0003 from './0003_acknowledged_discrepancy_amount.sql';
 import m0004 from './0004_debt_payments.sql';
+import m0005 from './0005_saved_people.sql';
 
   export default {
     journal,
@@ -14,7 +15,8 @@ import m0004 from './0004_debt_payments.sql';
 m0001,
 m0002,
 m0003,
-m0004
+m0004,
+m0005
     }
   }
   

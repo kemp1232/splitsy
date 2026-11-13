@@ -132,6 +132,7 @@ function SessionGate({ migrationsReady }: { migrationsReady: boolean }) {
               <Stack.Protected guard={hasSession}>
                 <Stack.Screen name="index" />
                 <Stack.Screen name="settings" />
+                <Stack.Screen name="saved-people" />
                 {/* Every bill/trip route too — routes not listed in a
                     Protected group stay reachable by URL or back navigation
                     after logging out. */}

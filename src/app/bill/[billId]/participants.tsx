@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
@@ -8,6 +8,7 @@ import {
   ParticipantEditorSheet,
   type ParticipantDraft,
 } from '@/components/bill/ParticipantEditorSheet';
+import { SavedPeopleSuggestions } from '@/components/bill/SavedPeopleSuggestions';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppText } from '@/components/ui/AppText';
 import { AppTextInput } from '@/components/ui/AppTextInput';
@@ -21,8 +22,14 @@ import { Screen } from '@/components/ui/Screen';
 import { copy } from '@/constants/copy';
 import { adjustmentAllocationsRepository } from '@/db/repositories/adjustmentAllocations.repository';
 import { adjustmentsRepository } from '@/db/repositories/adjustments.repository';
+import { billsRepository } from '@/db/repositories/bills.repository';
 import type { Participant } from '@/db/repositories/participants.repository';
 import { participantsRepository } from '@/db/repositories/participants.repository';
+import {
+  savedGroupsRepository,
+  type SavedGroupWithMembers,
+} from '@/db/repositories/savedGroups.repository';
+import { savedPeopleRepository, type SavedPerson } from '@/db/repositories/savedPeople.repository';
 import { removeParticipant } from '@/features/bills/bill.service';
 import { useEnsureBillEditable } from '@/features/bills/useEnsureBillEditable';
 import { findAffectedCustomAdjustments } from '@/features/participants/findAffectedCustomAdjustments';
@@ -33,6 +40,11 @@ import {
   resolveQuickAddMeName,
   validateParticipantName,
 } from '@/features/participants/validateParticipantName';
+import { rememberParticipantNames } from '@/features/saved-people/savedPeople.service';
+import {
+  selectGroupMembersToAdd,
+  selectSavedPeopleSuggestions,
+} from '@/features/saved-people/savedPeopleSelection';
 import { authClient } from '@/lib/authClient';
 import { nowIso } from '@/lib/date';
 import { createId } from '@/lib/ids';
@@ -41,6 +53,31 @@ import { radius, spacing, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 type LoadState = 'loading' | 'ready' | 'error';
+
+// Saved people/groups are a convenience: a failed read just means no
+// suggestions, never an error state.
+async function fetchSavedPeopleAndGroups(): Promise<{
+  people: SavedPerson[];
+  groups: SavedGroupWithMembers[];
+}> {
+  try {
+    const [people, groups] = await Promise.all([
+      savedPeopleRepository.listAll(),
+      savedGroupsRepository.listWithMembers(),
+    ]);
+    return { people, groups };
+  } catch {
+    return { people: [], groups: [] };
+  }
+}
+
+// Group member ids -> saved names (ids of since-deleted people are skipped).
+function savedNamesForIds(savedNameById: Map<string, string>, ids: string[]): string[] {
+  return ids.flatMap((id) => {
+    const name = savedNameById.get(id);
+    return name === undefined ? [] : [name];
+  });
+}
 
 export default function ParticipantsScreen() {
   const router = useRouter();
@@ -80,6 +117,12 @@ export default function ParticipantsScreen() {
   // In-flight guard for inline adds — a ref, not state, so a rapid double
   // submit (before the next render) can't slip past it and add twice.
   const addingRef = useRef(false);
+  // The bill's tripId: null for a standalone bill (the only kind that shows
+  // and feeds saved people, #6); undefined until loaded or if the bill row
+  // can't be found, which is treated like a trip bill (no suggestions).
+  const [billTripId, setBillTripId] = useState<string | null | undefined>(undefined);
+  const [savedPeople, setSavedPeople] = useState<SavedPerson[]>([]);
+  const [savedGroups, setSavedGroups] = useState<SavedGroupWithMembers[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -92,6 +135,68 @@ export default function ParticipantsScreen() {
       }
     })();
   }, [billId, reloadKey]);
+
+  // Read separately so a failed bill read only hides the saved-people
+  // suggestions (billTripId stays undefined) instead of failing the screen.
+  useEffect(() => {
+    (async () => {
+      try {
+        const bill = await billsRepository.getById(billId);
+        setBillTripId(bill ? bill.tripId : undefined);
+      } catch {
+        setBillTripId(undefined);
+      }
+    })();
+  }, [billId, reloadKey]);
+
+  const isStandalone = billTripId === null;
+
+  const loadSaved = useCallback(async () => {
+    const saved = await fetchSavedPeopleAndGroups();
+    setSavedPeople(saved.people);
+    setSavedGroups(saved.groups);
+  }, []);
+
+  useEffect(() => {
+    if (!isStandalone) return;
+    (async () => {
+      await loadSaved();
+    })();
+  }, [isStandalone, loadSaved]);
+
+  // Saved person id -> name, for resolving group members.
+  const savedNameById = useMemo(
+    () => new Map(savedPeople.map((person) => [person.id, person.name])),
+    [savedPeople],
+  );
+  const participantNames = useMemo(
+    () => participants.map((participant) => participant.name),
+    [participants],
+  );
+  // "Add me" has its own button, so the me name never shows as a chip.
+  const personSuggestions = useMemo(
+    () =>
+      isStandalone ? selectSavedPeopleSuggestions(savedPeople, [...participantNames, meName]) : [],
+    [isStandalone, savedPeople, participantNames, meName],
+  );
+  // Groups whose members are all on the bill already (or that have none)
+  // are hidden.
+  const groupSuggestions = useMemo(
+    () =>
+      isStandalone
+        ? savedGroups
+            .map((entry) => ({
+              id: entry.group.id,
+              name: entry.group.name,
+              addableCount: selectGroupMembersToAdd(
+                savedNamesForIds(savedNameById, entry.memberIds),
+                participantNames,
+              ).length,
+            }))
+            .filter((group) => group.addableCount > 0)
+        : [],
+    [isStandalone, savedGroups, savedNameById, participantNames],
+  );
 
   function handleBack() {
     if (router.canGoBack()) {
@@ -106,18 +211,26 @@ export default function ParticipantsScreen() {
     setParticipants(rows);
   }
 
-  // The one create path for a new participant — shared by the inline
-  // "Add a name" field and "Add me".
-  async function createParticipant(name: string) {
+  // The one create path for new participants — shared by the inline
+  // "Add a name" field, "Add me" and the saved people/group chips. One
+  // multi-row insert, so a group add is all-or-nothing. On a standalone bill
+  // the names are then remembered as saved people (fire-and-forget:
+  // rememberParticipantNames never throws); "Add me" passes remember: false.
+  async function createParticipants(names: string[], { remember = true } = {}) {
     const timestamp = nowIso();
-    await participantsRepository.create({
-      id: createId(),
-      billId,
-      sortOrder: participants.length,
-      name,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    });
+    await participantsRepository.createMany(
+      names.map((name, index) => ({
+        id: createId(),
+        billId,
+        sortOrder: participants.length + index,
+        name,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })),
+    );
+    if (remember && billTripId === null) {
+      void rememberParticipantNames(names, billTripId).then(loadSaved);
+    }
     await refreshParticipants();
   }
 
@@ -158,7 +271,7 @@ export default function ParticipantsScreen() {
     setActionError(null);
     addingRef.current = true;
     try {
-      await createParticipant(result.name);
+      await createParticipants([result.name]);
       setNewName('');
       return true;
     } catch {
@@ -185,13 +298,63 @@ export default function ParticipantsScreen() {
   }
 
   async function handleQuickAddMe() {
+    // Same in-flight guard as typed and chip adds, so it can't race them.
+    if (addingRef.current) return;
     setActionError(null);
+    addingRef.current = true;
     try {
-      await createParticipant(meName);
+      // Not remembered: "Add me" already covers the user, so a saved "me"
+      // chip would only duplicate it.
+      await createParticipants([meName], { remember: false });
     } catch {
       setActionError(copy.global.storageFailure);
+    } finally {
+      addingRef.current = false;
     }
   }
+
+  // Adds names picked from a saved-people or group chip through the same
+  // create path as typed names, behind the same in-flight guard.
+  async function addSuggestedNames(names: string[]) {
+    if (names.length === 0 || addingRef.current) return;
+    setActionError(null);
+    addingRef.current = true;
+    try {
+      await createParticipants(names);
+    } catch {
+      setActionError(copy.global.storageFailure);
+    } finally {
+      addingRef.current = false;
+    }
+  }
+
+  // Chip handlers read the latest render's state through this ref (updated
+  // after each commit), so the callbacks below stay stable and the memoized
+  // chips don't re-render on unrelated changes such as typing a name.
+  const addSuggestedNamesRef = useRef<(kind: 'person' | 'group', id: string) => void>(() => {});
+  useEffect(() => {
+    addSuggestedNamesRef.current = (kind, id) => {
+      if (kind === 'person') {
+        const name = savedNameById.get(id);
+        if (name === undefined) return;
+        void addSuggestedNames(selectGroupMembersToAdd([name], participantNames));
+        return;
+      }
+      const entry = savedGroups.find((candidate) => candidate.group.id === id);
+      if (!entry) return;
+      void addSuggestedNames(
+        selectGroupMembersToAdd(savedNamesForIds(savedNameById, entry.memberIds), participantNames),
+      );
+    };
+  });
+  const handleAddSavedPerson = useCallback(
+    (savedPersonId: string) => addSuggestedNamesRef.current('person', savedPersonId),
+    [],
+  );
+  const handleAddGroup = useCallback(
+    (groupId: string) => addSuggestedNamesRef.current('group', groupId),
+    [],
+  );
 
   // Reads the bill's adjustments first so the confirmation can name every
   // custom-split fee this removal will switch to proportional (the same
@@ -324,6 +487,13 @@ export default function ParticipantsScreen() {
               <Feather name="plus-circle" size={20} color={color} />
             </Pressable>
           )}
+        />
+
+        <SavedPeopleSuggestions
+          people={personSuggestions}
+          groups={groupSuggestions}
+          onAddPerson={handleAddSavedPerson}
+          onAddGroup={handleAddGroup}
         />
 
         <View style={styles.sectionCard}>

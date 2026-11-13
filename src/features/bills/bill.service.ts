@@ -15,6 +15,8 @@ import {
   debtPayments,
   lineItems,
   participants,
+  savedGroups,
+  savedPeople,
   tripParticipants,
   trips,
 } from '@/db/schema';
@@ -341,6 +343,10 @@ export function resetAllLocalData(): void {
     tx.delete(debtPayments).run();
     tx.delete(bills).run();
     tx.delete(appSettings).run();
+    // Saved people and groups (#6) go too; their memberships cascade.
+    // Bill participants never reference them, so order doesn't matter.
+    tx.delete(savedGroups).run();
+    tx.delete(savedPeople).run();
   });
 
   deleteReceiptsDirectory();
@@ -359,6 +365,8 @@ export function wipeAllLocalData(): void {
     tx.delete(tripParticipants).run();
     tx.delete(trips).run();
     tx.delete(appSettings).run();
+    tx.delete(savedGroups).run();
+    tx.delete(savedPeople).run();
   });
 
   deleteReceiptsDirectory();
