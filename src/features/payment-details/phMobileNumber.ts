@@ -55,5 +55,5 @@ export function buildPaymentDetailsBlock({
     lines.push(`${copy.paymentDetails.mayaLabel}: ${formatPhMobileNumber(mayaNumber)}`);
   }
   if (lines.length === 0) return null;
-  return [copy.paymentDetails.shareHeading.replace('{name}', name), ...lines].join('\n');
+  return [copy.paymentDetails.shareHeading.replace('{name}', () => name), ...lines].join('\n');
 }
